@@ -50,3 +50,20 @@ def list_operacoes(db: Session, user: CurrentUser) -> list[Operacao]:
     if user.role != UserRole.ADMIN:
         raise ForbiddenError("Somente admin")
     return list(db.scalars(select(Operacao).order_by(Operacao.id)).all())
+
+
+def update_operacao(db: Session, operacao_id: int, body: "OperacaoUpdate") -> Operacao:
+    from motopay.domain.exceptions import NotFoundError
+    op = db.get(Operacao, operacao_id)
+    if not op:
+        raise NotFoundError("Operação não encontrada")
+    if body.nome is not None:
+        op.nome = body.nome
+    if body.multa_fixa_percentual is not None:
+        op.multa_fixa_percentual = body.multa_fixa_percentual
+    if body.juros_diario_percentual is not None:
+        op.juros_diario_percentual = body.juros_diario_percentual
+    db.add(op)
+    db.commit()
+    db.refresh(op)
+    return op

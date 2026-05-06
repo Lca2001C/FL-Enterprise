@@ -1,4 +1,15 @@
 services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: motopay
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
   redis:
     image: redis:7-alpine
     ports:
@@ -12,8 +23,13 @@ services:
     ports:
       - "8000:8000"
     env_file: .env
+    environment:
+      - DATABASE_URL=postgresql+psycopg://postgres:postgres@db:5432/motopay
+    volumes:
+      - .:/app
     depends_on:
       - redis
+      - db
 
   worker:
     build:
@@ -21,9 +37,14 @@ services:
       dockerfile: Dockerfile
     command: celery -A motopay.infrastructure.messaging.celery_app worker -l INFO
     env_file: .env
+    environment:
+      - DATABASE_URL=postgresql+psycopg://postgres:postgres@db:5432/motopay
+    volumes:
+      - .:/app
     depends_on:
       - redis
       - api
+      - db
 
   beat:
     build:
@@ -31,8 +52,13 @@ services:
       dockerfile: Dockerfile
     command: celery -A motopay.infrastructure.messaging.celery_app beat -l INFO
     env_file: .env
+    environment:
+      - DATABASE_URL=postgresql+psycopg://postgres:postgres@db:5432/motopay
+    volumes:
+      - .:/app
     depends_on:
       - redis
+      - db
 
   bot:
     build:
@@ -40,8 +66,13 @@ services:
       dockerfile: Dockerfile
     command: python -m motopay.infrastructure.telegram.bot_main
     env_file: .env
+    environment:
+      - DATABASE_URL=postgresql+psycopg://postgres:postgres@db:5432/motopay
+    volumes:
+      - .:/app
     depends_on:
       - api
+      - db
 
   streamlit:
     build:
@@ -51,5 +82,13 @@ services:
     ports:
       - "8501:8501"
     env_file: .env
+    environment:
+      - DATABASE_URL=postgresql+psycopg://postgres:postgres@db:5432/motopay
+    volumes:
+      - .:/app
     depends_on:
       - api
+      - db
+
+volumes:
+  postgres_data:

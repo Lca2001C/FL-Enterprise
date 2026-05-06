@@ -114,7 +114,35 @@ def list_cobrancas(db: Session, user: CurrentUser, operacao_scope: int | None) -
         q = q.where(Cobranca.operacao_id == user.operacao_id)
     elif operacao_scope is not None:
         q = q.where(Cobranca.operacao_id == operacao_scope)
-    return list(db.scalars(q.order_by(Cobranca.id.desc())).all())
+        
+    cobs = list(db.scalars(q.order_by(Cobranca.id.desc())).all())
+    today = date.today()
+    
+    # Cache configs da operação (assumindo mesma operacao para a lista)
+    op_id = _effective_operacao(user, operacao_scope)
+    from motopay.infrastructure.db.models import Operacao
+    op_cfg = db.get(Operacao, op_id)
+    m_pct = op_cfg.multa_fixa_percentual / Decimal("100")
+    j_pct = op_cfg.juros_diario_percentual / Decimal("100")
+
+    for c in cobs:
+        if c.status in [CobrancaStatus.PENDENTE.value, CobrancaStatus.ATRASADO.value] and c.vencimento < today:
+            dias = (today - c.vencimento).days
+            multa = c.valor * m_pct
+            juros = c.valor * j_pct * dias
+            c.dias_atraso = dias
+            c.multa = multa
+            c.juros = juros
+            c.valor_total = c.valor + multa + juros
+            # Forçar status se atrasado
+            if c.status == CobrancaStatus.PENDENTE.value:
+                c.status = CobrancaStatus.ATRASADO.value
+        else:
+            c.dias_atraso = 0
+            c.multa = Decimal(0)
+            c.juros = Decimal(0)
+            c.valor_total = c.valor
+    return cobs
 
 
 def handle_payment_confirmed(

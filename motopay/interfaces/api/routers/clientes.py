@@ -9,6 +9,7 @@ from motopay.services.fleet_service import (
     get_cliente,
     list_clientes as list_clientes_service,
     update_cliente,
+    delete_cliente,
 )
 
 router = APIRouter(prefix="/clientes", tags=["clientes"])
@@ -52,3 +53,14 @@ def patch(
     operacao_id: int | None = Depends(resolve_operacao_id),
 ) -> ClienteOut:
     return update_cliente(db, user, operacao_id, cliente_id, body)
+
+
+@router.delete("/{cliente_id}")
+def delete_one(
+    cliente_id: int,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_dono_or_admin),
+    operacao_id: int | None = Depends(resolve_operacao_id),
+):
+    delete_cliente(db, user, operacao_id, cliente_id)
+    return {"status": "success"}

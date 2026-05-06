@@ -15,7 +15,7 @@ class TokenResponse(BaseModel):
 
 
 class LoginRequest(BaseModel):
-    email: EmailStr
+    email: str
     password: str
 
 
@@ -38,6 +38,14 @@ class OperacaoOut(BaseModel):
     id: int
     nome: str
     created_at: datetime
+    multa_fixa_percentual: Decimal
+    juros_diario_percentual: Decimal
+
+
+class OperacaoUpdate(BaseModel):
+    nome: str | None = None
+    multa_fixa_percentual: Decimal | None = None
+    juros_diario_percentual: Decimal | None = None
 
 
 class UsuarioCreate(BaseModel):
@@ -67,6 +75,7 @@ class MotoOut(BaseModel):
     placa: str
     modelo: str
     status: str
+    cliente_nome: str | None = None
 
 
 class ClienteCreate(BaseModel):
@@ -92,6 +101,8 @@ class ClienteOut(BaseModel):
     telefone: str
     telegram_id: str | None
     score: int
+    moto_placa: str | None = None
+    moto_modelo: str | None = None
 
 
 class ContratoCreate(BaseModel):
@@ -163,6 +174,10 @@ class CobrancaOut(BaseModel):
     asaas_payment_id: str | None
     pix_copia_cola: str | None
     status: str
+    dias_atraso: int = 0
+    multa: Decimal = Decimal(0)
+    juros: Decimal = Decimal(0)
+    valor_total: Decimal = Decimal(0)
 
 
 class CreateChargeRequest(BaseModel):
@@ -184,3 +199,22 @@ class MotoAnalyticsRow(BaseModel):
 class WebhookAsaasPayload(BaseModel):
     event: str
     payment: dict[str, Any] | None = None
+
+
+class AnalyticsSummary(BaseModel):
+    receita_total: Decimal
+    despesa_total: Decimal
+    lucro_liquido: Decimal
+    motos_ativas: int
+    clientes_inadimplentes: int
+    total_cobrancas: int = 0
+    cobrancas_pendentes: int = 0
+    cobrancas_atrasadas: int = 0
+
+
+class RecentActivityRow(BaseModel):
+    id: int
+    tipo: str
+    descricao: str
+    data: date
+    valor: Decimal

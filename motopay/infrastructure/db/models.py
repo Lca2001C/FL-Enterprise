@@ -30,6 +30,8 @@ class Operacao(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+    multa_fixa_percentual: Mapped[Decimal] = mapped_column(Numeric(5, 2), server_default="2.00", nullable=False)
+    juros_diario_percentual: Mapped[Decimal] = mapped_column(Numeric(5, 2), server_default="0.10", nullable=False)
 
     usuarios: Mapped[list[Usuario]] = relationship(back_populates="operacao")
     motos: Mapped[list[Moto]] = relationship(back_populates="operacao")

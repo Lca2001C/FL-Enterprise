@@ -18,7 +18,8 @@ from motopay.interfaces.api.schemas import (
 
 
 def _moto_query(user: CurrentUser, operacao_scope: int | None) -> Select:
-    q = select(Moto)
+    from sqlalchemy.orm import joinedload
+    q = select(Moto).options(joinedload(Moto.contratos).joinedload(Contrato.cliente))
     if user.role == UserRole.DONO:
         q = q.where(Moto.operacao_id == user.operacao_id)
     elif operacao_scope is not None:
@@ -27,7 +28,12 @@ def _moto_query(user: CurrentUser, operacao_scope: int | None) -> Select:
 
 
 def list_motos(db: Session, user: CurrentUser, operacao_scope: int | None) -> list[Moto]:
-    return list(db.scalars(_moto_query(user, operacao_scope).order_by(Moto.id)).all())
+    motos = list(db.scalars(_moto_query(user, operacao_scope).order_by(Moto.id)).all())
+    for m in motos:
+        active_ct = next((ct for ct in m.contratos if ct.status == "ativo"), None)
+        if active_ct:
+            m.cliente_nome = active_ct.cliente.nome
+    return motos
 
 
 def get_moto(db: Session, user: CurrentUser, operacao_scope: int | None, moto_id: int) -> Moto:
@@ -97,7 +103,8 @@ def update_moto(
 
 
 def _cliente_query(user: CurrentUser, operacao_scope: int | None) -> Select:
-    q = select(Cliente)
+    from sqlalchemy.orm import joinedload
+    q = select(Cliente).options(joinedload(Cliente.contratos).joinedload(Contrato.moto))
     if user.role == UserRole.DONO:
         q = q.where(Cliente.operacao_id == user.operacao_id)
     elif operacao_scope is not None:
@@ -106,7 +113,13 @@ def _cliente_query(user: CurrentUser, operacao_scope: int | None) -> Select:
 
 
 def list_clientes(db: Session, user: CurrentUser, operacao_scope: int | None) -> list[Cliente]:
-    return list(db.scalars(_cliente_query(user, operacao_scope).order_by(Cliente.id)).all())
+    clientes = list(db.scalars(_cliente_query(user, operacao_scope).order_by(Cliente.id)).all())
+    for c in clientes:
+        active_ct = next((ct for ct in c.contratos if ct.status == "ativo"), None)
+        if active_ct:
+            c.moto_placa = active_ct.moto.placa
+            c.moto_modelo = active_ct.moto.modelo
+    return clientes
 
 
 def get_cliente(db: Session, user: CurrentUser, operacao_scope: int | None, cliente_id: int) -> Cliente:
@@ -155,6 +168,12 @@ def update_cliente(
     db.commit()
     db.refresh(c)
     return c
+
+
+def delete_cliente(db: Session, user: CurrentUser, operacao_scope: int | None, cliente_id: int):
+    c = get_cliente(db, user, operacao_scope, cliente_id)
+    db.delete(c)
+    db.commit()
 
 
 def list_contratos(db: Session, user: CurrentUser, operacao_scope: int | None) -> list[Contrato]:

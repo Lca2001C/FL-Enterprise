@@ -13,7 +13,7 @@ from motopay.domain.enums import UserRole
 from motopay.domain.exceptions import UnauthorizedError
 from motopay.infrastructure.db.models import Usuario
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 
 
 def hash_password(plain: str) -> str:

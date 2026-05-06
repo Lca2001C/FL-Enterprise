@@ -271,9 +271,13 @@ Reações automáticas:
 cd FL-Enterprise
 cp .env.example .env
 # Edite .env: DATABASE_URL, JWT_SECRET, REDIS_URL, ASAAS_*, TELEGRAM_BOT_TOKEN, ASAAS_WEBHOOK_TOKEN
-pip install -e .
+py -m pip install -e .
+
+# Se 'alembic' der erro de "module not found", use o caminho completo do executável:
+# Exemplo Windows: /c/Users/x19991860/AppData/Local/Python/pythoncore-3.14-64/Scripts/alembic upgrade head
 alembic upgrade head
-python scripts/seed_admin.py
+
+PYTHONPATH=. py scripts/seed_admin.py
 ```
 
 Credenciais padrão do seed (altere em produção): admin `admin@motopay.local` / `adminadmin`, dono `dono@motopay.local` / `donodono`.
@@ -283,31 +287,31 @@ Credenciais padrão do seed (altere em produção): admin `admin@motopay.local` 
 Terminal 1 — API:
 
 ```bash
-uvicorn motopay.interfaces.api.main:app --reload --host 0.0.0.0 --port 8000
+py -m uvicorn motopay.interfaces.api.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 Terminal 2 — worker Celery:
 
 ```bash
-celery -A motopay.infrastructure.messaging.celery_app worker -l INFO
+py -m celery -A motopay.infrastructure.messaging.celery_app worker -l INFO
 ```
 
 Terminal 3 — agendador (Beat):
 
 ```bash
-celery -A motopay.infrastructure.messaging.celery_app beat -l INFO
+py -m celery -A motopay.infrastructure.messaging.celery_app beat -l INFO
 ```
 
 Terminal 4 — bot Telegram (polling):
 
 ```bash
-python -m motopay.infrastructure.telegram.bot_main
+py -m motopay.infrastructure.telegram.bot_main
 ```
 
 Terminal 5 — dashboard Streamlit:
 
 ```bash
-streamlit run apps/streamlit_dashboard/app.py
+py -m streamlit run apps/streamlit_dashboard/app.py
 ```
 
 Defina `API_PUBLIC_BASE_URL` (ex.: `http://localhost:8000`) para o dashboard. Administradores podem informar `operacao_id` na barra lateral para filtrar dados globais.
