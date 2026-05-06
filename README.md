@@ -1,362 +1,300 @@
-# 🛵 Moto-Sync Ultra-Resilient
+# 🛵 MotoPay Admin
 
-Enterprise Fleet Management Platform
+### Gestão de Aluguel & Cobrança Automática
 
-Moto-Sync é uma plataforma de monitoramento e gestão de frotas de alta performance, projetada para empresas de locação de motos.
+Sistema integrado para **gestão de frotas de motos**, controle financeiro e automação de cobranças via Pix/assinaturas com bot no Telegram e dashboard administrativo.
 
-A solução combina:
+---
 
-- rastreamento em tempo real
-- automação financeira
-- inteligência geográfica
-- arquitetura resiliente orientada a eventos
+## 🚀 Visão Geral
 
-Tudo isso com foco em baixo custo operacional (Free Tier Friendly) e alta escalabilidade.
+O **MotoPay Admin** é uma plataforma projetada para transformar operações de locação de motos em um sistema:
 
-## 🧠 Visão Geral
+* Automatizado
+* Escalável
+* Orientado a dados
+* Com baixo custo operacional
 
-O Moto-Sync foi projetado para operar como uma plataforma de missão crítica, suportando falhas, picos de tráfego e crescimento contínuo.
+Mais do que um sistema de controle, ele evolui para uma **infraestrutura inteligente de gestão financeira e operacional**.
 
-Principais pilares:
+---
 
-- Arquitetura Event-Driven
-- Processamento assíncrono
-- Resiliência a falhas
-- Baixo custo de infraestrutura
-- Hardware agnóstico via Traccar
+## ⚙️ Funcionalidades Principais
 
-## 🏛️ Arquitetura do Sistema
+### 🤖 Bot de Atendimento Inteligente
 
-A arquitetura é dividida em camadas desacopladas, permitindo escalabilidade horizontal e alta disponibilidade.
+* Envio automático de cobranças
+* Lembretes de vencimento (D-1)
+* Confirmação de pagamento em tempo real
+* Estratégias de cobrança progressiva:
 
-### 🗺️ Fluxo de Dados
+  * Amigável → Alerta → Cobrança firme
+* Base para evolução em agente autônomo
 
-```mermaid
-flowchart LR
-    gpsDispositivos[GPS Devices]
-    traccarGateway[Traccar Gateway]
-    ingestaoApi[API Ingestão Fastify]
-    redisBuffer[Redis Streams Buffer]
-    bullmqWorkers[BullMQ Workers]
-    postgresPostgis[PostgreSQL PostGIS]
-    redisCache[Redis Cache]
-    frontendPwa[Frontend PWA]
+---
 
-    gpsDispositivos --> traccarGateway
-    traccarGateway --> ingestaoApi
-    ingestaoApi --> redisBuffer
-    redisBuffer --> bullmqWorkers
-    bullmqWorkers --> postgresPostgis
-    bullmqWorkers --> redisCache
-    postgresPostgis --> frontendPwa
-    redisCache --> frontendPwa
-```
+### 💳 Automação de Pagamentos
 
-### ⚙️ Camadas da Arquitetura
+* Integração com gateways (Asaas / Mercado Pago)
+* Cobranças recorrentes:
 
-#### 📡 1. Edge / IoT
+  * Semanais
+  * Mensais
+* Métodos:
 
-- Dispositivos GPS (ST310, TK103, Suntech)
-- Comunicação via TCP/UDP
-- Integração universal via Traccar
+  * Pix (automático)
+  * Cartão de crédito
+* Webhooks para confirmação automática
 
-#### 🧱 2. Ingestão & Resiliência
+---
 
-Responsável por garantir que nenhum dado seja perdido.
+### 📊 Dashboard Administrativo
 
-- API de ingestão com Fastify
-- Autenticação HMAC
-- Rate limiting
-- Buffer com Redis Streams
+* Faturamento bruto
+* Lucro líquido por moto
+* Indicadores de inadimplência
+* Visão consolidada da operação
 
-Protege contra:
+---
 
-- picos de tráfego
-- falhas temporárias
-- overload
+### 🛠️ Gestão de Manutenção
 
-#### 🧠 3. Processamento (Event-Driven)
+* Registro de despesas por veículo
+* Classificação de custos
+* Impacto automático no lucro
+* Histórico completo por moto
 
-Sistema baseado em filas com BullMQ.
+---
 
-Workers:
+### 🆔 Gestão de Frota
 
-- **High Priority**
-  - Geofencing
-  - Safety Lock (bloqueio seguro)
-- **Medium Priority**
-  - Integração com Mercado Pago
-  - Multas automáticas
-- **Low Priority**
-  - Histórico
-  - Odômetro
-  - Analytics
+* Vínculo entre:
 
-#### 🗄️ 4. Persistência
+  * Cliente
+  * Moto
+  * Contrato
+* Status da moto:
 
-- **Redis**
-  - Estado atual das motos (last position)
-  - Cache de baixa latência
-- **PostgreSQL + PostGIS**
-  - Dados mestres
-  - Histórico geográfico
-  - Queries espaciais
-- **Data Aging**
-  - 0-30 dias -> dados completos
-  - 30+ dias -> agregação
-  - Longo prazo -> armazenamento frio
+  * Disponível
+  * Alugada
+  * Em manutenção
 
-#### 📱 5. Interface (PWA)
+---
 
-Aplicação web moderna com:
+### 📉 Relatórios Financeiros
 
-- Next.js
-- Tailwind CSS
-- WebSockets (tempo real)
+* Fluxo de caixa
+* Performance por ativo (moto)
+* Receita vs despesa
+* Base para análises avançadas
 
-Recursos:
+---
 
-- mapa interativo
-- clusterização de veículos
-- interpolação de movimento
-- dashboard financeiro
-- controle remoto de dispositivos
+## 🧠 Evoluções Estruturais (Nova Arquitetura)
 
-## 🚀 Funcionalidades
+### 🔧 Separação de Camadas
 
-### 🔐 Segurança e Controle
+* **Frontend:** Streamlit (inicialmente)
+* **Backend API:** FastAPI
+* **Worker assíncrono:** tarefas de cobrança, notificações e eventos
 
-- Bloqueio remoto com validação de velocidade
-- Assinatura HMAC em comandos
-- Watchdog de dispositivos offline
-- Monitoramento de bateria
+### 🎯 Benefícios:
 
-### 💸 Gestão Financeira
+* Escalabilidade
+* Organização de código
+* Base para evolução futura
 
-- Integração com Mercado Pago
-- Cobrança automatizada
-- Sistema de multas configurável
-- Webhooks de pagamento
+---
 
-### 📊 Inteligência de Frota
+## 🤖 Evolução do Bot → Agente Inteligente
 
-- Geofencing com PostGIS
-- Histórico de rotas
-- Odômetro virtual
-- Alertas inteligentes
+* Adaptação de mensagens por comportamento
+* Interação com cliente
+* Decisão baseada em histórico
 
-### 🔔 Comunicação
+---
 
-- Emails via Resend
-- Push notifications via Firebase
+## 💰 Inteligência Financeira
 
-### 🧩 Device Management
+* ROI por moto
+* Payback
+* Identificação de prejuízos
+* Ranking de ativos
 
-Gerenciamento completo de dispositivos:
+---
 
-- vinculo IMEI ↔ moto ↔ cliente
-- status online/offline
-- last_seen tracking
-- inventário de hardware
+## 📉 Gestão de Risco
 
-### 🔁 Sistema de Comandos
+* Score de cliente (0–100)
+* Baseado em:
 
-Controle robusto com retry:
+  * Pagamentos
+  * Atrasos
+  * Tempo de contrato
 
-- PENDING -> SENT -> DELIVERED -> FAILED
-- confirmação obrigatória
-- retry automático
-- auditoria completa
+---
 
-### 📊 Observabilidade
+## 🔐 Controle de Acesso (RBAC Simplificado)
 
-Monitoramento da saúde do sistema:
+O sistema possui **dois níveis de permissão**, focando simplicidade e controle total:
 
-- eventos por minuto
-- latência
-- dispositivos online
-- erros financeiros
+### 👑 Admin (Você)
 
-### 🛡️ Segurança da Plataforma
+* Acesso total ao sistema
+* Visualização global (todas as operações)
+* Gerenciamento de usuários
+* Auditoria completa
+* Configurações críticas (API, integrações, regras)
 
-- autenticação HMAC
-- rate limiting
-- validação de origem
-- logs de auditoria
+---
 
-## 💰 Estratégia de Custos
+### 🏢 Dono da Operação
 
-Projeto otimizado para operar em Free Tier:
+* Acesso à sua própria frota
+* Gestão de clientes e contratos
+* Visualização financeira completa da sua operação
+* Registro de manutenção
+* Acompanhamento de inadimplência
 
-- Supabase (Postgres)
-- Upstash (Redis)
-- Vercel (Frontend)
-- Render/Railway (Backend)
+---
 
-Mapas:
+### 🔒 Regras de Segurança
 
-- padrão: OpenStreetMap
-- uso premium sob demanda
+* Isolamento de dados por operação
+* Logs de ações críticas
+* Permissões restritas por escopo
 
-## 📦 Stack Tecnológico
+---
 
-| Camada | Tecnologia | Função |
-| --- | --- | --- |
-| Gateway | Traccar | Integração com GPS |
-| Backend | Node.js + Fastify | API de alta performance |
-| Processamento | BullMQ + Redis | Filas e workers |
-| Banco | PostgreSQL + PostGIS | Dados geográficos |
-| Frontend | Next.js + Tailwind | PWA |
-| Financeiro | Mercado Pago | Pagamentos |
-| Comunicação | Resend + Firebase | Notificações |
+## 🔔 Arquitetura baseada em Eventos
 
-## Ajustes Tecnológicos Recomendados
+Eventos internos:
 
-> Esta seção descreve evoluções recomendadas para robustez operacional.  
-> Não representa mudança de stack e não altera as tecnologias atuais do projeto.
+* `pagamento_confirmado`
+* `cliente_inadimplente`
+* `moto_em_manutencao`
 
-### Por Camada da Arquitetura
+Reações automáticas:
 
-#### Edge / IoT
+* Notificações
+* Atualização de dados
+* Ações do sistema
 
-- Aplicar políticas de backpressure na borda para reduzir impacto de rajadas de telemetria.
-- Definir SLA por criticidade de eventos já na entrada (alta, média, baixa prioridade).
+---
 
-#### Ingestão & Resiliência (Fastify + Redis Streams)
+## 📲 Experiência do Usuário (UX)
 
-- Garantir proteção anti-replay em chamadas assinadas (nonce + timestamp + janela de validade).
-- Reforçar segregação de credenciais por ambiente com rotação periódica de chaves HMAC.
-- Consolidar idempotência de ingestão para prevenir duplicidade antes de entrar no processamento.
+* Atual: Streamlit
+* Futuro: React / Next.js
 
-#### Processamento (BullMQ + Redis)
+---
 
-- Implementar retry por tipo de job com limites e backoff diferentes por criticidade.
-- Adicionar Dead Letter Queue (DLQ) para eventos esgotados, com trilha de causa e reprocessamento controlado.
-- Isolar workers por criticidade para preservar comandos de segurança e evitar starvation.
+## 🌐 Multi-Tenant
 
-#### Comandos Críticos (bloqueio e ações remotas)
+* Suporte a múltiplas operações
+* Separação total de dados
+* Base para SaaS
 
-- Formalizar state machine de comando (`PENDING -> SENT -> DELIVERED -> FAILED -> EXPIRED`).
-- Definir timeout operacional por tipo de comando e regras de compensação para estados inconsistentes.
-- Manter auditoria de transição de estado com correlação por dispositivo, comando e operador.
+---
 
-#### Persistência e Dados (PostgreSQL + PostGIS)
+## 🗄️ Estrutura do Banco de Dados
 
-- Evoluir estratégia de índices geoespaciais combinados com filtros temporais.
-- Planejar particionamento por período/tenant para histórico de alta volumetria.
-- Formalizar governança de dados (retenção, anonimização e trilha de auditoria/LGPD).
+### motos
 
-#### Integrações Externas (Mercado Pago, Resend, Firebase)
+* id
+* placa
+* modelo
+* status
 
-- Implementar circuit breaker para chamadas instáveis e fallback para envio/retentativa.
-- Definir política de reentrega por integração com observação de limites de provedor.
+---
 
-#### Observabilidade e Operação
+### clientes
 
-- Complementar métricas com tracing distribuído para identificar latência entre camadas.
-- Padronizar correlação fim a fim (`requestId`, `eventId`, `deviceId`, `commandId`) nos logs.
-- Definir degradação controlada sob pressão (fila, banco, API externa), preservando funcionalidades críticas.
+* nome
+* cpf
+* telefone
+* telegram_id
 
-### Mapa Tecnologia x Ajustes
+---
 
-| Tecnologia | Ajustes recomendados (sem trocar stack) |
-| --- | --- |
-| Traccar | Backpressure na entrada, classificação de prioridade, correlação por dispositivo |
-| Fastify | Anti-replay (nonce/timestamp), idempotência de ingestão, controle de taxa por cliente |
-| Redis Streams | Buffer resiliente com proteção contra burst e roteamento por criticidade |
-| BullMQ + Redis | Retry por classe, DLQ, isolamento de workers e SLA por fila |
-| PostgreSQL + PostGIS | Índices geoespaciais + tempo, particionamento, retenção e anonimização |
-| Next.js + Tailwind | Exibir estados degradados de forma clara quando serviços críticos estiverem indisponíveis |
-| Mercado Pago | Circuit breaker, retentativa com backoff e rastreio de falha por transação |
-| Resend + Firebase | Fallback por canal, política de reentrega e monitoramento de entrega |
-| Camada de Segurança (HMAC) | Rotação de chaves, segregação por ambiente e trilha de auditoria |
+### contratos
 
-## 💻 Como Executar
+* id_cliente
+* id_moto
+* valor_recorrente
+* ciclo
 
-### Pré-requisitos
+---
 
-- Docker + Docker Compose
-- Node.js 18+
+### financeiro
 
-### 1. Subir infraestrutura
+* tipo
+* valor
+* descricao
+* data
+* id_moto
+
+---
+
+## 🔄 Fluxo de Operação
+
+### 1. Cadastro
+
+* Cliente + moto
+* Criação de cobrança
+
+### 2. Cobrança
+
+* D-1 envio
+* D-0 verificação
+* Confirmação automática
+
+### 3. Financeiro
+
+* Registro de custos
+* Atualização de lucro
+
+---
+
+## 🛠️ Como Instalar
 
 ```bash
-docker-compose up -d
+git clone https://github.com/seu-usuario/motopay-admin.git
+cd motopay-admin
+pip install streamlit supabase python-telegram-bot requests python-dotenv
+streamlit run app.py
 ```
 
-Serviços iniciados:
+---
 
-- Traccar
-- PostgreSQL
-- Redis
+## 🔐 Segurança
 
-### 2. Backend
+* Tokenização
+* Logs de auditoria
+* Backups automáticos
 
-```bash
-cd backend
-npm install
-npm run dev
-```
+---
 
-### 3. Frontend
+## 📈 Direção do Projeto
 
-```bash
-cd frontend
-npm install
-npm run dev
-```
+Sistema → Plataforma → Agente inteligente
 
-## 🧪 Ambientes
+---
 
-- dev -> desenvolvimento local
-- staging -> testes
-- prod -> produção
+## 📄 Licença
 
-## ⚙️ Configuração (Ambiente)
+MIT
 
-Antes de subir os serviços, configure as variáveis de ambiente do backend e frontend.
+---
 
-Sugestão de organização:
+## 💡 Conclusão
 
-- `backend/.env`
-- `frontend/.env.local`
+Agora com um modelo de acesso simplificado (**Admin + Dono**), o sistema mantém:
 
-> Observação: mantenha credenciais e chaves fora do versionamento.
+* Controle total
+* Segurança
+* Escalabilidade
 
-## ✅ Qualidade e Validação
+Sem complexidade desnecessária.
 
-Comandos úteis para validação local:
-
-```bash
-# backend
-cd backend
-npm run lint
-npm test
-npm run build
-```
-
-```bash
-# frontend
-cd frontend
-npm run lint
-npm test
-npm run build
-```
-
-## 🤝 Contribuição
-
-Fluxo sugerido:
-
-1. Crie uma branch de feature.
-2. Faça commits pequenos e objetivos.
-3. Execute lint/test/build localmente.
-4. Abra PR com descrição do contexto e impacto.
-
-## 📜 Licença
-
-MIT License
-
-## 👨‍💻 Autor
-
-Lucas Carvalho  
-Full Stack Developer & DevOps Enthusiast
+---
