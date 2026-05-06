@@ -1,0 +1,55 @@
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: uvicorn motopay.interfaces.api.main:app --host 0.0.0.0 --port 8000
+    ports:
+      - "8000:8000"
+    env_file: .env
+    depends_on:
+      - redis
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: celery -A motopay.infrastructure.messaging.celery_app worker -l INFO
+    env_file: .env
+    depends_on:
+      - redis
+      - api
+
+  beat:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: celery -A motopay.infrastructure.messaging.celery_app beat -l INFO
+    env_file: .env
+    depends_on:
+      - redis
+
+  bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: python -m motopay.infrastructure.telegram.bot_main
+    env_file: .env
+    depends_on:
+      - api
+
+  streamlit:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: streamlit run apps/streamlit_dashboard/app.py --server.port 8501 --server.address 0.0.0.0
+    ports:
+      - "8501:8501"
+    env_file: .env
+    depends_on:
+      - api

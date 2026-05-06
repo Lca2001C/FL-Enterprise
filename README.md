@@ -256,14 +256,86 @@ Reações automáticas:
 
 ---
 
-## 🛠️ Como Instalar
+## 🛠️ Instalação e stack técnica
+
+### Requisitos
+
+* Python 3.11+
+* PostgreSQL (produção: [Supabase](https://supabase.com/) — use a connection string em `DATABASE_URL`)
+* Redis (broker Celery)
+* Conta [Asaas](https://www.asaas.com/) (sandbox ou produção) e bot [Telegram](https://core.telegram.org/bots)
+
+### Configuração
 
 ```bash
-git clone https://github.com/seu-usuario/motopay-admin.git
-cd motopay-admin
-pip install streamlit supabase python-telegram-bot requests python-dotenv
-streamlit run app.py
+cd FL-Enterprise
+cp .env.example .env
+# Edite .env: DATABASE_URL, JWT_SECRET, REDIS_URL, ASAAS_*, TELEGRAM_BOT_TOKEN, ASAAS_WEBHOOK_TOKEN
+pip install -e .
+alembic upgrade head
+python scripts/seed_admin.py
 ```
+
+Credenciais padrão do seed (altere em produção): admin `admin@motopay.local` / `adminadmin`, dono `dono@motopay.local` / `donodono`.
+
+### Executar em desenvolvimento
+
+Terminal 1 — API:
+
+```bash
+uvicorn motopay.interfaces.api.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+Terminal 2 — worker Celery:
+
+```bash
+celery -A motopay.infrastructure.messaging.celery_app worker -l INFO
+```
+
+Terminal 3 — agendador (Beat):
+
+```bash
+celery -A motopay.infrastructure.messaging.celery_app beat -l INFO
+```
+
+Terminal 4 — bot Telegram (polling):
+
+```bash
+python -m motopay.infrastructure.telegram.bot_main
+```
+
+Terminal 5 — dashboard Streamlit:
+
+```bash
+streamlit run apps/streamlit_dashboard/app.py
+```
+
+Defina `API_PUBLIC_BASE_URL` (ex.: `http://localhost:8000`) para o dashboard. Administradores podem informar `operacao_id` na barra lateral para filtrar dados globais.
+
+### Webhook Asaas
+
+Configure na Asaas a URL:
+
+`POST {API_PUBLIC_BASE_URL}/webhooks/asaas?token={ASAAS_WEBHOOK_TOKEN}`
+
+O corpo JSON esperado segue o padrão Asaas (`event`, `payment`). Eventos `PAYMENT_RECEIVED` / `PAYMENT_CONFIRMED` atualizam `cobrancas`, lançam `financeiro`, recalculam score e enfileiram notificação Telegram.
+
+### Docker
+
+```bash
+docker compose up --build
+```
+
+Serviços: `api`, `worker`, `beat`, `bot`, `streamlit`, `redis`. Ajuste `.env` antes (incluindo `DATABASE_URL` apontando para um Postgres acessível pelo container).
+
+### Estrutura de código
+
+* `motopay/domain` — enums e erros
+* `motopay/services` — regras de negócio e casos de uso
+* `motopay/infrastructure` — SQLAlchemy, Celery, Asaas, Telegram
+* `motopay/interfaces/api` — FastAPI, DTOs Pydantic
+* `motopay/interfaces/events` — publicação de eventos
+* `apps/streamlit_dashboard` — UI administrativa (somente HTTP na API)
 
 ---
 

@@ -1,0 +1,1 @@
+"""MotoPay Admin application package."""
