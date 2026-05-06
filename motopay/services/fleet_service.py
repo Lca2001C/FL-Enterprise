@@ -3,7 +3,7 @@ from __future__ import annotations
 from sqlalchemy import Select, select
 from sqlalchemy.orm import Session
 
-from motopay.domain.enums import DomainEventType, MotoStatus, UserRole
+from motopay.domain.enums import ContratoStatus, DomainEventType, MotoStatus, UserRole
 from motopay.domain.exceptions import ConflictError, ForbiddenError, NotFoundError
 from motopay.infrastructure.db.models import Cliente, Contrato, EventoDominio, Moto
 from motopay.interfaces.api.deps import CurrentUser
@@ -30,7 +30,7 @@ def _moto_query(user: CurrentUser, operacao_scope: int | None) -> Select:
 def list_motos(db: Session, user: CurrentUser, operacao_scope: int | None) -> list[Moto]:
     motos = list(db.scalars(_moto_query(user, operacao_scope).order_by(Moto.id)).all())
     for m in motos:
-        active_ct = next((ct for ct in m.contratos if ct.status == "ativo"), None)
+        active_ct = next((ct for ct in m.contratos if ct.status == ContratoStatus.ATIVO.value), None)
         if active_ct:
             m.cliente_nome = active_ct.cliente.nome
     return motos
@@ -115,7 +115,7 @@ def _cliente_query(user: CurrentUser, operacao_scope: int | None) -> Select:
 def list_clientes(db: Session, user: CurrentUser, operacao_scope: int | None) -> list[Cliente]:
     clientes = list(db.scalars(_cliente_query(user, operacao_scope).order_by(Cliente.id)).all())
     for c in clientes:
-        active_ct = next((ct for ct in c.contratos if ct.status == "ativo"), None)
+        active_ct = next((ct for ct in c.contratos if ct.status == ContratoStatus.ATIVO.value), None)
         if active_ct:
             c.moto_placa = active_ct.moto.placa
             c.moto_modelo = active_ct.moto.modelo

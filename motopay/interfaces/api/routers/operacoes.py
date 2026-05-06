@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
+from motopay.infrastructure.db.models import Operacao
 from motopay.infrastructure.db.session import get_db
 from motopay.interfaces.api.deps import CurrentUser, require_admin, require_dono_or_admin
 from motopay.interfaces.api.schemas import OperacaoCreate, OperacaoOut, OperacaoUpdate
@@ -31,10 +32,14 @@ def get_my_op(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_dono_or_admin),
 ) -> OperacaoOut:
-    from motopay.domain.exceptions import ForbiddenError
+    from motopay.domain.exceptions import ForbiddenError, NotFoundError
+
     if not user.operacao_id:
         raise ForbiddenError("Usuário sem operação vinculada")
-    return db.get(Operacao, user.operacao_id)
+    op = db.get(Operacao, user.operacao_id)
+    if not op:
+        raise NotFoundError("Operação não encontrada")
+    return op
 
 
 @router.patch("/me", response_model=OperacaoOut)
@@ -43,8 +48,8 @@ def update_my_op(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_dono_or_admin),
 ) -> OperacaoOut:
-    from motopay.domain.exceptions import ForbiddenError, NotFoundError
-    from motopay.infrastructure.db.models import Operacao
+    from motopay.domain.exceptions import ForbiddenError
+
     if not user.operacao_id:
         raise ForbiddenError("Usuário sem operação vinculada")
     return update_operacao(db, user.operacao_id, body)

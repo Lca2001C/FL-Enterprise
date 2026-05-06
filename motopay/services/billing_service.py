@@ -1,17 +1,18 @@
 from __future__ import annotations
 
 from datetime import date, timedelta
-
 from decimal import Decimal
 
 from dateutil.relativedelta import relativedelta
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from motopay.domain.enums import CicloCobranca, CobrancaStatus, DomainEventType, FinanceiroTipo, UserRole
 from motopay.domain.exceptions import ForbiddenError, NotFoundError
-from motopay.infrastructure.db.models import Cliente, Cobranca, Contrato, EventoDominio, Financeiro
+from motopay.infrastructure.db.models import Cliente, Cobranca, Contrato, EventoDominio, Financeiro, Operacao
 from motopay.infrastructure.payments.asaas_client import AsaasClient
 from motopay.interfaces.api.deps import CurrentUser
+from motopay.interfaces.api.schemas import CobrancaOut
 from motopay.services.scoring_service import recalculate_cliente_score
 
 
@@ -31,6 +32,40 @@ def _effective_operacao(user: CurrentUser, operacao_scope: int | None) -> int:
     return operacao_scope
 
 
+def _cobranca_to_out(c: Cobranca, op: Operacao | None, today: date) -> CobrancaOut:
+    """DTO com multa/juros calculados sem alterar o ORM (evita GET sujo e atributos inexistentes)."""
+    m_pct = (op.multa_fixa_percentual / Decimal("100")) if op else Decimal(0)
+    j_pct = (op.juros_diario_percentual / Decimal("100")) if op else Decimal(0)
+    dias_atraso = 0
+    multa = Decimal(0)
+    juros = Decimal(0)
+    display_status = c.status
+    pendente_ou_atrasado = c.status in (
+        CobrancaStatus.PENDENTE.value,
+        CobrancaStatus.ATRASADO.value,
+    )
+    if pendente_ou_atrasado and c.vencimento < today:
+        dias_atraso = (today - c.vencimento).days
+        multa = (c.valor * m_pct).quantize(Decimal("0.01"))
+        juros = (c.valor * j_pct * dias_atraso).quantize(Decimal("0.01"))
+        display_status = CobrancaStatus.ATRASADO.value
+    valor_total = (c.valor + multa + juros).quantize(Decimal("0.01"))
+    return CobrancaOut(
+        id=c.id,
+        operacao_id=c.operacao_id,
+        contrato_id=c.contrato_id,
+        valor=c.valor,
+        vencimento=c.vencimento,
+        asaas_payment_id=c.asaas_payment_id,
+        pix_copia_cola=c.pix_copia_cola,
+        status=display_status,
+        dias_atraso=dias_atraso,
+        multa=multa,
+        juros=juros,
+        valor_total=valor_total,
+    )
+
+
 def ensure_asaas_customer(db: Session, cliente: Cliente) -> str:
     if cliente.asaas_customer_id:
         return cliente.asaas_customer_id
@@ -47,7 +82,7 @@ def create_pix_charge_for_contract(
     user: CurrentUser,
     operacao_scope: int | None,
     contrato_id: int,
-) -> Cobranca:
+) -> CobrancaOut:
     operacao_id = _effective_operacao(user, operacao_scope)
     ct = db.get(Contrato, contrato_id)
     if not ct or ct.operacao_id != operacao_id:
@@ -75,7 +110,8 @@ def create_pix_charge_for_contract(
     db.add(cob)
     db.commit()
     db.refresh(cob)
-    return cob
+    op = db.get(Operacao, cob.operacao_id)
+    return _cobranca_to_out(cob, op, date.today())
 
 
 def create_asaas_subscription_for_contract(
@@ -106,43 +142,20 @@ def create_asaas_subscription_for_contract(
     return ct
 
 
-def list_cobrancas(db: Session, user: CurrentUser, operacao_scope: int | None) -> list[Cobranca]:
-    from sqlalchemy import select
-
+def list_cobrancas(db: Session, user: CurrentUser, operacao_scope: int | None) -> list[CobrancaOut]:
     q = select(Cobranca)
     if user.role == UserRole.DONO:
         q = q.where(Cobranca.operacao_id == user.operacao_id)
     elif operacao_scope is not None:
         q = q.where(Cobranca.operacao_id == operacao_scope)
-        
-    cobs = list(db.scalars(q.order_by(Cobranca.id.desc())).all())
+    rows = list(db.scalars(q.order_by(Cobranca.id.desc())).all())
     today = date.today()
-    
-    # Cache configs da operação (assumindo mesma operacao para a lista)
-    op_id = _effective_operacao(user, operacao_scope)
-    from motopay.infrastructure.db.models import Operacao
-    op_cfg = db.get(Operacao, op_id)
-    m_pct = op_cfg.multa_fixa_percentual / Decimal("100")
-    j_pct = op_cfg.juros_diario_percentual / Decimal("100")
-
-    for c in cobs:
-        if c.status in [CobrancaStatus.PENDENTE.value, CobrancaStatus.ATRASADO.value] and c.vencimento < today:
-            dias = (today - c.vencimento).days
-            multa = c.valor * m_pct
-            juros = c.valor * j_pct * dias
-            c.dias_atraso = dias
-            c.multa = multa
-            c.juros = juros
-            c.valor_total = c.valor + multa + juros
-            # Forçar status se atrasado
-            if c.status == CobrancaStatus.PENDENTE.value:
-                c.status = CobrancaStatus.ATRASADO.value
-        else:
-            c.dias_atraso = 0
-            c.multa = Decimal(0)
-            c.juros = Decimal(0)
-            c.valor_total = c.valor
-    return cobs
+    op_ids = {c.operacao_id for c in rows}
+    ops: dict[int, Operacao] = {}
+    if op_ids:
+        for o in db.scalars(select(Operacao).where(Operacao.id.in_(op_ids))).all():
+            ops[o.id] = o
+    return [_cobranca_to_out(c, ops.get(c.operacao_id), today) for c in rows]
 
 
 def handle_payment_confirmed(
@@ -151,12 +164,7 @@ def handle_payment_confirmed(
     asaas_payment_id: str,
     value: Decimal | None = None,
 ) -> tuple[bool, int | None]:
-    """Processa confirmação de pagamento Asaas. Idempotente.
-
-    Retorna (sucesso_encontrou_cobranca, evento_id_para_fila).
-    """
-    from sqlalchemy import select
-
+    """Idempotente. Retorna (processado_ou_idempotente, evento_id_para_fila)."""
     cob = db.scalars(select(Cobranca).where(Cobranca.asaas_payment_id == asaas_payment_id)).first()
     if not cob:
         return False, None

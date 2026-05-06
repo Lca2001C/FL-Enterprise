@@ -3,14 +3,14 @@ from __future__ import annotations
 from datetime import date
 from decimal import Decimal
 
-from sqlalchemy import case, func, select
+from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.orm import Session
 
-from motopay.domain.enums import FinanceiroTipo, UserRole
+from motopay.domain.enums import CobrancaStatus, FinanceiroTipo, MotoStatus, UserRole
 from motopay.domain.exceptions import ForbiddenError
-from motopay.infrastructure.db.models import Contrato, Financeiro, Moto
+from motopay.infrastructure.db.models import Cobranca, Contrato, Financeiro, Moto
 from motopay.interfaces.api.deps import CurrentUser
-from motopay.interfaces.api.schemas import AnalyticsSummary, MotoAnalyticsRow
+from motopay.interfaces.api.schemas import AnalyticsSummary, MotoAnalyticsRow, RecentActivityRow
 
 
 def _operacao_filter(user: CurrentUser, operacao_scope: int | None) -> int | None:
@@ -19,69 +19,105 @@ def _operacao_filter(user: CurrentUser, operacao_scope: int | None) -> int | Non
     return operacao_scope
 
 
+def _scope_where_cobranca(user: CurrentUser, op: int | None):
+    if user.role == UserRole.DONO:
+        return Cobranca.operacao_id == op
+    if op is not None:
+        return Cobranca.operacao_id == op
+    return None
+
+
+def _scope_where_financeiro(user: CurrentUser, op: int | None):
+    if user.role == UserRole.DONO:
+        return Financeiro.operacao_id == op
+    if op is not None:
+        return Financeiro.operacao_id == op
+    return None
+
+
+def _scope_where_moto(user: CurrentUser, op: int | None):
+    if user.role == UserRole.DONO:
+        return Moto.operacao_id == op
+    if op is not None:
+        return Moto.operacao_id == op
+    return None
+
+
+def _scope_where_contrato(user: CurrentUser, op: int | None):
+    if user.role == UserRole.DONO:
+        return Contrato.operacao_id == op
+    if op is not None:
+        return Contrato.operacao_id == op
+    return None
+
+
 def get_summary(
     db: Session,
     user: CurrentUser,
     operacao_scope: int | None,
 ) -> AnalyticsSummary:
     op = _operacao_filter(user, operacao_scope)
-    
-    # Receita e Despesa
-    receita_stmt = select(func.coalesce(func.sum(Financeiro.valor), 0)).where(Financeiro.tipo == FinanceiroTipo.RECEITA.value)
-    despesa_stmt = select(func.coalesce(func.sum(Financeiro.valor), 0)).where(Financeiro.tipo == FinanceiroTipo.DESPESA.value)
-    
-    if user.role == UserRole.DONO:
-        receita_stmt = receita_stmt.where(Financeiro.operacao_id == op)
-        despesa_stmt = despesa_stmt.where(Financeiro.operacao_id == op)
-    elif op is not None:
-        receita_stmt = receita_stmt.where(Financeiro.operacao_id == op)
-        despesa_stmt = despesa_stmt.where(Financeiro.operacao_id == op)
-        
-    receita_total = db.scalar(receita_stmt) or Decimal(0)
-    despesa_total = db.scalar(despesa_stmt) or Decimal(0)
-    
-    # Motos Ativas
-    from motopay.domain.enums import MotoStatus
-    motos_stmt = select(func.count(Moto.id)).where(Moto.status == MotoStatus.ALUGADA.value)
-    if user.role == UserRole.DONO:
-        motos_stmt = motos_stmt.where(Moto.operacao_id == op)
-    elif op is not None:
-        motos_stmt = motos_stmt.where(Moto.operacao_id == op)
-    motos_ativas = db.scalar(motos_stmt) or 0
-    
-    # Inadimplentes
-    inad_stmt = select(func.count(Contrato.id)).where(Contrato.inadimplente == True)
-    if user.role == UserRole.DONO:
-        inad_stmt = inad_stmt.where(Contrato.operacao_id == op)
-    elif op is not None:
-        inad_stmt = inad_stmt.where(Contrato.operacao_id == op)
-    inadimplentes = db.scalar(inad_stmt) or 0
-    
-    # Cobrancas Stats
-    from motopay.infrastructure.db.models import Cobranca
-    from motopay.domain.enums import CobrancaStatus
-    
-    cob_stmt = select(
-        func.count(Cobranca.id),
-        func.count(case((Cobranca.status == CobrancaStatus.PENDENTE.value, 1))),
-        func.count(case((Cobranca.status == CobrancaStatus.ATRASADO.value, 1)))
+    today = date.today()
+
+    receita_stmt = select(func.coalesce(func.sum(Financeiro.valor), 0)).where(
+        Financeiro.tipo == FinanceiroTipo.RECEITA.value
     )
-    if user.role == UserRole.DONO:
-        cob_stmt = cob_stmt.where(Cobranca.operacao_id == op)
-    elif op is not None:
-        cob_stmt = cob_stmt.where(Cobranca.operacao_id == op)
-        
-    total_cob, pendentes, atrasadas = db.execute(cob_stmt).first() or (0, 0, 0)
+    despesa_stmt = select(func.coalesce(func.sum(Financeiro.valor), 0)).where(
+        Financeiro.tipo == FinanceiroTipo.DESPESA.value
+    )
+    sf = _scope_where_financeiro(user, op)
+    if sf is not None:
+        receita_stmt = receita_stmt.where(sf)
+        despesa_stmt = despesa_stmt.where(sf)
+
+    receita_total = Decimal(db.scalar(receita_stmt) or 0)
+    despesa_total = Decimal(db.scalar(despesa_stmt) or 0)
+
+    motos_stmt = select(func.count(Moto.id)).where(Moto.status == MotoStatus.ALUGADA.value)
+    sm = _scope_where_moto(user, op)
+    if sm is not None:
+        motos_stmt = motos_stmt.where(sm)
+    motos_ativas = int(db.scalar(motos_stmt) or 0)
+
+    inad_stmt = select(func.count(Contrato.id)).where(Contrato.inadimplente.is_(True))
+    sc = _scope_where_contrato(user, op)
+    if sc is not None:
+        inad_stmt = inad_stmt.where(sc)
+    inadimplentes = int(db.scalar(inad_stmt) or 0)
+
+    cob_base = select(func.count(Cobranca.id))
+    sw = _scope_where_cobranca(user, op)
+    if sw is not None:
+        cob_base = cob_base.where(sw)
+    total_cob = int(db.scalar(cob_base) or 0)
+
+    pendentes_stmt = select(func.count(Cobranca.id)).where(
+        Cobranca.status == CobrancaStatus.PENDENTE.value,
+        Cobranca.vencimento >= today,
+    )
+    if sw is not None:
+        pendentes_stmt = pendentes_stmt.where(sw)
+    pendentes = int(db.scalar(pendentes_stmt) or 0)
+
+    atrasadas_stmt = select(func.count(Cobranca.id)).where(
+        or_(
+            Cobranca.status == CobrancaStatus.ATRASADO.value,
+            and_(Cobranca.status == CobrancaStatus.PENDENTE.value, Cobranca.vencimento < today),
+        )
+    )
+    if sw is not None:
+        atrasadas_stmt = atrasadas_stmt.where(sw)
+    atrasadas = int(db.scalar(atrasadas_stmt) or 0)
 
     return AnalyticsSummary(
         receita_total=receita_total,
         despesa_total=despesa_total,
         lucro_liquido=receita_total - despesa_total,
-        motos_ativas=int(motos_ativas),
-        clientes_inadimplentes=int(inadimplentes),
-        total_cobrancas=int(total_cob),
-        cobrancas_pendentes=int(pendentes),
-        cobrancas_atrasadas=int(atrasadas)
+        motos_ativas=motos_ativas,
+        clientes_inadimplentes=inadimplentes,
+        total_cobrancas=total_cob,
+        cobrancas_pendentes=pendentes,
+        cobrancas_atrasadas=atrasadas,
     )
 
 
@@ -151,16 +187,12 @@ def get_recent_activity(
     operacao_scope: int | None,
     limit: int = 10,
 ) -> list[RecentActivityRow]:
-    from motopay.interfaces.api.schemas import RecentActivityRow
-    
     op = _operacao_filter(user, operacao_scope)
-    stmt = select(Financeiro).order_by(Financeiro.data.desc(), Financeiro.created_at.desc()).limit(limit)
-    
-    if user.role == UserRole.DONO:
-        stmt = stmt.where(Financeiro.operacao_id == op)
-    elif op is not None:
-        stmt = stmt.where(Financeiro.operacao_id == op)
-        
+    stmt = select(Financeiro)
+    sf = _scope_where_financeiro(user, op)
+    if sf is not None:
+        stmt = stmt.where(sf)
+    stmt = stmt.order_by(Financeiro.data.desc(), Financeiro.created_at.desc()).limit(limit)
     rows = db.scalars(stmt).all()
     return [
         RecentActivityRow(
@@ -168,6 +200,7 @@ def get_recent_activity(
             tipo=r.tipo,
             descricao=r.descricao,
             data=r.data,
-            valor=r.valor
-        ) for r in rows
+            valor=r.valor,
+        )
+        for r in rows
     ]

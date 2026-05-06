@@ -164,8 +164,6 @@ class FinanceiroOut(BaseModel):
 
 
 class CobrancaOut(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
     id: int
     operacao_id: int
     contrato_id: int
