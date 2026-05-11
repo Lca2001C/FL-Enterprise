@@ -1,4 +1,4 @@
-FROM python:3.12-slim
+FROM python:3.11-slim
 
 WORKDIR /app
 
@@ -10,8 +10,9 @@ COPY motopay ./motopay
 COPY apps ./apps
 COPY alembic ./alembic
 COPY alembic.ini ./
+COPY scripts ./scripts
 
 RUN pip install --no-cache-dir pip setuptools wheel \
     && pip install --no-cache-dir -e .
 
-ENV PYTHONPATH=/app:/app/apps/streamlit_dashboard
+ENV PYTHONPATH=/app

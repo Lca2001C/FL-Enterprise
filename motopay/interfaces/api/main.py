@@ -2,6 +2,8 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from motopay.config import get_settings
+
 from motopay.domain.exceptions import (
     ConflictError,
     ForbiddenError,
@@ -24,10 +26,21 @@ from motopay.interfaces.api.routers import (
 
 app = FastAPI(title="MotoPay Admin API", version="0.1.0")
 
+
+def _cors_allow_origins() -> list[str]:
+    s = get_settings()
+    parsed = [x.strip() for x in s.cors_origins.split(",") if x.strip()]
+    if s.environment == "production":
+        return parsed
+    if parsed:
+        return parsed
+    return ["*"]
+
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=_cors_allow_origins(),
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )

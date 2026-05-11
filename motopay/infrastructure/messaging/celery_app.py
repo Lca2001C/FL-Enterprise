@@ -17,7 +17,8 @@ celery_app.conf.update(
     task_serializer="json",
     accept_content=["json"],
     result_serializer="json",
-    timezone="UTC",
+    timezone=_settings.app_timezone,
+    enable_utc=False,
     imports=["motopay.infrastructure.messaging.tasks"],
 )
 

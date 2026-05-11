@@ -9,11 +9,21 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d motopay"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
   redis:
     image: redis:7-alpine
     ports:
       - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
   api:
     build:
@@ -28,8 +38,10 @@ services:
     volumes:
       - .:/app
     depends_on:
-      - redis
-      - db
+      redis:
+        condition: service_healthy
+      db:
+        condition: service_healthy
 
   worker:
     build:
@@ -42,23 +54,29 @@ services:
     volumes:
       - .:/app
     depends_on:
-      - redis
-      - api
-      - db
+      redis:
+        condition: service_healthy
+      db:
+        condition: service_healthy
+      api:
+        condition: service_started
 
   beat:
     build:
       context: .
       dockerfile: Dockerfile
-    command: celery -A motopay.infrastructure.messaging.celery_app beat -l INFO
+    command: celery -A motopay.infrastructure.messaging.celery_app beat -l INFO --schedule=/data/celerybeat-schedule
     env_file: .env
     environment:
       - DATABASE_URL=postgresql+psycopg://postgres:postgres@db:5432/motopay
     volumes:
       - .:/app
+      - celery_beat_data:/data
     depends_on:
-      - redis
-      - db
+      redis:
+        condition: service_healthy
+      db:
+        condition: service_healthy
 
   bot:
     build:
@@ -71,8 +89,10 @@ services:
     volumes:
       - .:/app
     depends_on:
-      - api
-      - db
+      api:
+        condition: service_started
+      db:
+        condition: service_healthy
 
   streamlit:
     build:
@@ -84,11 +104,15 @@ services:
     env_file: .env
     environment:
       - DATABASE_URL=postgresql+psycopg://postgres:postgres@db:5432/motopay
+      - PYTHONPATH=/app:/app/apps/streamlit_dashboard
     volumes:
       - .:/app
     depends_on:
-      - api
-      - db
+      api:
+        condition: service_started
+      db:
+        condition: service_healthy
 
 volumes:
   postgres_data:
+  celery_beat_data:

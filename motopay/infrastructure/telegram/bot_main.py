@@ -29,11 +29,20 @@ async def cmd_promessa(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         return
     notas = " ".join(context.args[1:])
     uid = str(update.effective_user.id) if update.effective_user else ""
-    db = SessionLocal()
+    if not uid:
+        await update.effective_message.reply_text("Não foi possível identificar seu usuário no Telegram.")
+        return
+    ok = False
     try:
-        ok = record_promessa_from_telegram_user(db, telegram_user_id=uid, days=days, notas=notas)
-    finally:
-        db.close()
+        with SessionLocal() as db:
+            try:
+                ok = record_promessa_from_telegram_user(db, telegram_user_id=uid, days=days, notas=notas)
+            except Exception:
+                db.rollback()
+                raise
+    except Exception:
+        await update.effective_message.reply_text("Erro ao registrar. Tente novamente ou fale com o operador.")
+        return
     if ok:
         await update.effective_message.reply_text("Registramos sua promessa. Obrigado pelo retorno.")
     else:

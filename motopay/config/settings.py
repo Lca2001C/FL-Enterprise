@@ -20,6 +20,10 @@ class Settings(BaseSettings):
     api_public_base_url: str = "http://localhost:8000"
     app_timezone: str = "America/Sao_Paulo"
 
+    # production: definir APP_CORS_ORIGINS (URLs separadas por vírgula). API usa Bearer; credenciais CORS desligadas.
+    environment: str = "development"
+    cors_origins: str = ""
+
 
 @lru_cache
 def get_settings() -> Settings:

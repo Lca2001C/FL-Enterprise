@@ -267,10 +267,15 @@ Reações automáticas:
 
 ### Configuração
 
+**Não commite o arquivo `.env`** (ele está no `.gitignore`). Use apenas `.env.example` como modelo.
+
 ```bash
 cd FL-Enterprise
 cp .env.example .env
-# Edite .env: DATABASE_URL, JWT_SECRET, REDIS_URL, ASAAS_*, TELEGRAM_BOT_TOKEN, ASAAS_WEBHOOK_TOKEN
+# Edite .env: veja comentários em .env.example
+# - DATABASE_URL: localhost vs Docker (host db)
+# - JWT_SECRET: gere um segredo forte (nunca use o placeholder em produção)
+# - REDIS_URL, ASAAS_*, TELEGRAM_BOT_TOKEN, ASAAS_WEBHOOK_TOKEN
 py -m pip install -e .
 
 # Se 'alembic' der erro de "module not found", use o caminho completo do executável:
@@ -331,9 +336,11 @@ O corpo JSON esperado segue o padrão Asaas (`event`, `payment`). Eventos `PAYME
 docker compose up --build
 ```
 
-Serviços: `api`, `worker`, `beat`, `bot`, `streamlit`, `redis`. Ajuste `.env` antes (incluindo `DATABASE_URL` apontando para um Postgres acessível pelo container).
+O `Dockerfile` inclui a pasta `scripts/` (ex.: `docker compose run --rm api python scripts/seed_admin.py` após o stack subir).
 
-**Erro ao baixar `python:3.12-slim` / `registry-1.docker.io` / proxy:**
+Serviços: `api`, `worker`, `beat`, `bot`, `streamlit`, `redis`. Crie o `.env` a partir de `.env.example` antes do primeiro `up`. Nos containers, o Compose define `DATABASE_URL` com host `db`; no `.env` do host, mantenha `localhost` se rodar a API fora do Docker contra o Postgres publicado na porta 5432.
+
+**Erro ao baixar `python:3.11-slim` / `registry-1.docker.io` / proxy:**
 
 Mensagens como `lookup proxycamg...: no such host` indicam que o Docker está usando um **proxy** (`HTTP_PROXY`/`HTTPS_PROXY` ou configuração no Docker Desktop) cujo hostname **não resolve** na sua rede (ex.: fora da VPN corporativa).
 
@@ -359,11 +366,15 @@ Mensagens como `lookup proxycamg...: no such host` indicam que o Docker está us
 
 ---
 
-## 🔐 Segurança
+## 🔐 Segurança e segredos
 
-* Tokenização
-* Logs de auditoria
-* Backups automáticos
+* **Repositório:** não versionar `.env`, `_env` nem arquivos `celerybeat-schedule*` (agenda local do Beat). O repositório deve usar apenas `.env.example` como referência.
+* **`JWT_SECRET`:** em produção, gere um valor aleatório forte, por exemplo:  
+  `python -c "import secrets; print(secrets.token_hex(32))"`  
+  Não use o placeholder `change-me-*` em ambiente exposto.
+* **Telegram:** sem `TELEGRAM_BOT_TOKEN` (bot criado no @BotFather), o bot e parte das notificações não funcionam.
+* **Asaas:** sem `ASAAS_API_KEY` e webhook configurado, cobranças Pix e confirmação de pagamento ficam bloqueadas.
+* **Vazamento no histórico Git:** se `.env` ou chaves reais já foram commitados, além de remover do índice atual, **rotacione** todos os segredos (JWT, Asaas, Telegram, senha do banco) e, se o remoto já foi público, considere limpar o histórico com ferramentas como `git filter-repo` com apoio do time.
 
 ---
 

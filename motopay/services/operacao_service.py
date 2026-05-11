@@ -7,7 +7,7 @@ from motopay.domain.enums import UserRole
 from motopay.domain.exceptions import ConflictError, ForbiddenError
 from motopay.infrastructure.db.models import Operacao, Usuario
 from motopay.interfaces.api.deps import CurrentUser
-from motopay.interfaces.api.schemas import OperacaoCreate, UsuarioCreate
+from motopay.interfaces.api.schemas import OperacaoCreate, OperacaoUpdate, UsuarioCreate
 from motopay.services.auth_service import hash_password
 
 
@@ -52,7 +52,7 @@ def list_operacoes(db: Session, user: CurrentUser) -> list[Operacao]:
     return list(db.scalars(select(Operacao).order_by(Operacao.id)).all())
 
 
-def update_operacao(db: Session, operacao_id: int, body: "OperacaoUpdate") -> Operacao:
+def update_operacao(db: Session, operacao_id: int, body: OperacaoUpdate) -> Operacao:
     from motopay.domain.exceptions import NotFoundError
     op = db.get(Operacao, operacao_id)
     if not op:
