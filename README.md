@@ -261,9 +261,11 @@ Reações automáticas:
 ### Requisitos
 
 * Python 3.11+
-* PostgreSQL (produção: [Supabase](https://supabase.com/) — use a connection string em `DATABASE_URL`)
+* **PostgreSQL** (qualquer instância compatível). O app usa `DATABASE_URL` padrão SQLAlchemy; [Supabase](https://supabase.com/) é só uma opção de **hospedagem** de Postgres, não um requisito do código.
 * Redis (broker Celery)
 * Conta [Asaas](https://www.asaas.com/) (sandbox ou produção) e bot [Telegram](https://core.telegram.org/bots)
+
+Os exemplos usam `python` (Linux, macOS, containers). **No Windows**, substitua por `py` se preferir (ex.: `py -m pip install -e .`).
 
 ### Configuração
 
@@ -273,18 +275,23 @@ Reações automáticas:
 cd FL-Enterprise
 cp .env.example .env
 # Edite .env: veja comentários em .env.example
-# - DATABASE_URL: localhost vs Docker (host db)
+# - DATABASE_URL: localhost vs Docker (host db); alinhar com POSTGRES_* se usar o mesmo banco
+# - POSTGRES_USER / POSTGRES_PASSWORD / POSTGRES_DB: usados pelo docker-compose ao montar DATABASE_URL
 # - JWT_SECRET: gere um segredo forte (nunca use o placeholder em produção)
 # - REDIS_URL, ASAAS_*, TELEGRAM_BOT_TOKEN, ASAAS_WEBHOOK_TOKEN
-py -m pip install -e .
+python -m pip install -e .
 
 # Se 'alembic' der erro de "module not found", use o caminho completo do executável:
 # Exemplo Windows: .../Scripts/alembic upgrade head
 alembic upgrade head
 # Inclui 003_operacao_multas (multa/juros % por operação, usados nas cobranças).
 
-PYTHONPATH=. py scripts/seed_admin.py
+PYTHONPATH=. python scripts/seed_admin.py
 ```
+
+Opcional: gere um lock fechado com `pip-tools` (`pip-compile pyproject.toml`) — ver comentários em [`requirements.txt`](requirements.txt).
+
+Ferramentas de desenvolvimento: `python -m pip install -e ".[dev]"` (tudo), ou só `".[lint]"` / `".[test]"` para CI separado.
 
 Credenciais padrão do seed (altere em produção): admin `admin@motopay.local` / `adminadmin`, dono `dono@motopay.local` / `donodono`.
 
@@ -293,31 +300,31 @@ Credenciais padrão do seed (altere em produção): admin `admin@motopay.local` 
 Terminal 1 — API:
 
 ```bash
-py -m uvicorn motopay.interfaces.api.main:app --reload --host 0.0.0.0 --port 8000
+python -m uvicorn motopay.interfaces.api.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 Terminal 2 — worker Celery:
 
 ```bash
-py -m celery -A motopay.infrastructure.messaging.celery_app worker -l INFO
+python -m celery -A motopay.infrastructure.messaging.celery_app worker -l INFO
 ```
 
 Terminal 3 — agendador (Beat):
 
 ```bash
-py -m celery -A motopay.infrastructure.messaging.celery_app beat -l INFO
+python -m celery -A motopay.infrastructure.messaging.celery_app beat -l INFO
 ```
 
 Terminal 4 — bot Telegram (polling):
 
 ```bash
-py -m motopay.infrastructure.telegram.bot_main
+python -m motopay.infrastructure.telegram.bot_main
 ```
 
 Terminal 5 — dashboard Streamlit:
 
 ```bash
-py -m streamlit run apps/streamlit_dashboard/app.py
+python -m streamlit run apps/streamlit_dashboard/app.py
 ```
 
 Defina `API_PUBLIC_BASE_URL` (ex.: `http://localhost:8000`) para o dashboard. Administradores podem informar `operacao_id` na barra lateral para filtrar dados globais. O painel principal usa **Plotly** (gráficos de pizza, barras e ranking de motos); a página **Financeiro** mostra linha do tempo receita/despesa.
@@ -330,6 +337,10 @@ Configure na Asaas a URL:
 
 O corpo JSON esperado segue o padrão Asaas (`event`, `payment`). Eventos `PAYMENT_RECEIVED` / `PAYMENT_CONFIRMED` atualizam `cobrancas`, lançam `financeiro`, recalculam score e enfileiram notificação Telegram.
 
+### Health check da API
+
+* **GET** `/health` — retorno JSON `{"status":"ok"}`. Usado pelo `docker compose` (serviço `api`) e por balanceadores. Base path raiz (não usa prefixo `/api/v1`).
+
 ### Docker
 
 ```bash
@@ -338,7 +349,15 @@ docker compose up --build
 
 O `Dockerfile` inclui a pasta `scripts/` (ex.: `docker compose run --rm api python scripts/seed_admin.py` após o stack subir).
 
-Serviços: `api`, `worker`, `beat`, `bot`, `streamlit`, `redis`. Crie o `.env` a partir de `.env.example` antes do primeiro `up`. Nos containers, o Compose define `DATABASE_URL` com host `db`; no `.env` do host, mantenha `localhost` se rodar a API fora do Docker contra o Postgres publicado na porta 5432.
+Serviços: `api`, `worker`, `beat`, `bot`, `streamlit`, `redis`. Crie o `.env` a partir de `.env.example` antes do primeiro `up`.
+
+Credenciais do Postgres no Compose vêm de `POSTGRES_USER`, `POSTGRES_PASSWORD` e `POSTGRES_DB` (variáveis de ambiente do host / arquivo `.env` na raiz; padrão `postgres` / `postgres` / `motopay`). O `DATABASE_URL` dos serviços de aplicação é montado a partir delas. **Senhas com caracteres especiais** podem exigir URL-encoding se você montar a URL manualmente.
+
+O `Dockerfile` define `CMD` padrão da API (uvicorn); `worker`, `beat`, `bot` e `streamlit` sobrescrevem o comando no Compose. Healthcheck HTTP só no serviço `api` (a imagem é compartilhada).
+
+**Celery Beat:** o agendamento é persistido no volume Docker `celery_beat_data` (arquivo `--schedule` em `/data/…`). Se esse volume for apagado, o Beat pode re-disparar tarefas conforme o estado novo do scheduler — trate como risco operacional em produção (backups ou alternativa de scheduler externo, se necessário).
+
+Serviços aguardam `db` e `redis` **saudáveis** antes de subir a API; o worker **não** depende da API estar pronta.
 
 **Erro ao baixar `python:3.11-slim` / `registry-1.docker.io` / proxy:**
 
@@ -353,7 +372,7 @@ Mensagens como `lookup proxycamg...: no such host` indicam que o Docker está us
 
 3. **VPN / TI** — se o proxy for só na intranet, conecte à VPN ou peça o endereço correto.
 
-4. **Sem Docker** — use `py -m pip install -e .` e os comandos da seção “Executar em desenvolvimento”.
+4. **Sem Docker** — use `python -m pip install -e .` e os comandos da seção “Executar em desenvolvimento”.
 
 ### Estrutura de código
 
@@ -368,10 +387,8 @@ Mensagens como `lookup proxycamg...: no such host` indicam que o Docker está us
 
 ## 🔐 Segurança e segredos
 
-* **Repositório:** não versionar `.env`, `_env` nem arquivos `celerybeat-schedule*` (agenda local do Beat). O repositório deve usar apenas `.env.example` como referência.
-* **`JWT_SECRET`:** em produção, gere um valor aleatório forte, por exemplo:  
-  `python -c "import secrets; print(secrets.token_hex(32))"`  
-  Não use o placeholder `change-me-*` em ambiente exposto.
+* **Repositório:** não versionar `.env`, `_env` nem arquivos `celerybeat-schedule*`. Quem já commitou `_env` ou `.env` no passado deve auditar o histórico, por exemplo: `git log --all --full-history --name-only -- _env` (e o mesmo para `.env`). Se aparecerem commits com segredos, rotacione credenciais e considere `git filter-repo`.
+* **`JWT_SECRET`:** com `ENVIRONMENT=production`, a aplicação **recusa** valores ausentes ou que comecem com `change-me` (`RuntimeError` ao carregar config). Em desenvolvimento (`development`), o placeholder do `.env.example` ainda é aceito. Gere um segredo forte: `python -c "import secrets; print(secrets.token_hex(32))"`.
 * **Telegram:** sem `TELEGRAM_BOT_TOKEN` (bot criado no @BotFather), o bot e parte das notificações não funcionam.
 * **Asaas:** sem `ASAAS_API_KEY` e webhook configurado, cobranças Pix e confirmação de pagamento ficam bloqueadas.
 * **Vazamento no histórico Git:** se `.env` ou chaves reais já foram commitados, além de remover do índice atual, **rotacione** todos os segredos (JWT, Asaas, Telegram, senha do banco) e, se o remoto já foi público, considere limpar o histórico com ferramentas como `git filter-repo` com apoio do time.

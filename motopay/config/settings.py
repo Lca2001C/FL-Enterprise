@@ -1,5 +1,6 @@
 from functools import lru_cache
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -23,6 +24,16 @@ class Settings(BaseSettings):
     # production: definir APP_CORS_ORIGINS (URLs separadas por vírgula). API usa Bearer; credenciais CORS desligadas.
     environment: str = "development"
     cors_origins: str = ""
+
+    @model_validator(mode="after")
+    def reject_default_jwt_in_production(self) -> Settings:
+        if self.environment == "production" and (
+            not self.jwt_secret or self.jwt_secret.startswith("change-me")
+        ):
+            raise RuntimeError(
+                "JWT_SECRET não foi configurado para produção (use um segredo forte; valores que começam com 'change-me' são recusados)."
+            )
+        return self
 
 
 @lru_cache

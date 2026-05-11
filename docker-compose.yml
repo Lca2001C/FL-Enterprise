@@ -2,15 +2,15 @@ services:
   db:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: motopay
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-motopay}
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d motopay"]
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -34,7 +34,7 @@ services:
       - "8000:8000"
     env_file: .env
     environment:
-      - DATABASE_URL=postgresql+psycopg://postgres:postgres@db:5432/motopay
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-motopay}
     volumes:
       - .:/app
     depends_on:
@@ -42,6 +42,18 @@ services:
         condition: service_healthy
       db:
         condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
 
   worker:
     build:
@@ -50,7 +62,7 @@ services:
     command: celery -A motopay.infrastructure.messaging.celery_app worker -l INFO
     env_file: .env
     environment:
-      - DATABASE_URL=postgresql+psycopg://postgres:postgres@db:5432/motopay
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-motopay}
     volumes:
       - .:/app
     depends_on:
@@ -58,8 +70,6 @@ services:
         condition: service_healthy
       db:
         condition: service_healthy
-      api:
-        condition: service_started
 
   beat:
     build:
@@ -68,7 +78,7 @@ services:
     command: celery -A motopay.infrastructure.messaging.celery_app beat -l INFO --schedule=/data/celerybeat-schedule
     env_file: .env
     environment:
-      - DATABASE_URL=postgresql+psycopg://postgres:postgres@db:5432/motopay
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-motopay}
     volumes:
       - .:/app
       - celery_beat_data:/data
@@ -85,7 +95,7 @@ services:
     command: python -m motopay.infrastructure.telegram.bot_main
     env_file: .env
     environment:
-      - DATABASE_URL=postgresql+psycopg://postgres:postgres@db:5432/motopay
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-motopay}
     volumes:
       - .:/app
     depends_on:
@@ -103,8 +113,8 @@ services:
       - "8501:8501"
     env_file: .env
     environment:
-      - DATABASE_URL=postgresql+psycopg://postgres:postgres@db:5432/motopay
-      - PYTHONPATH=/app:/app/apps/streamlit_dashboard
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-motopay}
+      PYTHONPATH: /app
     volumes:
       - .:/app
     depends_on:

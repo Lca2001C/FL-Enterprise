@@ -17,7 +17,9 @@ Requires-Dist: httpx>=0.26.0
 Requires-Dist: celery[redis]>=5.3.6
 Requires-Dist: redis>=5.0.1
 Requires-Dist: python-telegram-bot>=21.0
-Requires-Dist: streamlit>=1.30.0
+Requires-Dist: streamlit>=1.33.0
+Requires-Dist: plotly>=5.18.0
+Requires-Dist: pandas>=2.1.0
 Requires-Dist: python-dateutil>=2.8.2
 Requires-Dist: email-validator>=2.1.0
 Provides-Extra: dev
@@ -294,13 +296,23 @@ Reações automáticas:
 
 ### Configuração
 
+**Não commite o arquivo `.env`** (ele está no `.gitignore`). Use apenas `.env.example` como modelo.
+
 ```bash
 cd FL-Enterprise
 cp .env.example .env
-# Edite .env: DATABASE_URL, JWT_SECRET, REDIS_URL, ASAAS_*, TELEGRAM_BOT_TOKEN, ASAAS_WEBHOOK_TOKEN
-pip install -e .
+# Edite .env: veja comentários em .env.example
+# - DATABASE_URL: localhost vs Docker (host db)
+# - JWT_SECRET: gere um segredo forte (nunca use o placeholder em produção)
+# - REDIS_URL, ASAAS_*, TELEGRAM_BOT_TOKEN, ASAAS_WEBHOOK_TOKEN
+py -m pip install -e .
+
+# Se 'alembic' der erro de "module not found", use o caminho completo do executável:
+# Exemplo Windows: .../Scripts/alembic upgrade head
 alembic upgrade head
-python scripts/seed_admin.py
+# Inclui 003_operacao_multas (multa/juros % por operação, usados nas cobranças).
+
+PYTHONPATH=. py scripts/seed_admin.py
 ```
 
 Credenciais padrão do seed (altere em produção): admin `admin@motopay.local` / `adminadmin`, dono `dono@motopay.local` / `donodono`.
@@ -310,34 +322,34 @@ Credenciais padrão do seed (altere em produção): admin `admin@motopay.local` 
 Terminal 1 — API:
 
 ```bash
-uvicorn motopay.interfaces.api.main:app --reload --host 0.0.0.0 --port 8000
+py -m uvicorn motopay.interfaces.api.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 Terminal 2 — worker Celery:
 
 ```bash
-celery -A motopay.infrastructure.messaging.celery_app worker -l INFO
+py -m celery -A motopay.infrastructure.messaging.celery_app worker -l INFO
 ```
 
 Terminal 3 — agendador (Beat):
 
 ```bash
-celery -A motopay.infrastructure.messaging.celery_app beat -l INFO
+py -m celery -A motopay.infrastructure.messaging.celery_app beat -l INFO
 ```
 
 Terminal 4 — bot Telegram (polling):
 
 ```bash
-python -m motopay.infrastructure.telegram.bot_main
+py -m motopay.infrastructure.telegram.bot_main
 ```
 
 Terminal 5 — dashboard Streamlit:
 
 ```bash
-streamlit run apps/streamlit_dashboard/app.py
+py -m streamlit run apps/streamlit_dashboard/app.py
 ```
 
-Defina `API_PUBLIC_BASE_URL` (ex.: `http://localhost:8000`) para o dashboard. Administradores podem informar `operacao_id` na barra lateral para filtrar dados globais.
+Defina `API_PUBLIC_BASE_URL` (ex.: `http://localhost:8000`) para o dashboard. Administradores podem informar `operacao_id` na barra lateral para filtrar dados globais. O painel principal usa **Plotly** (gráficos de pizza, barras e ranking de motos); a página **Financeiro** mostra linha do tempo receita/despesa.
 
 ### Webhook Asaas
 
@@ -353,7 +365,24 @@ O corpo JSON esperado segue o padrão Asaas (`event`, `payment`). Eventos `PAYME
 docker compose up --build
 ```
 
-Serviços: `api`, `worker`, `beat`, `bot`, `streamlit`, `redis`. Ajuste `.env` antes (incluindo `DATABASE_URL` apontando para um Postgres acessível pelo container).
+O `Dockerfile` inclui a pasta `scripts/` (ex.: `docker compose run --rm api python scripts/seed_admin.py` após o stack subir).
+
+Serviços: `api`, `worker`, `beat`, `bot`, `streamlit`, `redis`. Crie o `.env` a partir de `.env.example` antes do primeiro `up`. Nos containers, o Compose define `DATABASE_URL` com host `db`; no `.env` do host, mantenha `localhost` se rodar a API fora do Docker contra o Postgres publicado na porta 5432.
+
+**Erro ao baixar `python:3.11-slim` / `registry-1.docker.io` / proxy:**
+
+Mensagens como `lookup proxycamg...: no such host` indicam que o Docker está usando um **proxy** (`HTTP_PROXY`/`HTTPS_PROXY` ou configuração no Docker Desktop) cujo hostname **não resolve** na sua rede (ex.: fora da VPN corporativa).
+
+1. **Proxy só no shell** — limpa `HTTP_PROXY`/`HTTPS_PROXY` **só nesta execução** e roda o compose:
+   - PowerShell: `.\scripts\docker_compose_up.ps1`
+   - Bash: `bash scripts/docker_compose_up.sh`
+   Se o pull **ainda** falhar, o daemon do Docker pode estar usando proxy nas configurações do Desktop (passo seguinte).
+
+2. **Docker Desktop** → *Settings* → *Resources* → *Proxies*: desative proxy manual incorreto ou *Apply & Restart* após corrigir.
+
+3. **VPN / TI** — se o proxy for só na intranet, conecte à VPN ou peça o endereço correto.
+
+4. **Sem Docker** — use `py -m pip install -e .` e os comandos da seção “Executar em desenvolvimento”.
 
 ### Estrutura de código
 
@@ -366,11 +395,15 @@ Serviços: `api`, `worker`, `beat`, `bot`, `streamlit`, `redis`. Ajuste `.env` a
 
 ---
 
-## 🔐 Segurança
+## 🔐 Segurança e segredos
 
-* Tokenização
-* Logs de auditoria
-* Backups automáticos
+* **Repositório:** não versionar `.env`, `_env` nem arquivos `celerybeat-schedule*` (agenda local do Beat). O repositório deve usar apenas `.env.example` como referência.
+* **`JWT_SECRET`:** em produção, gere um valor aleatório forte, por exemplo:  
+  `python -c "import secrets; print(secrets.token_hex(32))"`  
+  Não use o placeholder `change-me-*` em ambiente exposto.
+* **Telegram:** sem `TELEGRAM_BOT_TOKEN` (bot criado no @BotFather), o bot e parte das notificações não funcionam.
+* **Asaas:** sem `ASAAS_API_KEY` e webhook configurado, cobranças Pix e confirmação de pagamento ficam bloqueadas.
+* **Vazamento no histórico Git:** se `.env` ou chaves reais já foram commitados, além de remover do índice atual, **rotacione** todos os segredos (JWT, Asaas, Telegram, senha do banco) e, se o remoto já foi público, considere limpar o histórico com ferramentas como `git filter-repo` com apoio do time.
 
 ---
 

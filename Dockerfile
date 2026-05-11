@@ -12,7 +12,12 @@ COPY alembic ./alembic
 COPY alembic.ini ./
 COPY scripts ./scripts
 
-RUN pip install --no-cache-dir pip setuptools wheel \
+# Imagem usada por API, worker, beat, bot e Streamlit: não definir HEALTHCHECK aqui (worker/beat não expõem HTTP).
+# Healthcheck da API: ver docker-compose.yml (serviço api).
+
+RUN pip install --no-cache-dir "pip>=24.0,<25" "setuptools>=68" "wheel" \
     && pip install --no-cache-dir -e .
 
 ENV PYTHONPATH=/app
+
+CMD ["uvicorn", "motopay.interfaces.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
