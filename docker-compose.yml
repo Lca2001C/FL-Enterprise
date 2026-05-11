@@ -100,7 +100,7 @@ services:
       - .:/app
     depends_on:
       api:
-        condition: service_started
+        condition: service_healthy
       db:
         condition: service_healthy
 
@@ -119,7 +119,7 @@ services:
       - .:/app
     depends_on:
       api:
-        condition: service_started
+        condition: service_healthy
       db:
         condition: service_healthy
 
