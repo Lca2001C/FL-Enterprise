@@ -11,13 +11,17 @@ httpx>=0.26.0
 celery[redis]>=5.3.6
 redis>=5.0.1
 python-telegram-bot>=21.0
-streamlit>=1.33.0
-plotly>=5.18.0
-pandas>=2.1.0
 python-dateutil>=2.8.2
 email-validator>=2.1.0
 
 [dev]
+ruff>=0.1.0
 pytest>=7.4.0
 pytest-asyncio>=0.23.0
+
+[lint]
 ruff>=0.1.0
+
+[test]
+pytest>=7.4.0
+pytest-asyncio>=0.23.0

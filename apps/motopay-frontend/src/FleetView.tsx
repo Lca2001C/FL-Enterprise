@@ -1,11 +1,11 @@
-import React, { useState, useEffect } from 'react';
-import axios from 'axios';
-import { Bike, Plus, Search, Filter, MoreVertical, Trash2, Edit2 } from 'lucide-react';
+import { useState, useEffect, type FormEvent } from 'react';
+import { Plus, Search, Filter, Trash2, Edit2 } from 'lucide-react';
 import { useAuth } from './AuthContext';
+import type { MotoOut } from './apiTypes';
 
 const FleetView = () => {
-  const { apiBase, token } = useAuth();
-  const [motos, setMotos] = useState([]);
+  const { api } = useAuth();
+  const [motos, setMotos] = useState<MotoOut[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [formData, setFormData] = useState({ placa: '', modelo: '', status: 'disponivel' });
@@ -13,9 +13,7 @@ const FleetView = () => {
   const fetchMotos = async () => {
     setLoading(true);
     try {
-      const r = await axios.get(`${apiBase}/api/v1/motos`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const r = await api.get<MotoOut[]>('/api/v1/motos');
       setMotos(r.data);
     } catch (e) {
       console.error(e);
@@ -26,12 +24,10 @@ const FleetView = () => {
 
   useEffect(() => { fetchMotos(); }, []);
 
-  const handleCreate = async (e) => {
+  const handleCreate = async (e: FormEvent) => {
     e.preventDefault();
     try {
-      await axios.post(`${apiBase}/api/v1/motos`, formData, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      await api.post('/api/v1/motos', formData);
       setShowModal(false);
       setFormData({ placa: '', modelo: '', status: 'disponivel' });
       fetchMotos();
@@ -40,12 +36,10 @@ const FleetView = () => {
     }
   };
 
-  const handleDelete = async (id) => {
+  const handleDelete = async (id: number) => {
     if (!confirm("Deseja realmente excluir esta moto?")) return;
     try {
-      await axios.delete(`${apiBase}/api/v1/motos/${id}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      await api.delete(`/api/v1/motos/${id}`);
       fetchMotos();
     } catch (e) {
       alert("Erro ao excluir moto. Verifique se há contratos ativos.");
@@ -85,7 +79,7 @@ const FleetView = () => {
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan="5" style={{ textAlign: 'center', padding: '40px' }}>Carregando frota...</td></tr>
+              <tr><td colSpan={5} style={{ textAlign: 'center', padding: '40px' }}>Carregando frota...</td></tr>
             ) : motos.map(moto => (
               <tr key={moto.id}>
                 <td className="font-mono">{moto.placa}</td>

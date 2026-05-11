@@ -12,7 +12,7 @@ COPY alembic ./alembic
 COPY alembic.ini ./
 COPY scripts ./scripts
 
-# Imagem usada por API, worker, beat, bot e Streamlit: não definir HEALTHCHECK aqui (worker/beat não expõem HTTP).
+# Imagem usada por API, worker, beat e bot: não definir HEALTHCHECK aqui (worker/beat não expõem HTTP).
 # Healthcheck da API: ver docker-compose.yml (serviço api).
 
 RUN pip install --no-cache-dir "pip>=24.0,<25" "setuptools>=68" "wheel" \

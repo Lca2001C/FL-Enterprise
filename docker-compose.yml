@@ -104,23 +104,16 @@ services:
       db:
         condition: service_healthy
 
-  streamlit:
+  frontend:
     build:
-      context: .
+      context: ./apps/motopay-frontend
       dockerfile: Dockerfile
-    command: streamlit run apps/streamlit_dashboard/app.py --server.port 8501 --server.address 0.0.0.0
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8000}
     ports:
-      - "8501:8501"
-    env_file: .env
-    environment:
-      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-motopay}
-      PYTHONPATH: /app
-    volumes:
-      - .:/app
+      - "5173:80"
     depends_on:
       api:
-        condition: service_healthy
-      db:
         condition: service_healthy
 
 volumes:

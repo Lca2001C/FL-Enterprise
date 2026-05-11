@@ -1,11 +1,11 @@
-import React, { useState, useEffect } from 'react';
-import axios from 'axios';
-import { Users, Plus, Search, Star, Phone, CreditCard, Trash2, Bike } from 'lucide-react';
+import { useState, useEffect, type FormEvent } from 'react';
+import { Plus, Search, Star, Phone, CreditCard, Trash2, Bike } from 'lucide-react';
 import { useAuth } from './AuthContext';
+import type { ClienteOut } from './apiTypes';
 
 const ClientsView = () => {
-  const { apiBase, token } = useAuth();
-  const [clientes, setClientes] = useState([]);
+  const { api } = useAuth();
+  const [clientes, setClientes] = useState<ClienteOut[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [formData, setFormData] = useState({ nome: '', cpf: '', telefone: '', telegram_id: '' });
@@ -13,9 +13,7 @@ const ClientsView = () => {
   const fetchClientes = async () => {
     setLoading(true);
     try {
-      const r = await axios.get(`${apiBase}/api/v1/clientes`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const r = await api.get<ClienteOut[]>('/api/v1/clientes');
       setClientes(r.data);
     } catch (e) {
       console.error(e);
@@ -26,12 +24,10 @@ const ClientsView = () => {
 
   useEffect(() => { fetchClientes(); }, []);
 
-  const handleCreate = async (e) => {
+  const handleCreate = async (e: FormEvent) => {
     e.preventDefault();
     try {
-      await axios.post(`${apiBase}/api/v1/clientes`, formData, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      await api.post('/api/v1/clientes', formData);
       setShowModal(false);
       setFormData({ nome: '', cpf: '', telefone: '', telegram_id: '' });
       fetchClientes();
@@ -40,12 +36,10 @@ const ClientsView = () => {
     }
   };
 
-  const handleDelete = async (id) => {
+  const handleDelete = async (id: number) => {
     if (!confirm("Deseja realmente excluir este cliente?")) return;
     try {
-      await axios.delete(`${apiBase}/api/v1/clientes/${id}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      await api.delete(`/api/v1/clientes/${id}`);
       fetchClientes();
     } catch (e) {
       alert("Erro ao excluir cliente. Verifique se há contratos ativos.");
@@ -84,7 +78,7 @@ const ClientsView = () => {
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan="5" style={{ textAlign: 'center', padding: '40px' }}>Carregando clientes...</td></tr>
+              <tr><td colSpan={5} style={{ textAlign: 'center', padding: '40px' }}>Carregando clientes...</td></tr>
             ) : clientes.map(c => (
               <tr key={c.id}>
                 <td>

@@ -1,11 +1,11 @@
-import React, { useState, useEffect } from 'react';
-import axios from 'axios';
-import { Receipt, Plus, Copy, CheckCircle, Clock, AlertTriangle, ExternalLink } from 'lucide-react';
+import { useState, useEffect, type FormEvent } from 'react';
+import { Plus, Copy, CheckCircle, Clock, AlertTriangle, ExternalLink } from 'lucide-react';
 import { useAuth } from './AuthContext';
+import type { CobrancaOut } from './apiTypes';
 
 const ChargesView = () => {
-  const { apiBase, token } = useAuth();
-  const [cobrancas, setCobrancas] = useState([]);
+  const { api } = useAuth();
+  const [cobrancas, setCobrancas] = useState<CobrancaOut[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [contratoId, setContratoId] = useState('');
@@ -13,9 +13,7 @@ const ChargesView = () => {
   const fetchCobrancas = async () => {
     setLoading(true);
     try {
-      const r = await axios.get(`${apiBase}/api/v1/cobrancas`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const r = await api.get<CobrancaOut[]>('/api/v1/cobrancas');
       setCobrancas(r.data);
     } catch (e) {
       console.error(e);
@@ -26,12 +24,10 @@ const ChargesView = () => {
 
   useEffect(() => { fetchCobrancas(); }, []);
 
-  const handleCreateCharge = async (e) => {
+  const handleCreateCharge = async (e: FormEvent) => {
     e.preventDefault();
     try {
-      await axios.post(`${apiBase}/api/v1/cobrancas/manual`, { contrato_id: parseInt(contratoId) }, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      await api.post('/api/v1/cobrancas/manual', { contrato_id: parseInt(contratoId) });
       setShowModal(false);
       setContratoId('');
       fetchCobrancas();
@@ -40,7 +36,7 @@ const ChargesView = () => {
     }
   };
 
-  const copyPix = (text) => {
+  const copyPix = (text: string) => {
     navigator.clipboard.writeText(text);
     alert("Código PIX copiado!");
   };
@@ -72,9 +68,9 @@ const ChargesView = () => {
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan="6" style={{ textAlign: 'center', padding: '40px' }}>Carregando cobranças...</td></tr>
+              <tr><td colSpan={6} style={{ textAlign: 'center', padding: '40px' }}>Carregando cobranças...</td></tr>
             ) : cobrancas.length === 0 ? (
-              <tr><td colSpan="6" style={{ textAlign: 'center', padding: '40px' }}>Nenhuma cobrança encontrada.</td></tr>
+              <tr><td colSpan={6} style={{ textAlign: 'center', padding: '40px' }}>Nenhuma cobrança encontrada.</td></tr>
             ) : cobrancas.map(cob => (
               <tr key={cob.id}>
                 <td><span className="text-muted">#{cob.id}</span></td>
@@ -99,7 +95,7 @@ const ChargesView = () => {
                 </td>
                 <td style={{ textAlign: 'right' }}>
                   {cob.pix_copia_cola && cob.status === 'pendente' && (
-                    <button className="action-btn-pix" onClick={() => copyPix(cob.pix_copia_cola)}>
+                    <button className="action-btn-pix" onClick={() => copyPix(cob.pix_copia_cola!)}>
                       <Copy size={14} /> PIX
                     </button>
                   )}

@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import { useState, type FormEvent } from 'react';
 import { useAuth } from './AuthContext';
 import { LogIn, ShieldCheck, Mail, Lock, Settings } from 'lucide-react';
+import axios from 'axios';
 
 const Login = () => {
   const { login, apiBase, setApiBase } = useAuth();
@@ -10,14 +11,19 @@ const Login = () => {
   const [loading, setLoading] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError('');
     setLoading(true);
     try {
       await login(email, password);
-    } catch (err) {
-      setError(err.response?.data?.detail || 'Falha na conexão com o servidor');
+    } catch (err: unknown) {
+      if (axios.isAxiosError(err) && err.response?.data && typeof err.response.data === 'object' && err.response.data !== null && 'detail' in err.response.data) {
+        const d = (err.response.data as { detail?: unknown }).detail;
+        setError(typeof d === 'string' ? d : 'Falha na conexão com o servidor');
+      } else {
+        setError('Falha na conexão com o servidor');
+      }
     } finally {
       setLoading(false);
     }

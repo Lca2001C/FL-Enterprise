@@ -1,11 +1,11 @@
-import React, { useState, useEffect } from 'react';
-import axios from 'axios';
-import { BarChart3, Calendar, TrendingUp, TrendingDown, AlertCircle } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Calendar, TrendingUp, AlertCircle } from 'lucide-react';
 import { useAuth } from './AuthContext';
+import type { MotoAnalyticsRow } from './apiTypes';
 
 const MetricsView = () => {
-  const { apiBase, token } = useAuth();
-  const [ranking, setRanking] = useState([]);
+  const { api } = useAuth();
+  const [ranking, setRanking] = useState<MotoAnalyticsRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [dates, setDates] = useState({
     inicio: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0],
@@ -15,9 +15,8 @@ const MetricsView = () => {
   const fetchRanking = async () => {
     setLoading(true);
     try {
-      const r = await axios.get(`${apiBase}/api/v1/analytics/motos/ranking`, {
+      const r = await api.get<MotoAnalyticsRow[]>('/api/v1/analytics/motos/ranking', {
         params: { data_inicio: dates.inicio, data_fim: dates.fim },
-        headers: { Authorization: `Bearer ${token}` }
       });
       setRanking(r.data);
     } catch (e) {
@@ -64,10 +63,10 @@ const MetricsView = () => {
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan="6" style={{ textAlign: 'center', padding: '40px' }}>Analisando dados financeiros...</td></tr>
+                <tr><td colSpan={6} style={{ textAlign: 'center', padding: '40px' }}>Analisando dados financeiros...</td></tr>
               ) : ranking.length === 0 ? (
-                <tr><td colSpan="6" style={{ textAlign: 'center', padding: '40px' }}>Nenhum dado encontrado no período.</td></tr>
-              ) : ranking.map((item, index) => (
+                <tr><td colSpan={6} style={{ textAlign: 'center', padding: '40px' }}>Nenhum dado encontrado no período.</td></tr>
+              ) : ranking.map((item) => (
                 <tr key={item.moto_id}>
                   <td>
                     <div style={{ fontWeight: 600 }}>{item.modelo}</div>

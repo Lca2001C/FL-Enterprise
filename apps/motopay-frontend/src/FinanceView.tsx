@@ -1,19 +1,17 @@
-import React, { useState, useEffect } from 'react';
-import axios from 'axios';
-import { ArrowUpCircle, ArrowDownCircle, Receipt, Download } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { ArrowUpCircle, ArrowDownCircle, Download } from 'lucide-react';
 import { useAuth } from './AuthContext';
+import type { FinanceiroOut } from './apiTypes';
 
 const FinanceView = () => {
-  const { apiBase, token } = useAuth();
-  const [entries, setEntries] = useState([]);
+  const { api } = useAuth();
+  const [entries, setEntries] = useState<FinanceiroOut[]>([]);
   const [loading, setLoading] = useState(true);
 
   const fetchFinance = async () => {
     setLoading(true);
     try {
-      const r = await axios.get(`${apiBase}/api/v1/financeiro`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const r = await api.get<FinanceiroOut[]>('/api/v1/financeiro');
       setEntries(r.data);
     } catch (e) {
       console.error(e);
@@ -49,7 +47,7 @@ const FinanceView = () => {
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan="5" style={{ textAlign: 'center', padding: '40px' }}>Carregando extrato...</td></tr>
+              <tr><td colSpan={5} style={{ textAlign: 'center', padding: '40px' }}>Carregando extrato...</td></tr>
             ) : entries.map(e => (
               <tr key={e.id}>
                 <td>{new Date(e.data).toLocaleDateString('pt-BR')}</td>

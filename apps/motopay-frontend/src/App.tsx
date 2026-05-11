@@ -1,5 +1,4 @@
 import React from 'react';
-import axios from 'axios';
 import { AuthProvider, useAuth } from './AuthContext';
 import Login from './Login';
 import FleetView from './FleetView';
@@ -10,22 +9,41 @@ import ChargesView from './ChargesView';
 import SettingsView from './SettingsView';
 import { LayoutDashboard, Users, Bike, Receipt, BarChart3, LogOut, Shield, Settings } from 'lucide-react';
 
+type OperacaoOpt = { id: number; nome: string };
+
+type SummaryStats = {
+  receita_total?: number;
+  lucro_liquido?: number;
+  cobrancas_atrasadas?: number;
+  cobrancas_pendentes?: number;
+  motos_ativas?: number;
+};
+
+type RecentActivityItem = {
+  id: number;
+  tipo: string;
+  descricao: string;
+  data: string;
+  valor: number;
+};
+
 const Dashboard = () => {
-  const { user, logout, apiBase, token } = useAuth();
+  const { user, logout, api, operacaoScopeId, setOperacaoScopeId } = useAuth();
   const [activeTab, setActiveTab] = React.useState('dashboard');
-  const [stats, setStats] = React.useState(null);
-  const [recentActivity, setRecentActivity] = React.useState([]);
+  const [stats, setStats] = React.useState<SummaryStats | null>(null);
+  const [recentActivity, setRecentActivity] = React.useState<RecentActivityItem[]>([]);
   const [loading, setLoading] = React.useState(true);
+  const [operacoes, setOperacoes] = React.useState<OperacaoOpt[]>([]);
 
   const fetchStats = async () => {
     setLoading(true);
     try {
       const [sRes, aRes] = await Promise.all([
-        axios.get(`${apiBase}/api/v1/analytics/summary`, { headers: { Authorization: `Bearer ${token}` } }),
-        axios.get(`${apiBase}/api/v1/analytics/recent-activity`, { headers: { Authorization: `Bearer ${token}` } })
+        api.get('/api/v1/analytics/summary'),
+        api.get('/api/v1/analytics/recent-activity'),
       ]);
-      setStats(sRes.data);
-      setRecentActivity(aRes.data);
+      setStats(sRes.data as SummaryStats);
+      setRecentActivity(aRes.data as RecentActivityItem[]);
     } catch (e) {
       console.error("Erro ao buscar stats", e);
     } finally {
@@ -34,8 +52,19 @@ const Dashboard = () => {
   };
 
   React.useEffect(() => {
-    if (activeTab === 'dashboard') fetchStats();
-  }, [activeTab]);
+    if (activeTab === 'dashboard') void fetchStats();
+  }, [activeTab, api]);
+
+  React.useEffect(() => {
+    if (user?.tipo !== 'admin') {
+      setOperacoes([]);
+      return;
+    }
+    void api
+      .get<OperacaoOpt[]>('/api/v1/operacoes')
+      .then((r) => setOperacoes(r.data))
+      .catch(() => setOperacoes([]));
+  }, [user?.tipo, api]);
   
   const renderContent = () => {
     switch (activeTab) {
@@ -184,16 +213,41 @@ const Dashboard = () => {
 
       <main className="content">
         <header className="content-header animate-fade">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16 }}>
             <div>
               <h1>{activeTab === 'dashboard' ? 'Dashboard Principal' : activeTab.charAt(0).toUpperCase() + activeTab.slice(1)}</h1>
               <p className="text-muted">Bem-vindo de volta, {user?.email.split('@')[0]}</p>
             </div>
-            {activeTab === 'dashboard' && (
-              <button className="btn-primary" onClick={fetchStats} disabled={loading}>
-                {loading ? '...' : 'Atualizar Dados'}
-              </button>
-            )}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+              {user?.tipo === 'admin' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <label className="input-label" style={{ marginBottom: 0, fontSize: '0.75rem' }}>
+                    Operação (escopo)
+                  </label>
+                  <select
+                    className="input-field"
+                    style={{ minWidth: 220, padding: '8px 12px' }}
+                    value={operacaoScopeId ?? ''}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setOperacaoScopeId(v === '' ? null : parseInt(v, 10));
+                    }}
+                  >
+                    <option value="">Todas</option>
+                    {operacoes.map((op) => (
+                      <option key={op.id} value={op.id}>
+                        {op.nome}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              {activeTab === 'dashboard' && (
+                <button className="btn-primary" onClick={() => void fetchStats()} disabled={loading}>
+                  {loading ? '...' : 'Atualizar Dados'}
+                </button>
+              )}
+            </div>
           </div>
         </header>
 
@@ -336,7 +390,17 @@ const Dashboard = () => {
   );
 };
 
-const NavItem = ({ icon, label, active, onClick }) => (
+const NavItem = ({
+  icon,
+  label,
+  active,
+  onClick,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  active: boolean;
+  onClick: () => void;
+}) => (
   <div className={`nav-item ${active ? 'active' : ''}`} onClick={onClick}>
     {icon}
     <span>{label}</span>
@@ -366,7 +430,17 @@ const NavItem = ({ icon, label, active, onClick }) => (
   </div>
 );
 
-const StatCard = ({ title, value, trend, negative }) => (
+const StatCard = ({
+  title,
+  value,
+  trend,
+  negative = false,
+}: {
+  title: string;
+  value: string;
+  trend: string;
+  negative?: boolean;
+}) => (
   <div className="glass stat-card animate-fade">
     <p className="text-muted" style={{ fontSize: '0.9rem' }}>{title}</p>
     <div className="stat-value">{value}</div>

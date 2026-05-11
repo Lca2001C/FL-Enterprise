@@ -94,7 +94,7 @@ Mais do que um sistema de controle, ele evolui para uma **infraestrutura intelig
 
 ### 🔧 Separação de Camadas
 
-* **Frontend:** Streamlit (inicialmente)
+* **Frontend:** React (Vite) — [`apps/motopay-frontend`](apps/motopay-frontend)
 * **Backend API:** FastAPI
 * **Worker assíncrono:** tarefas de cobrança, notificações e eventos
 
@@ -184,8 +184,7 @@ Reações automáticas:
 
 ## 📲 Experiência do Usuário (UX)
 
-* Atual: Streamlit
-* Futuro: React / Next.js
+* **Admin web:** React (Vite) com chamadas HTTP à API
 
 ---
 
@@ -321,13 +320,15 @@ Terminal 4 — bot Telegram (polling):
 python -m motopay.infrastructure.telegram.bot_main
 ```
 
-Terminal 5 — dashboard Streamlit:
+Terminal 5 — admin React (Vite):
 
 ```bash
-python -m streamlit run apps/streamlit_dashboard/app.py
+cd apps/motopay-frontend
+npm install
+npm run dev
 ```
 
-Defina `API_PUBLIC_BASE_URL` (ex.: `http://localhost:8000`) para o dashboard. Administradores podem informar `operacao_id` na barra lateral para filtrar dados globais. O painel principal usa **Plotly** (gráficos de pizza, barras e ranking de motos); a página **Financeiro** mostra linha do tempo receita/despesa.
+Abra `http://localhost:5173`. Use `VITE_API_BASE_URL` apontando para a API como o navegador acessa (ex.: `http://localhost:8000`). Configure `CORS_ORIGINS` na API com a origem do front (ex.: `http://localhost:5173`). Administradores usam **Operação (escopo)** no topo para filtrar por `operacao_id` nas chamadas à API.
 
 ### Webhook Asaas
 
@@ -349,11 +350,11 @@ docker compose up --build
 
 O `Dockerfile` inclui a pasta `scripts/` (ex.: `docker compose run --rm api python scripts/seed_admin.py` após o stack subir).
 
-Serviços: `api`, `worker`, `beat`, `bot`, `streamlit`, `redis`. Crie o `.env` a partir de `.env.example` antes do primeiro `up`.
+Serviços: `db`, `redis`, `api`, `worker`, `beat`, `bot`, `frontend`. Crie o `.env` a partir de `.env.example` antes do primeiro `up`.
 
 Credenciais do Postgres no Compose vêm de `POSTGRES_USER`, `POSTGRES_PASSWORD` e `POSTGRES_DB` (variáveis de ambiente do host / arquivo `.env` na raiz; padrão `postgres` / `postgres` / `motopay`). O `DATABASE_URL` dos serviços de aplicação é montado a partir delas. **Senhas com caracteres especiais** podem exigir URL-encoding se você montar a URL manualmente.
 
-O `Dockerfile` define `CMD` padrão da API (uvicorn); `worker`, `beat`, `bot` e `streamlit` sobrescrevem o comando no Compose. Healthcheck HTTP só no serviço `api` (a imagem é compartilhada).
+O `Dockerfile` na raiz define `CMD` padrão da API (uvicorn); `worker`, `beat` e `bot` sobrescrevem o comando no Compose. O serviço **frontend** usa o [Dockerfile em `apps/motopay-frontend`](apps/motopay-frontend/Dockerfile) (build Vite + nginx). Healthcheck HTTP só no serviço `api` (a imagem Python é compartilhada).
 
 **Celery Beat:** o agendamento é persistido no volume Docker `celery_beat_data` (arquivo `--schedule` em `/data/…`). Se esse volume for apagado, o Beat pode re-disparar tarefas conforme o estado novo do scheduler — trate como risco operacional em produção (backups ou alternativa de scheduler externo, se necessário).
 
@@ -381,7 +382,7 @@ Mensagens como `lookup proxycamg...: no such host` indicam que o Docker está us
 * `motopay/infrastructure` — SQLAlchemy, Celery, Asaas, Telegram
 * `motopay/interfaces/api` — FastAPI, DTOs Pydantic
 * `motopay/interfaces/events` — publicação de eventos
-* `apps/streamlit_dashboard` — UI administrativa (somente HTTP na API)
+* `apps/motopay-frontend` — UI administrativa React (Vite; consome a API via HTTP)
 
 ---
 
