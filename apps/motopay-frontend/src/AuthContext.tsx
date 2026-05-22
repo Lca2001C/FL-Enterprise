@@ -17,6 +17,7 @@ export type AuthUser = {
   email: string;
   tipo: string;
   operacao_id: number | null;
+  cliente_id: number | null;
 };
 
 type AuthContextValue = {
@@ -35,7 +36,12 @@ type AuthContextValue = {
   setActiveTab: (tab: AppTab) => void;
   contractsFilter: ContractsFilter;
   setContractsFilter: (f: ContractsFilter) => void;
-  navigateToContracts: (filter?: ContractsFilter) => void;
+  contractsClienteId: number | null;
+  navigateToContracts: (filter?: ContractsFilter, clienteId?: number) => void;
+  clearContractsClienteFilter: () => void;
+  startOwnerTour: () => void;
+  resetOwnerTour: () => void;
+  registerOwnerTour: (handlers: { start: () => void; reset: () => void }) => void;
 };
 
 const LS_TOKEN = 'token';
@@ -78,8 +84,25 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [operacaoNome, setOperacaoNome] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<AppTab>('dashboard');
   const [contractsFilter, setContractsFilter] = useState<ContractsFilter>('todos');
+  const [contractsClienteId, setContractsClienteId] = useState<number | null>(null);
   const tokenRef = useRef(token);
   tokenRef.current = token;
+  const ownerTourRef = useRef<{ start: () => void; reset: () => void }>({
+    start: () => undefined,
+    reset: () => undefined,
+  });
+
+  const registerOwnerTour = useCallback((handlers: { start: () => void; reset: () => void }) => {
+    ownerTourRef.current = handlers;
+  }, []);
+
+  const startOwnerTour = useCallback(() => {
+    ownerTourRef.current.start();
+  }, []);
+
+  const resetOwnerTour = useCallback(() => {
+    ownerTourRef.current.reset();
+  }, []);
 
   const setApiBase = (v: string) => {
     const n = v.replace(/\/$/, '');
@@ -188,10 +211,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setToken(response.data.access_token);
   };
 
-  const navigateToContracts = (filter: ContractsFilter = 'inadimplentes') => {
+  const navigateToContracts = (filter: ContractsFilter = 'inadimplentes', clienteId?: number) => {
     setContractsFilter(filter);
+    setContractsClienteId(clienteId ?? null);
     setActiveTab('contratos');
   };
+
+  const clearContractsClienteFilter = useCallback(() => {
+    setContractsClienteId(null);
+  }, []);
 
   const value = useMemo(
     (): AuthContextValue => ({
@@ -210,9 +238,28 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setActiveTab,
       contractsFilter,
       setContractsFilter,
+      contractsClienteId,
       navigateToContracts,
+      clearContractsClienteFilter,
+      startOwnerTour,
+      resetOwnerTour,
+      registerOwnerTour,
     }),
-    [user, token, apiBase, operacaoScopeId, operacaoNome, api, activeTab, contractsFilter]
+    [
+      user,
+      token,
+      apiBase,
+      operacaoScopeId,
+      operacaoNome,
+      api,
+      activeTab,
+      contractsFilter,
+      contractsClienteId,
+      clearContractsClienteFilter,
+      startOwnerTour,
+      resetOwnerTour,
+      registerOwnerTour,
+    ]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

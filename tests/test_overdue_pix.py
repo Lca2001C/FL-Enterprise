@@ -20,6 +20,7 @@ from motopay.infrastructure.db.models import (
     Operacao,
 )
 from motopay.infrastructure.messaging import tasks as messaging_tasks
+from motopay.infrastructure.telegram.templates import build_overdue_html
 from motopay.infrastructure.payments.asaas_client import AsaasPaymentResult
 from motopay.services.billing_service import refresh_overdue_pix
 from motopay.services.late_fee import calculate_late_amounts
@@ -211,7 +212,7 @@ def test_build_overdue_telegram_message_includes_pix():
         "valor_total": "358.05",
         "pix_copia_cola": "PIX-TEST-CODE-123",
     }
-    html = messaging_tasks._build_overdue_telegram_message(payload=payload, nivel=1)
+    html = build_overdue_html(overrides=None, payload=payload, nivel=1)
     assert "PIX-TEST-CODE-123" in html
     assert "358,05" in html
     assert "<code>" in html
@@ -222,6 +223,7 @@ def test_handle_domain_event_sends_pix_message(db_session, cliente_com_telegram)
         tipo=DomainEventType.CLIENTE_INADIMPLENTE.value,
         payload={
             "cliente_id": cliente_com_telegram.id,
+            "operacao_id": cliente_com_telegram.operacao_id,
             "nivel_escalonamento": 1,
             "dias_atraso": 3,
             "valor_base": "350.00",

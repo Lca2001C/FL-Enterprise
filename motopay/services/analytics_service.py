@@ -14,13 +14,13 @@ from motopay.interfaces.api.schemas import AnalyticsSummary, MotoAnalyticsRow, R
 
 
 def _operacao_filter(user: CurrentUser, operacao_scope: int | None) -> int | None:
-    if user.role == UserRole.DONO:
+    if user.role in (UserRole.DONO, UserRole.OPERADOR):
         return user.operacao_id
     return operacao_scope
 
 
 def _scope_where_cobranca(user: CurrentUser, op: int | None):
-    if user.role == UserRole.DONO:
+    if user.role in (UserRole.DONO, UserRole.OPERADOR):
         return Cobranca.operacao_id == op
     if op is not None:
         return Cobranca.operacao_id == op
@@ -28,7 +28,7 @@ def _scope_where_cobranca(user: CurrentUser, op: int | None):
 
 
 def _scope_where_financeiro(user: CurrentUser, op: int | None):
-    if user.role == UserRole.DONO:
+    if user.role in (UserRole.DONO, UserRole.OPERADOR):
         return Financeiro.operacao_id == op
     if op is not None:
         return Financeiro.operacao_id == op
@@ -36,7 +36,7 @@ def _scope_where_financeiro(user: CurrentUser, op: int | None):
 
 
 def _scope_where_moto(user: CurrentUser, op: int | None):
-    if user.role == UserRole.DONO:
+    if user.role in (UserRole.DONO, UserRole.OPERADOR):
         return Moto.operacao_id == op
     if op is not None:
         return Moto.operacao_id == op
@@ -44,7 +44,7 @@ def _scope_where_moto(user: CurrentUser, op: int | None):
 
 
 def _scope_where_contrato(user: CurrentUser, op: int | None):
-    if user.role == UserRole.DONO:
+    if user.role in (UserRole.DONO, UserRole.OPERADOR):
         return Contrato.operacao_id == op
     if op is not None:
         return Contrato.operacao_id == op
@@ -129,7 +129,7 @@ def moto_ranking(
     data_fim: date,
 ) -> list[MotoAnalyticsRow]:
     op = _operacao_filter(user, operacao_scope)
-    if user.role == UserRole.DONO and op is None:
+    if user.role in (UserRole.DONO, UserRole.OPERADOR) and op is None:
         raise ForbiddenError("Operação não definida")
     receita_expr = func.coalesce(
         func.sum(case((Financeiro.tipo == FinanceiroTipo.RECEITA.value, Financeiro.valor), else_=0)),
@@ -150,7 +150,7 @@ def moto_ranking(
         )
         .group_by(Moto.id, Moto.placa, Moto.modelo)
     )
-    if user.role == UserRole.DONO:
+    if user.role in (UserRole.DONO, UserRole.OPERADOR):
         stmt = stmt.where(Moto.operacao_id == op)
     elif op is not None:
         stmt = stmt.where(Moto.operacao_id == op)

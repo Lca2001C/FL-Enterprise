@@ -1,32 +1,39 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Calendar, TrendingUp, AlertCircle } from 'lucide-react';
 import { useAuth } from './AuthContext';
 import type { MotoAnalyticsRow } from './apiTypes';
+import { parseApiError } from './utils/apiError';
+import ErrorBanner from './components/ErrorBanner';
+import AdminScopeBanner from './components/AdminScopeBanner';
 
 const MetricsView = () => {
   const { api } = useAuth();
   const [ranking, setRanking] = useState<MotoAnalyticsRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [dates, setDates] = useState({
     inicio: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0],
     fim: new Date().toISOString().split('T')[0]
   });
 
-  const fetchRanking = async () => {
+  const fetchRanking = useCallback(async () => {
     setLoading(true);
+    setError('');
     try {
       const r = await api.get<MotoAnalyticsRow[]>('/api/v1/analytics/motos/ranking', {
         params: { data_inicio: dates.inicio, data_fim: dates.fim },
       });
       setRanking(r.data);
     } catch (e) {
-      console.error(e);
+      setError(parseApiError(e, 'Erro ao carregar métricas'));
     } finally {
       setLoading(false);
     }
-  };
+  }, [api, dates]);
 
-  useEffect(() => { fetchRanking(); }, [dates]);
+  useEffect(() => {
+    void fetchRanking();
+  }, [fetchRanking]);
 
   return (
     <div className="view-container animate-fade">
@@ -48,7 +55,10 @@ const MetricsView = () => {
         </div>
       </div>
 
-      <div className="metrics-grid">
+      {error && <ErrorBanner message={error} onDismiss={() => setError('')} />}
+      <AdminScopeBanner />
+
+      <div className="metrics-grid" data-tour="metrics-ranking">
         <div className="glass table-container">
           <table className="custom-table">
             <thead>

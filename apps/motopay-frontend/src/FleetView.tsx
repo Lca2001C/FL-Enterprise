@@ -1,16 +1,21 @@
-import { useState, useEffect, useMemo, type FormEvent } from 'react';
+import { useState, useEffect, useCallback, type FormEvent } from 'react';
 import { Plus, Search, Trash2, Edit2 } from 'lucide-react';
 import { useAuth } from './AuthContext';
-import type { MotoOut } from './apiTypes';
+import type { MotoOut, Paginated } from './apiTypes';
+import { PAGE_SIZE } from './apiTypes';
 import { parseApiError } from './utils/apiError';
+import { offsetAfterDelete } from './utils/fetchPaginated';
 import EmptyState from './components/EmptyState';
 import ErrorBanner from './components/ErrorBanner';
+import AdminScopeBanner from './components/AdminScopeBanner';
 
 const STATUS_OPTIONS = ['disponivel', 'alugada', 'manutencao', 'inativa'] as const;
 
 const FleetView = () => {
   const { api } = useAuth();
   const [motos, setMotos] = useState<MotoOut[]>([]);
+  const [total, setTotal] = useState(0);
+  const [offset, setOffset] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
@@ -18,37 +23,37 @@ const FleetView = () => {
   const [showModal, setShowModal] = useState(false);
   const [editMoto, setEditMoto] = useState<MotoOut | null>(null);
   const [formData, setFormData] = useState({ placa: '', modelo: '', status: 'disponivel' });
-
-  const fetchMotos = async () => {
-    setLoading(true);
-    setError('');
-    try {
-      const r = await api.get<MotoOut[]>('/api/v1/motos');
-      setMotos(r.data);
-    } catch (e) {
-      setError(parseApiError(e, 'Erro ao carregar frota'));
-    } finally {
-      setLoading(false);
-    }
-  };
+  const [debouncedSearch, setDebouncedSearch] = useState('');
 
   useEffect(() => {
-    void fetchMotos();
-  }, [api]);
+    const timer = window.setTimeout(() => setDebouncedSearch(search), 300);
+    return () => window.clearTimeout(timer);
+  }, [search]);
 
-  const filtered = useMemo(() => {
-    let list = motos;
-    if (statusFilter !== 'todos') {
-      list = list.filter((m) => m.status === statusFilter);
-    }
-    const q = search.trim().toLowerCase();
-    if (q) {
-      list = list.filter(
-        (m) => m.placa.toLowerCase().includes(q) || m.modelo.toLowerCase().includes(q)
-      );
-    }
-    return list;
-  }, [motos, search, statusFilter]);
+  const fetchMotos = useCallback(
+    async (pageOffset = 0) => {
+      setLoading(true);
+      setError('');
+      try {
+        const params: Record<string, unknown> = { limit: PAGE_SIZE, offset: pageOffset };
+        if (statusFilter !== 'todos') params.status = statusFilter;
+        if (debouncedSearch.trim()) params.q = debouncedSearch.trim();
+        const r = await api.get<Paginated<MotoOut>>('/api/v1/motos', { params });
+        setMotos(r.data.items);
+        setTotal(r.data.total);
+        setOffset(pageOffset);
+      } catch (e) {
+        setError(parseApiError(e, 'Erro ao carregar frota'));
+      } finally {
+        setLoading(false);
+      }
+    },
+    [api, statusFilter, debouncedSearch]
+  );
+
+  useEffect(() => {
+    void fetchMotos(0);
+  }, [fetchMotos]);
 
   const openCreate = () => {
     setEditMoto(null);
@@ -76,7 +81,7 @@ const FleetView = () => {
         await api.post('/api/v1/motos', formData);
       }
       setShowModal(false);
-      await fetchMotos();
+      await fetchMotos(offset);
     } catch (err) {
       setError(parseApiError(err, 'Erro ao salvar moto'));
     }
@@ -85,9 +90,10 @@ const FleetView = () => {
   const handleDelete = async (id: number) => {
     if (!confirm('Deseja realmente excluir esta moto?')) return;
     setError('');
+    const wasLast = motos.length === 1;
     try {
       await api.delete(`/api/v1/motos/${id}`);
-      await fetchMotos();
+      await fetchMotos(offsetAfterDelete(offset, PAGE_SIZE, wasLast));
     } catch (err) {
       setError(parseApiError(err, 'Erro ao excluir moto'));
     }
@@ -98,14 +104,15 @@ const FleetView = () => {
       <div className="view-header">
         <div>
           <h2>Gestão de Frota</h2>
-          <p className="text-muted">Total de {motos.length} veículos cadastrados</p>
+          <p className="text-muted">Total de {total} veículos cadastrados</p>
         </div>
-        <button className="btn-primary" onClick={openCreate}>
+        <button className="btn-primary" onClick={openCreate} data-tour="fleet-add">
           <Plus size={20} /> Nova Moto
         </button>
       </div>
 
       {error && <ErrorBanner message={error} onDismiss={() => setError('')} />}
+      <AdminScopeBanner />
 
       <div className="table-actions glass">
         <div className="search-box">
@@ -134,7 +141,7 @@ const FleetView = () => {
       <div className="glass table-container">
         {loading ? (
           <p style={{ padding: 40, textAlign: 'center' }}>Carregando frota...</p>
-        ) : filtered.length === 0 ? (
+        ) : motos.length === 0 ? (
           <EmptyState
             title="Nenhuma moto encontrada"
             description="Cadastre veículos para iniciar locações."
@@ -156,7 +163,7 @@ const FleetView = () => {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((moto) => (
+              {motos.map((moto) => (
                 <tr key={moto.id}>
                   <td className="font-mono">{moto.placa}</td>
                   <td>{moto.modelo}</td>
@@ -186,6 +193,30 @@ const FleetView = () => {
           </table>
         )}
       </div>
+
+      {total > PAGE_SIZE && (
+        <div className="pagination glass">
+          <button
+            type="button"
+            className="btn-secondary"
+            disabled={offset === 0 || loading}
+            onClick={() => void fetchMotos(Math.max(0, offset - PAGE_SIZE))}
+          >
+            Anterior
+          </button>
+          <span className="text-muted">
+            {offset + 1}–{Math.min(offset + PAGE_SIZE, total)} de {total}
+          </span>
+          <button
+            type="button"
+            className="btn-secondary"
+            disabled={offset + PAGE_SIZE >= total || loading}
+            onClick={() => void fetchMotos(offset + PAGE_SIZE)}
+          >
+            Próxima
+          </button>
+        </div>
+      )}
 
       {showModal && (
         <div className="modal-overlay">
@@ -374,6 +405,14 @@ const FleetView = () => {
           padding: 10px 20px;
           border-radius: 8px;
           cursor: pointer;
+        }
+        .pagination {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 12px 16px;
+          margin-top: 16px;
+          border-radius: 12px;
         }
       `}</style>
     </div>

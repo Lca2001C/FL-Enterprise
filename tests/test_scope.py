@@ -36,6 +36,6 @@ def test_admin_with_operacao_scope_filters_list(
         params={"operacao_id": moto_operacao_a.operacao_id},
     )
     assert scoped.status_code == 200
-    placas = {row["placa"] for row in scoped.json()}
+    placas = {row["placa"] for row in scoped.json()["items"]}
     assert moto_operacao_a.placa in placas
     assert moto_operacao_b.placa not in placas

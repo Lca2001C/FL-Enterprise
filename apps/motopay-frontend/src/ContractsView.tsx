@@ -1,25 +1,39 @@
-import { useState, useEffect, useMemo, type FormEvent } from 'react';
+import { useState, useEffect, useMemo, useCallback, type FormEvent } from 'react';
 import {
   Plus,
   FileText,
   XCircle,
   Copy,
-  CreditCard,
+  QrCode,
+  Wallet,
   Check,
   Filter,
+  X,
 } from 'lucide-react';
 import { useAuth } from './AuthContext';
-import type { ClienteOut, CobrancaOut, ContratoOut, MotoOut } from './apiTypes';
+import type { ClienteOut, CobrancaOut, ContratoOut, MotoOut, Paginated } from './apiTypes';
+import type { ContractsFilter } from './apiTypes';
+import { PAGE_SIZE } from './apiTypes';
 import { defaultVencimento, formatBrl, formatDate, todayIso } from './utils/format';
 import { parseApiError } from './utils/apiError';
+import { fetchAllPaginated, offsetAfterDelete } from './utils/fetchPaginated';
 import EmptyState from './components/EmptyState';
 import ErrorBanner from './components/ErrorBanner';
+import AdminScopeBanner from './components/AdminScopeBanner';
 
-type FilterTab = 'todos' | 'ativos' | 'inadimplentes';
+type FilterTab = ContractsFilter;
 
 const ContractsView = () => {
-  const { api, contractsFilter, setContractsFilter } = useAuth();
+  const {
+    api,
+    contractsFilter,
+    setContractsFilter,
+    contractsClienteId,
+    clearContractsClienteFilter,
+  } = useAuth();
   const [contratos, setContratos] = useState<ContratoOut[]>([]);
+  const [total, setTotal] = useState(0);
+  const [offset, setOffset] = useState(0);
   const [clientes, setClientes] = useState<ClienteOut[]>([]);
   const [motos, setMotos] = useState<MotoOut[]>([]);
   const [cobrancas, setCobrancas] = useState<CobrancaOut[]>([]);
@@ -60,36 +74,60 @@ const ContractsView = () => {
 
   const motosDisponiveis = motos.filter((m) => m.status === 'disponivel');
 
-  const filtered = useMemo(() => {
-    if (filter === 'ativos') return contratos.filter((c) => c.status === 'ativo');
-    if (filter === 'inadimplentes') return contratos.filter((c) => c.inadimplente);
-    return contratos;
-  }, [contratos, filter]);
+  const buildContratoParams = useCallback(
+    (pageOffset: number): Record<string, unknown> => {
+      const params: Record<string, unknown> = { limit: PAGE_SIZE, offset: pageOffset };
+      if (filter === 'ativos') params.status = 'ativo';
+      else if (filter === 'inadimplentes') params.inadimplente = true;
+      else if (filter === 'com_promessa') params.com_promessa = true;
+      if (contractsClienteId != null) params.cliente_id = contractsClienteId;
+      return params;
+    },
+    [filter, contractsClienteId]
+  );
 
-  const fetchAll = async () => {
-    setLoading(true);
-    setError('');
+  const fetchContratos = useCallback(
+    async (pageOffset = 0) => {
+      setLoading(true);
+      setError('');
+      try {
+        const r = await api.get<Paginated<ContratoOut>>('/api/v1/contratos', {
+          params: buildContratoParams(pageOffset),
+        });
+        setContratos(r.data.items);
+        setTotal(r.data.total);
+        setOffset(pageOffset);
+      } catch (e) {
+        setError(parseApiError(e, 'Erro ao carregar contratos'));
+      } finally {
+        setLoading(false);
+      }
+    },
+    [api, buildContratoParams]
+  );
+
+  const fetchMeta = useCallback(async () => {
     try {
-      const [ctRes, clRes, moRes, cobRes] = await Promise.all([
-        api.get<ContratoOut[]>('/api/v1/contratos'),
-        api.get<ClienteOut[]>('/api/v1/clientes'),
-        api.get<MotoOut[]>('/api/v1/motos'),
-        api.get<CobrancaOut[]>('/api/v1/cobrancas'),
+      const [clItems, moItems, cobItems] = await Promise.all([
+        fetchAllPaginated<ClienteOut>(api, '/api/v1/clientes'),
+        fetchAllPaginated<MotoOut>(api, '/api/v1/motos'),
+        fetchAllPaginated<CobrancaOut>(api, '/api/v1/cobrancas'),
       ]);
-      setContratos(ctRes.data);
-      setClientes(clRes.data);
-      setMotos(moRes.data);
-      setCobrancas(cobRes.data);
+      setClientes(clItems);
+      setMotos(moItems);
+      setCobrancas(cobItems);
     } catch (e) {
-      setError(parseApiError(e, 'Erro ao carregar contratos'));
-    } finally {
-      setLoading(false);
+      setError(parseApiError(e, 'Erro ao carregar dados auxiliares'));
     }
-  };
+  }, [api]);
 
   useEffect(() => {
-    void fetchAll();
-  }, [api]);
+    void fetchContratos(0);
+  }, [fetchContratos]);
+
+  useEffect(() => {
+    void fetchMeta();
+  }, [fetchMeta]);
 
   useEffect(() => {
     setFilter(contractsFilter);
@@ -135,7 +173,8 @@ const ContractsView = () => {
         proximo_vencimento: defaultVencimento('mensal', todayIso()),
         gerar_pix: true,
       });
-      await fetchAll();
+      await fetchContratos(offset);
+      await fetchMeta();
     } catch (err) {
       setError(parseApiError(err, 'Erro ao criar contrato'));
     }
@@ -145,9 +184,11 @@ const ContractsView = () => {
     if (!confirm('Encerrar este contrato? A moto não será liberada automaticamente.')) return;
     setActionLoading(id);
     setError('');
+    const wasLast = contratos.length === 1;
     try {
       await api.patch(`/api/v1/contratos/${id}`, { status: 'finalizado' });
-      await fetchAll();
+      await fetchContratos(offsetAfterDelete(offset, PAGE_SIZE, wasLast));
+      await fetchMeta();
     } catch (err) {
       setError(parseApiError(err, 'Erro ao encerrar contrato'));
     } finally {
@@ -160,7 +201,8 @@ const ContractsView = () => {
     setError('');
     try {
       await api.post('/api/v1/cobrancas/pix', { contrato_id: contratoId });
-      await fetchAll();
+      await fetchContratos(offset);
+      await fetchMeta();
     } catch (err) {
       setError(parseApiError(err, 'Erro ao gerar Pix'));
     } finally {
@@ -168,15 +210,29 @@ const ContractsView = () => {
     }
   };
 
-  const handleAssinatura = async (contratoId: number) => {
+  const handleAssinaturaAsaas = async (contratoId: number) => {
     setActionLoading(contratoId);
     setError('');
     try {
       await api.post('/api/v1/cobrancas/assinatura-asaas', { contrato_id: contratoId });
-      alert('Assinatura Asaas criada com sucesso.');
-      await fetchAll();
+      await fetchContratos(offset);
+      await fetchMeta();
     } catch (err) {
-      setError(parseApiError(err, 'Erro ao criar assinatura'));
+      setError(parseApiError(err, 'Erro ao criar assinatura Asaas'));
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleAssinaturaMp = async (contratoId: number) => {
+    setActionLoading(contratoId);
+    setError('');
+    try {
+      await api.post('/api/v1/cobrancas/assinatura-mercadopago', { contrato_id: contratoId });
+      await fetchContratos(offset);
+      await fetchMeta();
+    } catch (err) {
+      setError(parseApiError(err, 'Erro ao criar assinatura Mercado Pago'));
     } finally {
       setActionLoading(null);
     }
@@ -193,7 +249,7 @@ const ContractsView = () => {
       <div className="view-header">
         <div>
           <h2>Contratos</h2>
-          <p className="text-muted">{contratos.length} locações cadastradas</p>
+          <p className="text-muted">{total} locações cadastradas</p>
         </div>
         <button className="btn-primary" onClick={() => setShowModal(true)}>
           <Plus size={20} /> Nova locação
@@ -201,17 +257,38 @@ const ContractsView = () => {
       </div>
 
       {error && <ErrorBanner message={error} onDismiss={() => setError('')} />}
+      <AdminScopeBanner />
 
-      <div className="filter-tabs glass">
+      {contractsClienteId != null && (
+        <div className="cliente-filter-chip glass">
+          <span>Filtrando cliente #{contractsClienteId}</span>
+          <button
+            type="button"
+            className="icon-btn"
+            title="Limpar filtro de cliente"
+            onClick={clearContractsClienteFilter}
+          >
+            <X size={14} />
+          </button>
+        </div>
+      )}
+
+      <div className="filter-tabs glass" data-tour="contracts-filters">
         <Filter size={16} />
-        {(['todos', 'ativos', 'inadimplentes'] as FilterTab[]).map((f) => (
+        {(['todos', 'ativos', 'inadimplentes', 'com_promessa'] as FilterTab[]).map((f) => (
           <button
             key={f}
             type="button"
             className={`tab ${filter === f ? 'active' : ''}`}
             onClick={() => handleFilterChange(f)}
           >
-            {f === 'todos' ? 'Todos' : f === 'ativos' ? 'Ativos' : 'Inadimplentes'}
+            {f === 'todos'
+              ? 'Todos'
+              : f === 'ativos'
+                ? 'Ativos'
+                : f === 'inadimplentes'
+                  ? 'Inadimplentes'
+                  : 'Com promessa'}
           </button>
         ))}
       </div>
@@ -219,7 +296,7 @@ const ContractsView = () => {
       <div className="glass table-container">
         {loading ? (
           <p style={{ padding: 40, textAlign: 'center' }}>Carregando contratos...</p>
-        ) : filtered.length === 0 ? (
+        ) : contratos.length === 0 ? (
           <EmptyState
             icon={<FileText size={40} />}
             title="Nenhum contrato encontrado"
@@ -245,12 +322,14 @@ const ContractsView = () => {
                 <th>Valor</th>
                 <th>Ciclo</th>
                 <th>Próx. vencimento</th>
+                <th>Promessa</th>
+                <th>Assinatura</th>
                 <th>Status</th>
                 <th style={{ textAlign: 'right' }}>Ações</th>
               </tr>
             </thead>
             <tbody>
-              {filtered.map((ct) => {
+              {contratos.map((ct) => {
                 const cl = clienteMap[ct.cliente_id];
                 const mo = motoMap[ct.moto_id];
                 const cob = cobrancaByContrato[ct.id];
@@ -275,6 +354,31 @@ const ContractsView = () => {
                     <td>{ct.ciclo}</td>
                     <td>{formatDate(ct.proximo_vencimento)}</td>
                     <td>
+                      {ct.promessa_pagamento_em ? (
+                        <div style={{ fontSize: '0.8rem' }}>
+                          <div>{formatDate(ct.promessa_pagamento_em)}</div>
+                          {ct.promessa_notas && (
+                            <div className="text-muted">{ct.promessa_notas}</div>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-muted">—</span>
+                      )}
+                    </td>
+                    <td>
+                      <div className="sub-badges">
+                        {ct.asaas_subscription_id && (
+                          <span className="sub-badge asaas">Asaas</span>
+                        )}
+                        {ct.mercadopago_subscription_id && (
+                          <span className="sub-badge mp">MP</span>
+                        )}
+                        {!ct.asaas_subscription_id && !ct.mercadopago_subscription_id && (
+                          <span className="text-muted">—</span>
+                        )}
+                      </div>
+                    </td>
+                    <td>
                       <span className={`status-badge ${ct.status}`}>{ct.status.toUpperCase()}</span>
                     </td>
                     <td style={{ textAlign: 'right' }}>
@@ -295,25 +399,34 @@ const ContractsView = () => {
                             <button
                               type="button"
                               className="icon-btn"
-                              title="Gerar Pix"
+                              title="Gerar cobrança Pix para este contrato"
                               disabled={busy}
                               onClick={() => void handleGerarPix(ct.id)}
                             >
-                              <CreditCard size={16} />
+                              <QrCode size={16} />
                             </button>
                             <button
                               type="button"
                               className="icon-btn"
-                              title="Assinatura Asaas"
+                              title="Criar assinatura recorrente no Asaas"
                               disabled={busy}
-                              onClick={() => void handleAssinatura(ct.id)}
+                              onClick={() => void handleAssinaturaAsaas(ct.id)}
                             >
                               <FileText size={16} />
                             </button>
                             <button
                               type="button"
+                              className="icon-btn"
+                              title="Criar assinatura recorrente no Mercado Pago"
+                              disabled={busy}
+                              onClick={() => void handleAssinaturaMp(ct.id)}
+                            >
+                              <Wallet size={16} />
+                            </button>
+                            <button
+                              type="button"
                               className="icon-btn danger"
-                              title="Encerrar"
+                              title="Encerrar contrato de locação"
                               disabled={busy}
                               onClick={() => void handleEncerrar(ct.id)}
                             >
@@ -330,6 +443,30 @@ const ContractsView = () => {
           </table>
         )}
       </div>
+
+      {total > PAGE_SIZE && (
+        <div className="pagination glass">
+          <button
+            type="button"
+            className="btn-secondary"
+            disabled={offset === 0 || loading}
+            onClick={() => void fetchContratos(Math.max(0, offset - PAGE_SIZE))}
+          >
+            Anterior
+          </button>
+          <span className="text-muted">
+            {offset + 1}–{Math.min(offset + PAGE_SIZE, total)} de {total}
+          </span>
+          <button
+            type="button"
+            className="btn-secondary"
+            disabled={offset + PAGE_SIZE >= total || loading}
+            onClick={() => void fetchContratos(offset + PAGE_SIZE)}
+          >
+            Próxima
+          </button>
+        </div>
+      )}
 
       {showModal && (
         <div className="modal-overlay">
@@ -460,6 +597,16 @@ const ContractsView = () => {
           border-radius: 12px;
           flex-wrap: wrap;
         }
+        .cliente-filter-chip {
+          display: inline-flex;
+          align-items: center;
+          gap: 10px;
+          padding: 8px 14px;
+          margin-bottom: 16px;
+          border-radius: 999px;
+          font-size: 0.85rem;
+          color: var(--primary);
+        }
         .tab {
           background: none;
           border: 1px solid var(--glass-border);
@@ -515,6 +662,25 @@ const ContractsView = () => {
           font-size: 0.7rem;
           color: var(--danger);
           font-weight: 600;
+        }
+        .sub-badges {
+          display: flex;
+          gap: 4px;
+          flex-wrap: wrap;
+        }
+        .sub-badge {
+          padding: 2px 8px;
+          border-radius: 4px;
+          font-size: 0.7rem;
+          font-weight: 700;
+        }
+        .sub-badge.asaas {
+          background: rgba(99, 102, 241, 0.1);
+          color: var(--primary);
+        }
+        .sub-badge.mp {
+          background: rgba(245, 158, 11, 0.1);
+          color: var(--warning);
         }
         .actions {
           display: flex;
@@ -579,6 +745,14 @@ const ContractsView = () => {
           padding: 10px 20px;
           border-radius: 8px;
           cursor: pointer;
+        }
+        .pagination {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 12px 16px;
+          margin-top: 16px;
+          border-radius: 12px;
         }
         .checkbox-row {
           display: flex;

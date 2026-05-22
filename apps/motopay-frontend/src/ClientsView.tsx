@@ -1,14 +1,19 @@
-import { useState, useEffect, useMemo, type FormEvent } from 'react';
+import { useState, useEffect, useCallback, type FormEvent } from 'react';
 import { Plus, Search, Star, Phone, Trash2, Bike, FileText } from 'lucide-react';
 import { useAuth } from './AuthContext';
-import type { ClienteOut } from './apiTypes';
+import type { ClienteOut, Paginated } from './apiTypes';
+import { PAGE_SIZE } from './apiTypes';
 import { parseApiError } from './utils/apiError';
+import { offsetAfterDelete } from './utils/fetchPaginated';
 import EmptyState from './components/EmptyState';
 import ErrorBanner from './components/ErrorBanner';
+import AdminScopeBanner from './components/AdminScopeBanner';
 
 const ClientsView = () => {
   const { api, navigateToContracts } = useAuth();
   const [clientes, setClientes] = useState<ClienteOut[]>([]);
+  const [total, setTotal] = useState(0);
+  const [offset, setOffset] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
@@ -20,31 +25,36 @@ const ClientsView = () => {
     telefone: '',
     telegram_id: '',
   });
-
-  const fetchClientes = async () => {
-    setLoading(true);
-    setError('');
-    try {
-      const r = await api.get<ClienteOut[]>('/api/v1/clientes');
-      setClientes(r.data);
-    } catch (e) {
-      setError(parseApiError(e, 'Erro ao carregar clientes'));
-    } finally {
-      setLoading(false);
-    }
-  };
+  const [debouncedSearch, setDebouncedSearch] = useState('');
 
   useEffect(() => {
-    void fetchClientes();
-  }, [api]);
+    const timer = window.setTimeout(() => setDebouncedSearch(search), 300);
+    return () => window.clearTimeout(timer);
+  }, [search]);
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return clientes;
-    return clientes.filter(
-      (c) => c.nome.toLowerCase().includes(q) || c.cpf.includes(q)
-    );
-  }, [clientes, search]);
+  const fetchClientes = useCallback(
+    async (pageOffset = 0) => {
+      setLoading(true);
+      setError('');
+      try {
+        const params: Record<string, unknown> = { limit: PAGE_SIZE, offset: pageOffset };
+        if (debouncedSearch.trim()) params.q = debouncedSearch.trim();
+        const r = await api.get<Paginated<ClienteOut>>('/api/v1/clientes', { params });
+        setClientes(r.data.items);
+        setTotal(r.data.total);
+        setOffset(pageOffset);
+      } catch (e) {
+        setError(parseApiError(e, 'Erro ao carregar clientes'));
+      } finally {
+        setLoading(false);
+      }
+    },
+    [api, debouncedSearch]
+  );
+
+  useEffect(() => {
+    void fetchClientes(0);
+  }, [fetchClientes]);
 
   const openCreate = () => {
     setEditCliente(null);
@@ -82,7 +92,7 @@ const ClientsView = () => {
         });
       }
       setShowModal(false);
-      await fetchClientes();
+      await fetchClientes(offset);
     } catch (err) {
       setError(parseApiError(err, 'Erro ao salvar cliente'));
     }
@@ -91,9 +101,10 @@ const ClientsView = () => {
   const handleDelete = async (id: number) => {
     if (!confirm('Deseja realmente excluir este cliente?')) return;
     setError('');
+    const wasLast = clientes.length === 1;
     try {
       await api.delete(`/api/v1/clientes/${id}`);
-      await fetchClientes();
+      await fetchClientes(offsetAfterDelete(offset, PAGE_SIZE, wasLast));
     } catch (err) {
       setError(parseApiError(err, 'Erro ao excluir cliente'));
     }
@@ -104,14 +115,15 @@ const ClientsView = () => {
       <div className="view-header">
         <div>
           <h2>Base de Clientes</h2>
-          <p className="text-muted">{clientes.length} motoristas parceiros</p>
+          <p className="text-muted">{total} motoristas parceiros</p>
         </div>
-        <button className="btn-primary" onClick={openCreate}>
+        <button className="btn-primary" onClick={openCreate} data-tour="clients-add">
           <Plus size={20} /> Novo Cliente
         </button>
       </div>
 
       {error && <ErrorBanner message={error} onDismiss={() => setError('')} />}
+      <AdminScopeBanner />
 
       <div className="table-actions glass">
         <div className="search-box">
@@ -125,10 +137,10 @@ const ClientsView = () => {
         </div>
       </div>
 
-      <div className="glass table-container">
+      <div className="glass table-container" data-tour="clients-table">
         {loading ? (
           <p style={{ padding: 40, textAlign: 'center' }}>Carregando clientes...</p>
-        ) : filtered.length === 0 ? (
+        ) : clientes.length === 0 ? (
           <EmptyState
             title={search ? 'Nenhum resultado' : 'Nenhum cliente cadastrado'}
             description={
@@ -157,7 +169,7 @@ const ClientsView = () => {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((c) => (
+              {clientes.map((c) => (
                 <tr key={c.id}>
                   <td>
                     <div style={{ fontWeight: 600 }}>{c.nome}</div>
@@ -199,7 +211,7 @@ const ClientsView = () => {
                       type="button"
                       className="icon-btn"
                       title="Ver contratos"
-                      onClick={() => navigateToContracts('todos')}
+                      onClick={() => navigateToContracts('todos', c.id)}
                     >
                       <FileText size={16} />
                     </button>
@@ -220,6 +232,30 @@ const ClientsView = () => {
           </table>
         )}
       </div>
+
+      {total > PAGE_SIZE && (
+        <div className="pagination glass">
+          <button
+            type="button"
+            className="btn-secondary"
+            disabled={offset === 0 || loading}
+            onClick={() => void fetchClientes(Math.max(0, offset - PAGE_SIZE))}
+          >
+            Anterior
+          </button>
+          <span className="text-muted">
+            {offset + 1}–{Math.min(offset + PAGE_SIZE, total)} de {total}
+          </span>
+          <button
+            type="button"
+            className="btn-secondary"
+            disabled={offset + PAGE_SIZE >= total || loading}
+            onClick={() => void fetchClientes(offset + PAGE_SIZE)}
+          >
+            Próxima
+          </button>
+        </div>
+      )}
 
       {showModal && (
         <div className="modal-overlay">
@@ -389,6 +425,14 @@ const ClientsView = () => {
           padding: 10px 20px;
           border-radius: 8px;
           cursor: pointer;
+        }
+        .pagination {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 12px 16px;
+          margin-top: 16px;
+          border-radius: 12px;
         }
       `}</style>
     </div>

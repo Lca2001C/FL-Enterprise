@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from motopay.domain.enums import UserRole
@@ -9,14 +9,34 @@ from motopay.infrastructure.db.models import Contrato, Financeiro, Moto
 from motopay.interfaces.api.deps import CurrentUser
 from motopay.interfaces.api.schemas import FinanceiroCreate
 
+_SCOPED_ROLES = frozenset({UserRole.DONO, UserRole.OPERADOR})
 
-def list_financeiro(db: Session, user: CurrentUser, operacao_scope: int | None) -> list[Financeiro]:
+
+def _financeiro_query(user: CurrentUser, operacao_scope: int | None):
     q = select(Financeiro)
-    if user.role == UserRole.DONO:
+    if user.role in _SCOPED_ROLES:
         q = q.where(Financeiro.operacao_id == user.operacao_id)
     elif operacao_scope is not None:
         q = q.where(Financeiro.operacao_id == operacao_scope)
-    return list(db.scalars(q.order_by(Financeiro.data.desc(), Financeiro.id.desc())).all())
+    return q
+
+
+def list_financeiro(
+    db: Session,
+    user: CurrentUser,
+    operacao_scope: int | None,
+    *,
+    limit: int,
+    offset: int,
+) -> tuple[list[Financeiro], int]:
+    base = _financeiro_query(user, operacao_scope)
+    total = db.scalar(select(func.count()).select_from(base.subquery())) or 0
+    rows = list(
+        db.scalars(
+            base.order_by(Financeiro.data.desc(), Financeiro.id.desc()).limit(limit).offset(offset)
+        ).all()
+    )
+    return rows, int(total)
 
 
 def create_financeiro(db: Session, user: CurrentUser, operacao_scope: int | None, body: FinanceiroCreate) -> Financeiro:

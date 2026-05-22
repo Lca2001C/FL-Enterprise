@@ -168,3 +168,13 @@ h1, h2, h3, .brand-font {
   background: rgba(30, 41, 59, 0.8);
   box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.1);
 }
+
+.driver-popover.motopay-tour-popover {
+  z-index: 10050;
+  max-width: min(360px, calc(100vw - 32px));
+  color: #0f172a;
+}
+
+.driver-overlay {
+  z-index: 10040;
+}

@@ -1,19 +1,44 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from motopay.domain.exceptions import ForbiddenError, NotFoundError
-from motopay.infrastructure.db.models import Operacao
 from motopay.infrastructure.db.session import get_db
-from motopay.interfaces.api.deps import CurrentUser, require_admin, require_dono_or_admin
-from motopay.interfaces.api.schemas import OperacaoCreate, OperacaoOut, OperacaoUpdate
+from motopay.interfaces.api.deps import CurrentUser, require_admin, require_settings_access
+from motopay.interfaces.api.schemas import (
+    OperacaoCreate,
+    OperacaoOut,
+    OperacaoUpdate,
+    TelegramTemplateMetaOut,
+    TelegramTemplatePreviewOut,
+    TelegramTemplatePreviewRequest,
+)
 from motopay.services.operacao_service import (
     create_operacao,
     get_operacao_or_404,
+    get_telegram_template_meta,
     list_operacoes,
+    operacao_to_out,
+    preview_telegram_template,
     update_operacao,
 )
 
 router = APIRouter(prefix="/operacoes", tags=["operacoes"])
+
+
+@router.get("/telegram-template-meta", response_model=list[TelegramTemplateMetaOut])
+def telegram_template_meta(
+    _: CurrentUser = Depends(require_settings_access),
+) -> list[TelegramTemplateMetaOut]:
+    return get_telegram_template_meta()
+
+
+@router.post("/telegram-template-preview", response_model=TelegramTemplatePreviewOut)
+def telegram_template_preview(
+    body: TelegramTemplatePreviewRequest,
+    _: CurrentUser = Depends(require_settings_access),
+) -> TelegramTemplatePreviewOut:
+    text = preview_telegram_template(key=body.key, template=body.template, context=body.context)
+    return TelegramTemplatePreviewOut(text=text)
 
 
 @router.get("", response_model=list[OperacaoOut])
@@ -36,21 +61,21 @@ def create_op(
 @router.get("/me", response_model=OperacaoOut)
 def get_my_op(
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_dono_or_admin),
+    user: CurrentUser = Depends(require_settings_access),
 ) -> OperacaoOut:
     if not user.operacao_id:
         raise ForbiddenError("Usuário sem operação vinculada")
-    op = db.get(Operacao, user.operacao_id)
+    op = get_operacao_or_404(db, user.operacao_id)
     if not op:
         raise NotFoundError("Operação não encontrada")
-    return op
+    return operacao_to_out(op)
 
 
 @router.patch("/me", response_model=OperacaoOut)
 def update_my_op(
     body: OperacaoUpdate,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_dono_or_admin),
+    user: CurrentUser = Depends(require_settings_access),
 ) -> OperacaoOut:
     if not user.operacao_id:
         raise ForbiddenError("Usuário sem operação vinculada")
@@ -66,7 +91,7 @@ def get_op_by_id_admin(
     op = get_operacao_or_404(db, operacao_id)
     if not op:
         raise NotFoundError("Operação não encontrada")
-    return op
+    return operacao_to_out(op)
 
 
 @router.patch("/{operacao_id:int}", response_model=OperacaoOut)

@@ -1,11 +1,14 @@
-import { useState, useEffect, useMemo, type FormEvent } from 'react';
+import { useState, useEffect, useCallback, type FormEvent } from 'react';
 import { Plus, Copy, CheckCircle, Clock, AlertTriangle, Check, Filter } from 'lucide-react';
 import { useAuth } from './AuthContext';
-import type { CobrancaOut, ContratoOut } from './apiTypes';
+import type { CobrancaOut, ContratoOut, Paginated } from './apiTypes';
+import { PAGE_SIZE } from './apiTypes';
 import { formatBrl, formatDate } from './utils/format';
 import { parseApiError } from './utils/apiError';
+import { fetchAllPaginated } from './utils/fetchPaginated';
 import EmptyState from './components/EmptyState';
 import ErrorBanner from './components/ErrorBanner';
+import AdminScopeBanner from './components/AdminScopeBanner';
 
 type StatusFilter = 'todos' | 'pendente' | 'atrasado' | 'recebido';
 
@@ -13,6 +16,8 @@ const ChargesView = () => {
   const { api } = useAuth();
   const [cobrancas, setCobrancas] = useState<CobrancaOut[]>([]);
   const [contratos, setContratos] = useState<ContratoOut[]>([]);
+  const [total, setTotal] = useState(0);
+  const [offset, setOffset] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [showModal, setShowModal] = useState(false);
@@ -22,31 +27,33 @@ const ChargesView = () => {
 
   const contratosAtivos = contratos.filter((c) => c.status === 'ativo');
 
-  const filtered = useMemo(() => {
-    if (statusFilter === 'todos') return cobrancas;
-    return cobrancas.filter((c) => c.status === statusFilter);
-  }, [cobrancas, statusFilter]);
-
-  const fetchData = async () => {
-    setLoading(true);
-    setError('');
-    try {
-      const [cobRes, ctRes] = await Promise.all([
-        api.get<CobrancaOut[]>('/api/v1/cobrancas'),
-        api.get<ContratoOut[]>('/api/v1/contratos'),
-      ]);
-      setCobrancas(cobRes.data);
-      setContratos(ctRes.data);
-    } catch (e) {
-      setError(parseApiError(e, 'Erro ao carregar cobranças'));
-    } finally {
-      setLoading(false);
-    }
-  };
+  const fetchData = useCallback(
+    async (pageOffset = 0) => {
+      setLoading(true);
+      setError('');
+      try {
+        const cobParams: Record<string, unknown> = { limit: PAGE_SIZE, offset: pageOffset };
+        if (statusFilter !== 'todos') cobParams.status = statusFilter;
+        const [cobRes, ctItems] = await Promise.all([
+          api.get<Paginated<CobrancaOut>>('/api/v1/cobrancas', { params: cobParams }),
+          fetchAllPaginated<ContratoOut>(api, '/api/v1/contratos', { status: 'ativo' }),
+        ]);
+        setCobrancas(cobRes.data.items);
+        setTotal(cobRes.data.total);
+        setOffset(pageOffset);
+        setContratos(ctItems);
+      } catch (e) {
+        setError(parseApiError(e, 'Erro ao carregar cobranças'));
+      } finally {
+        setLoading(false);
+      }
+    },
+    [api, statusFilter]
+  );
 
   useEffect(() => {
-    void fetchData();
-  }, [api]);
+    void fetchData(0);
+  }, [fetchData]);
 
   const handleCreateCharge = async (e: FormEvent) => {
     e.preventDefault();
@@ -55,7 +62,7 @@ const ChargesView = () => {
       await api.post('/api/v1/cobrancas/pix', { contrato_id: parseInt(contratoId, 10) });
       setShowModal(false);
       setContratoId('');
-      await fetchData();
+      await fetchData(offset);
     } catch (err) {
       setError(parseApiError(err, 'Erro ao gerar cobrança'));
     }
@@ -86,6 +93,7 @@ const ChargesView = () => {
       </div>
 
       {error && <ErrorBanner message={error} onDismiss={() => setError('')} />}
+      <AdminScopeBanner />
 
       <div className="filter-tabs glass">
         <Filter size={16} />
@@ -101,10 +109,10 @@ const ChargesView = () => {
         ))}
       </div>
 
-      <div className="glass table-container">
+      <div className="glass table-container" data-tour="charges-list">
         {loading ? (
           <p style={{ padding: 40, textAlign: 'center' }}>Carregando cobranças...</p>
-        ) : filtered.length === 0 ? (
+        ) : cobrancas.length === 0 ? (
           <EmptyState
             title="Nenhuma cobrança encontrada"
             description="Gere uma cobrança Pix para um contrato ativo."
@@ -121,6 +129,7 @@ const ChargesView = () => {
                 <th>ID</th>
                 <th>Vencimento</th>
                 <th>Valor</th>
+                <th>Gateway</th>
                 <th>Status</th>
                 <th>Contrato</th>
                 <th>Atraso / Multa</th>
@@ -128,13 +137,18 @@ const ChargesView = () => {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((cob) => (
+              {cobrancas.map((cob) => (
                 <tr key={cob.id}>
                   <td>
                     <span className="text-muted">#{cob.id}</span>
                   </td>
                   <td>{formatDate(cob.vencimento)}</td>
                   <td style={{ fontWeight: 700 }}>{formatBrl(displayValor(cob))}</td>
+                  <td>
+                    <span className={`gateway-badge ${cob.payment_gateway}`}>
+                      {cob.payment_gateway === 'mercadopago' ? 'Mercado Pago' : 'Asaas'}
+                    </span>
+                  </td>
                   <td>
                     <span className={`status-badge ${cob.status}`}>
                       {cob.status === 'recebido' ? (
@@ -181,6 +195,30 @@ const ChargesView = () => {
           </table>
         )}
       </div>
+
+      {total > PAGE_SIZE && (
+        <div className="pagination glass">
+          <button
+            type="button"
+            className="btn-secondary"
+            disabled={offset === 0 || loading}
+            onClick={() => void fetchData(Math.max(0, offset - PAGE_SIZE))}
+          >
+            Anterior
+          </button>
+          <span className="text-muted">
+            {offset + 1}–{Math.min(offset + PAGE_SIZE, total)} de {total}
+          </span>
+          <button
+            type="button"
+            className="btn-secondary"
+            disabled={offset + PAGE_SIZE >= total || loading}
+            onClick={() => void fetchData(offset + PAGE_SIZE)}
+          >
+            Próxima
+          </button>
+        </div>
+      )}
 
       {showModal && (
         <div className="modal-overlay">
@@ -299,6 +337,28 @@ const ChargesView = () => {
           border-radius: 4px;
           font-size: 0.8rem;
           border: 1px solid var(--glass-border);
+        }
+        .gateway-badge {
+          padding: 4px 10px;
+          border-radius: 6px;
+          font-size: 0.7rem;
+          font-weight: 600;
+        }
+        .gateway-badge.asaas {
+          background: rgba(99, 102, 241, 0.1);
+          color: var(--primary);
+        }
+        .gateway-badge.mercadopago {
+          background: rgba(245, 158, 11, 0.1);
+          color: var(--warning);
+        }
+        .pagination {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 12px 16px;
+          margin-top: 16px;
+          border-radius: 12px;
         }
         .action-btn-pix {
           background: var(--primary-glow);

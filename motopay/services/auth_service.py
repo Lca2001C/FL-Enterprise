@@ -25,12 +25,23 @@ def verify_password(plain: str, hashed: str) -> bool:
     return pwd_context.verify(plain, hashed)
 
 
+def change_password(db: Session, user_id: int, *, current: str, new: str) -> None:
+    user = db.get(Usuario, user_id)
+    if not user or not verify_password(current, user.senha_hash):
+        raise UnauthorizedError("Senha atual incorreta")
+    user.senha_hash = hash_password(new)
+    db.add(user)
+    db.commit()
+
+
 def authenticate_user(db: Session, email: str, password: str) -> Usuario:
     user = db.scalars(select(Usuario).where(Usuario.email == email)).first()
     if not user or not verify_password(password, user.senha_hash):
         raise UnauthorizedError("Credenciais inválidas")
     if user.tipo == UserRole.DONO.value and user.operacao_id is None:
         raise UnauthorizedError("Usuário dono sem operação associada")
+    if user.tipo == UserRole.CLIENTE.value and user.cliente_id is None:
+        raise UnauthorizedError("Usuário cliente sem cadastro associado")
     return user
 
 
@@ -42,6 +53,7 @@ def create_access_token(*, user: Usuario) -> str:
         "email": user.email,
         "role": user.tipo,
         "operacao_id": user.operacao_id,
+        "cliente_id": user.cliente_id,
         "exp": expire,
     }
     return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)

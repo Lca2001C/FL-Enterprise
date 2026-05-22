@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import sys
 
 from motopay.domain.enums import UserRole
 from motopay.infrastructure.db.models import Operacao, Usuario
@@ -10,6 +11,16 @@ from sqlalchemy import select
 
 
 def main() -> None:
+    if os.getenv("ENVIRONMENT", "development").lower() == "production":
+        if os.getenv("ALLOW_PRODUCTION_SEED", "").lower() != "true":
+            print(
+                "Recusado: scripts/seed_admin.py com ENVIRONMENT=production.\n"
+                "Se for realmente necessário em produção, defina ALLOW_PRODUCTION_SEED=true e use "
+                "SEED_ADMIN_PASSWORD / SEED_DONO_PASSWORD fortes — nunca mantenha adminadmin/donodono.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
     db = SessionLocal()
     try:
         existing = db.scalars(select(Usuario).where(Usuario.email == os.getenv("SEED_ADMIN_EMAIL", "admin@motopay.local"))).first()

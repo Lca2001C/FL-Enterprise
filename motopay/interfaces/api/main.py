@@ -23,6 +23,7 @@ from motopay.interfaces.api.routers import (
     financeiro,
     motos,
     operacoes,
+    portal,
     usuarios,
     webhooks,
 )
@@ -30,6 +31,22 @@ from motopay.services.auth_service import decode_token
 
 logger = logging.getLogger(__name__)
 audit_logger = logging.getLogger("motopay.audit")
+
+_settings = get_settings()
+if _settings.sentry_dsn.strip():
+    try:
+        import sentry_sdk
+        from sentry_sdk.integrations.celery import CeleryIntegration
+        from sentry_sdk.integrations.fastapi import FastApiIntegration
+
+        sentry_sdk.init(
+            dsn=_settings.sentry_dsn,
+            environment=_settings.environment,
+            integrations=[FastApiIntegration(), CeleryIntegration()],
+            traces_sample_rate=0.1,
+        )
+    except ImportError:
+        logger.warning("sentry-sdk não instalado; SENTRY_DSN ignorado")
 
 app = FastAPI(title="MotoPay Admin API", version="0.1.0")
 
@@ -136,6 +153,7 @@ app.include_router(contratos.router, prefix=api_prefix)
 app.include_router(financeiro.router, prefix=api_prefix)
 app.include_router(cobrancas.router, prefix=api_prefix)
 app.include_router(analytics.router, prefix=api_prefix)
+app.include_router(portal.router, prefix=api_prefix)
 
 
 @app.get("/health")

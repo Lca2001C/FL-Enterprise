@@ -8,11 +8,16 @@ import FinanceView from './FinanceView';
 import MetricsView from './MetricsView';
 import ChargesView from './ChargesView';
 import SettingsView from './SettingsView';
+import AccountView from './AccountView';
+import AdminOperacoesView from './AdminOperacoesView';
+import AdminUsuariosView from './AdminUsuariosView';
+import ClientPortalView from './ClientPortalView';
 import {
   LayoutDashboard,
   Users,
   Bike,
   Receipt,
+  Banknote,
   BarChart3,
   LogOut,
   Shield,
@@ -23,6 +28,10 @@ import {
   AlertTriangle,
   Copy,
   Check,
+  Building2,
+  UserCog,
+  UserCircle,
+  HelpCircle,
 } from 'lucide-react';
 import type {
   AnalyticsSummary,
@@ -31,16 +40,21 @@ import type {
   CobrancaOut,
   ContratoOut,
   MotoOut,
+  Paginated,
   RecentActivityItem,
 } from './apiTypes';
+import { fetchAllPaginated } from './utils/fetchPaginated';
 import { formatBrl, formatDate, roleLabel } from './utils/format';
 import { parseApiError } from './utils/apiError';
 import ErrorBanner from './components/ErrorBanner';
 import ReloadPrompt from './components/ReloadPrompt';
+import TourWelcomeBanner from './components/TourWelcomeBanner';
+import { dismissOwnerTourBanner, shouldShowOwnerTourBanner, isOwnerTourEligible } from './guide/ownerTourSteps';
+import { useOwnerTour } from './guide/useOwnerTour';
 
 type OperacaoOpt = { id: number; nome: string };
 
-const TAB_LABELS: Record<AppTab, string> = {
+const TAB_LABELS: Partial<Record<AppTab, string>> = {
   dashboard: 'Visão Geral',
   motos: 'Gestão de Frota',
   clientes: 'Clientes',
@@ -49,6 +63,10 @@ const TAB_LABELS: Record<AppTab, string> = {
   metricas: 'Métricas',
   cobrancas: 'Cobranças',
   ajustes: 'Ajustes',
+  'admin-operacoes': 'Operações',
+  'admin-usuarios': 'Usuários',
+  conta: 'Minha Conta',
+  portal: 'Portal',
 };
 
 const Dashboard = () => {
@@ -62,6 +80,7 @@ const Dashboard = () => {
     activeTab,
     setActiveTab,
     navigateToContracts,
+    registerOwnerTour,
   } = useAuth();
   const [sidebarOpen, setSidebarOpen] = React.useState(false);
   const [stats, setStats] = React.useState<AnalyticsSummary | null>(null);
@@ -70,12 +89,38 @@ const Dashboard = () => {
   const [clientes, setClientes] = React.useState<ClienteOut[]>([]);
   const [cobrancas, setCobrancas] = React.useState<CobrancaOut[]>([]);
   const [totalMotos, setTotalMotos] = React.useState(0);
+  const [totalClientes, setTotalClientes] = React.useState(0);
+  const [totalContratos, setTotalContratos] = React.useState(0);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState('');
   const [operacoes, setOperacoes] = React.useState<OperacaoOpt[]>([]);
   const [copiedContratoId, setCopiedContratoId] = React.useState<number | null>(null);
+  const [showTourBanner, setShowTourBanner] = React.useState(false);
+  const activeTabRef = React.useRef(activeTab);
+  activeTabRef.current = activeTab;
+
+  const { startTour, resetTour } = useOwnerTour({
+    role: user?.tipo,
+    setActiveTab,
+    getActiveTab: () => activeTabRef.current,
+  });
+
+  const showOwnerTour = isOwnerTourEligible(user?.tipo);
+
+  React.useEffect(() => {
+    if (!showOwnerTour) return;
+    registerOwnerTour({ start: () => void startTour(), reset: () => resetTour() });
+  }, [registerOwnerTour, resetTour, showOwnerTour, startTour]);
+
+  React.useEffect(() => {
+    setShowTourBanner(
+      shouldShowOwnerTourBanner(activeTab, loading, showOwnerTour)
+    );
+  }, [showOwnerTour, activeTab, loading]);
 
   const isAdmin = user?.tipo === 'admin';
+  const isOperador = user?.tipo === 'operador';
+  const showAjustes = !isOperador;
   const brandTitle = isAdmin ? 'MotoPay Admin' : operacaoNome ? `MotoPay · ${operacaoNome}` : 'MotoPay Painel';
   const roleDisplay =
     user?.tipo === 'dono' && operacaoNome
@@ -100,24 +145,34 @@ const Dashboard = () => {
   const fleetPct =
     totalMotos > 0 ? Math.round(((stats?.motos_ativas ?? 0) / totalMotos) * 100) : 0;
 
+  const showSetupChecklist =
+    !loading && (totalMotos === 0 || totalClientes === 0 || totalContratos === 0);
+
   const fetchStats = async () => {
     setLoading(true);
     setError('');
     try {
-      const [sRes, aRes, ctRes, clRes, cobRes, motoRes] = await Promise.all([
+      const [sRes, aRes, ctTotalRes, ctInadRes, clTotalRes, clItems, cobItems, motoRes] =
+        await Promise.all([
         api.get<AnalyticsSummary>('/api/v1/analytics/summary'),
         api.get<RecentActivityItem[]>('/api/v1/analytics/recent-activity'),
-        api.get<ContratoOut[]>('/api/v1/contratos'),
-        api.get<ClienteOut[]>('/api/v1/clientes'),
-        api.get<CobrancaOut[]>('/api/v1/cobrancas'),
-        api.get<MotoOut[]>('/api/v1/motos'),
+        api.get<Paginated<ContratoOut>>('/api/v1/contratos', { params: { limit: 1, offset: 0 } }),
+        api.get<Paginated<ContratoOut>>('/api/v1/contratos', {
+          params: { limit: 50, offset: 0, inadimplente: true },
+        }),
+        api.get<Paginated<ClienteOut>>('/api/v1/clientes', { params: { limit: 1, offset: 0 } }),
+        fetchAllPaginated<ClienteOut>(api, '/api/v1/clientes'),
+        fetchAllPaginated<CobrancaOut>(api, '/api/v1/cobrancas'),
+        api.get<Paginated<MotoOut>>('/api/v1/motos', { params: { limit: 1, offset: 0 } }),
       ]);
       setStats(sRes.data);
       setRecentActivity(aRes.data);
-      setInadimplentes(ctRes.data.filter((c) => c.inadimplente));
-      setClientes(clRes.data);
-      setCobrancas(cobRes.data);
-      setTotalMotos(motoRes.data.length);
+      setInadimplentes(ctInadRes.data.items);
+      setClientes(clItems);
+      setCobrancas(cobItems);
+      setTotalMotos(motoRes.data.total);
+      setTotalClientes(clTotalRes.data.total);
+      setTotalContratos(ctTotalRes.data.total);
     } catch (e) {
       setError(parseApiError(e, 'Erro ao buscar dados do dashboard'));
     } finally {
@@ -157,7 +212,56 @@ const Dashboard = () => {
         return (
           <>
             {error && <ErrorBanner message={error} onDismiss={() => setError('')} />}
-            <div className="stats-grid">
+
+            {showTourBanner && showOwnerTour && (
+              <TourWelcomeBanner
+                onStart={() => {
+                  setShowTourBanner(false);
+                  void startTour();
+                }}
+                onDismiss={() => {
+                  dismissOwnerTourBanner();
+                  setShowTourBanner(false);
+                }}
+              />
+            )}
+
+            {showSetupChecklist && (
+              <div
+                className="glass card setup-checklist animate-fade"
+                style={{ marginBottom: 24 }}
+                data-tour="dashboard-alerts"
+              >
+                <h3>Primeiros passos</h3>
+                <p className="text-muted" style={{ fontSize: '0.85rem', marginBottom: 16 }}>
+                  Configure sua operação para começar a gerenciar locações.
+                </p>
+                <ul className="checklist">
+                  <li className={totalMotos > 0 ? 'done' : ''}>
+                    <Check size={14} /> Cadastrar motos na frota
+                  </li>
+                  <li className={totalClientes > 0 ? 'done' : ''}>
+                    <Check size={14} /> Cadastrar clientes
+                  </li>
+                  <li className={totalContratos > 0 ? 'done' : ''}>
+                    <Check size={14} /> Criar um contrato de locação
+                  </li>
+                </ul>
+                <div className="checklist-actions">
+                  <button type="button" className="btn-primary" onClick={() => goToTab('motos')}>
+                    Ir para Frota
+                  </button>
+                  <button type="button" className="btn-secondary" onClick={() => goToTab('clientes')}>
+                    Ir para Clientes
+                  </button>
+                  <button type="button" className="btn-secondary" onClick={() => goToTab('contratos')}>
+                    Ir para Contratos
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <div className="stats-grid" data-tour="stats-grid">
               <StatCard
                 title="Receita Bruta"
                 value={
@@ -227,7 +331,11 @@ const Dashboard = () => {
                   </p>
                 </div>
 
-                <div className="glass card animate-fade" style={{ animationDelay: '0.25s' }}>
+                <div
+                  className="glass card animate-fade"
+                  style={{ animationDelay: '0.25s' }}
+                  data-tour={showSetupChecklist ? undefined : 'dashboard-alerts'}
+                >
                   <div className="card-title-row">
                     <h3>
                       <AlertTriangle size={18} color="var(--danger)" /> Inadimplência
@@ -296,7 +404,13 @@ const Dashboard = () => {
       case 'cobrancas':
         return <ChargesView />;
       case 'ajustes':
-        return <SettingsView />;
+        return showAjustes ? <SettingsView /> : null;
+      case 'admin-operacoes':
+        return isAdmin ? <AdminOperacoesView /> : null;
+      case 'admin-usuarios':
+        return isAdmin ? <AdminUsuariosView /> : null;
+      case 'conta':
+        return <AccountView />;
       default:
         return null;
     }
@@ -325,58 +439,97 @@ const Dashboard = () => {
           </button>
         </div>
 
-        <nav className="nav-menu">
+        <nav className="nav-menu" data-tour="nav-menu">
           <NavItem
             icon={<LayoutDashboard size={20} />}
             label="Visão Geral"
             active={activeTab === 'dashboard'}
             onClick={() => goToTab('dashboard')}
+            tourId="nav-dashboard"
           />
           <NavItem
             icon={<Bike size={20} />}
             label="Gestão de Frota"
             active={activeTab === 'motos'}
             onClick={() => goToTab('motos')}
+            tourId="nav-motos"
           />
           <NavItem
             icon={<Users size={20} />}
             label="Clientes"
             active={activeTab === 'clientes'}
             onClick={() => goToTab('clientes')}
+            tourId="nav-clientes"
           />
           <NavItem
             icon={<FileText size={20} />}
             label="Contratos"
             active={activeTab === 'contratos'}
             onClick={() => goToTab('contratos')}
+            tourId="nav-contratos"
           />
           <NavItem
             icon={<Receipt size={20} />}
             label="Financeiro"
             active={activeTab === 'financeiro'}
             onClick={() => goToTab('financeiro')}
+            tourId="nav-financeiro"
           />
           <NavItem
             icon={<BarChart3 size={20} />}
             label="Métricas"
             active={activeTab === 'metricas'}
             onClick={() => goToTab('metricas')}
+            tourId="nav-metricas"
           />
           <NavItem
-            icon={<Receipt size={20} />}
+            icon={<Banknote size={20} />}
             label="Cobranças"
             active={activeTab === 'cobrancas'}
             onClick={() => goToTab('cobrancas')}
+            tourId="nav-cobrancas"
           />
-          <NavItem
-            icon={<Settings size={20} />}
-            label="Ajustes"
-            active={activeTab === 'ajustes'}
-            onClick={() => goToTab('ajustes')}
-          />
+          {showAjustes && (
+            <NavItem
+              icon={<Settings size={20} />}
+              label="Ajustes"
+              active={activeTab === 'ajustes'}
+              onClick={() => goToTab('ajustes')}
+              tourId="nav-ajustes"
+            />
+          )}
+          {isAdmin && (
+            <>
+              <NavItem
+                icon={<Building2 size={20} />}
+                label="Operações"
+                active={activeTab === 'admin-operacoes'}
+                onClick={() => goToTab('admin-operacoes')}
+              />
+              <NavItem
+                icon={<UserCog size={20} />}
+                label="Usuários"
+                active={activeTab === 'admin-usuarios'}
+                onClick={() => goToTab('admin-usuarios')}
+              />
+            </>
+          )}
         </nav>
 
         <div className="sidebar-footer">
+          {showOwnerTour && (
+            <button
+              type="button"
+              className="conta-link tour-link"
+              data-tour="tour-sidebar-btn"
+              onClick={() => void startTour()}
+            >
+              <HelpCircle size={18} /> Tour guiado
+            </button>
+          )}
+          <button type="button" className="conta-link" onClick={() => goToTab('conta')}>
+            <UserCircle size={18} /> Minha conta
+          </button>
           <div className="user-info">
             <div className="avatar">{user?.email?.[0].toUpperCase()}</div>
             <div className="details">
@@ -403,7 +556,7 @@ const Dashboard = () => {
                 <Menu size={22} />
               </button>
               <div>
-                <h1>{TAB_LABELS[activeTab]}</h1>
+                <h1>{TAB_LABELS[activeTab] ?? 'Painel'}</h1>
                 <p className="text-muted">
                   Bem-vindo, {user?.email.split('@')[0]}
                 </p>
@@ -411,7 +564,7 @@ const Dashboard = () => {
             </div>
             <div className="header-actions">
               {isAdmin && (
-                <div className="scope-select">
+                <div className="scope-select" data-tour="scope-select">
                   <label className="input-label scope-label">Operação (escopo)</label>
                   <select
                     className="input-field"
@@ -636,6 +789,60 @@ const Dashboard = () => {
           padding: 16px;
           border-top: 1px solid var(--glass-border);
         }
+        .conta-link {
+          width: 100%;
+          background: rgba(255, 255, 255, 0.04);
+          border: 1px solid var(--glass-border);
+          color: var(--text-muted);
+          padding: 10px 12px;
+          border-radius: 8px;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          font-size: 0.85rem;
+          margin-bottom: 12px;
+        }
+        .conta-link:hover {
+          color: white;
+          background: rgba(255, 255, 255, 0.08);
+        }
+        .tour-link {
+          border-color: rgba(99, 102, 241, 0.35);
+          color: var(--primary);
+        }
+        .setup-checklist h3 {
+          margin-bottom: 8px;
+        }
+        .checklist {
+          list-style: none;
+          padding: 0;
+          margin: 0 0 16px;
+        }
+        .checklist li {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 8px 0;
+          font-size: 0.9rem;
+          color: var(--text-muted);
+        }
+        .checklist li.done {
+          color: var(--accent);
+        }
+        .checklist-actions {
+          display: flex;
+          gap: 10px;
+          flex-wrap: wrap;
+        }
+        .btn-secondary {
+          background: var(--secondary);
+          color: white;
+          border: none;
+          padding: 10px 16px;
+          border-radius: 8px;
+          cursor: pointer;
+        }
         .user-info {
           display: flex;
           align-items: center;
@@ -781,13 +988,21 @@ const NavItem = ({
   label,
   active,
   onClick,
+  tourId,
 }: {
   icon: React.ReactNode;
   label: string;
   active: boolean;
   onClick: () => void;
+  tourId?: string;
 }) => (
-  <div className={`nav-item ${active ? 'active' : ''}`} onClick={onClick} role="button" tabIndex={0}>
+  <div
+    className={`nav-item ${active ? 'active' : ''}`}
+    onClick={onClick}
+    role="button"
+    tabIndex={0}
+    data-tour={tourId}
+  >
     {icon}
     <span>{label}</span>
     <style jsx>{`
@@ -860,8 +1075,17 @@ const StatCard = ({
 );
 
 const MainApp = () => {
-  const { token } = useAuth();
-  return token ? <Dashboard /> : <Login />;
+  const { token, user } = useAuth();
+  if (!token) return <Login />;
+  if (!user) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center' }} className="text-muted">
+        Carregando...
+      </div>
+    );
+  }
+  if (user.tipo === 'cliente') return <ClientPortalView />;
+  return <Dashboard />;
 };
 
 function App() {

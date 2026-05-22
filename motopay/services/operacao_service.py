@@ -1,22 +1,41 @@
 from __future__ import annotations
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from motopay.domain.enums import UserRole
+from motopay.domain.enums import PaymentProvider, UserRole
 from motopay.domain.exceptions import ConflictError, ForbiddenError
-from motopay.infrastructure.db.models import Operacao, Usuario
+from motopay.infrastructure.db.models import Cliente, Operacao, Usuario
+from motopay.infrastructure.telegram.templates import (
+    list_template_meta,
+    merge_template_overrides,
+    render_template,
+    resolve_templates,
+    sample_context_for_key,
+)
 from motopay.interfaces.api.deps import CurrentUser
-from motopay.interfaces.api.schemas import OperacaoCreate, OperacaoUpdate, UsuarioCreate
+from motopay.interfaces.api.schemas import OperacaoCreate, OperacaoOut, OperacaoUpdate, UserAdminOut, UsuarioCreate
 from motopay.services.auth_service import hash_password
 
 
-def create_operacao(db: Session, body: OperacaoCreate) -> Operacao:
+def operacao_to_out(op: Operacao) -> OperacaoOut:
+    return OperacaoOut(
+        id=op.id,
+        nome=op.nome,
+        created_at=op.created_at,
+        multa_fixa_percentual=op.multa_fixa_percentual,
+        juros_diario_percentual=op.juros_diario_percentual,
+        telegram_templates=resolve_templates(op.telegram_templates),
+        payment_provider=PaymentProvider(op.payment_provider or PaymentProvider.ASAAS.value),
+    )
+
+
+def create_operacao(db: Session, body: OperacaoCreate) -> OperacaoOut:
     op = Operacao(nome=body.nome.strip())
     db.add(op)
     db.commit()
     db.refresh(op)
-    return op
+    return operacao_to_out(op)
 
 
 def create_usuario_admin(db: Session, body: UsuarioCreate) -> Usuario:
@@ -24,17 +43,29 @@ def create_usuario_admin(db: Session, body: UsuarioCreate) -> Usuario:
         raise ConflictError("E-mail já cadastrado")
     if body.tipo == UserRole.DONO and body.operacao_id is None:
         raise ConflictError("Dono exige operacao_id")
+    if body.tipo == UserRole.OPERADOR and body.operacao_id is None:
+        raise ConflictError("Operador exige operacao_id")
+    if body.tipo == UserRole.CLIENTE:
+        if body.cliente_id is None:
+            raise ConflictError("Cliente exige cliente_id")
+        if body.operacao_id is not None:
+            raise ConflictError("Usuário cliente não deve ter operacao_id")
     if body.tipo == UserRole.ADMIN and body.operacao_id is not None:
         raise ConflictError("Admin não deve ter operacao_id")
     if body.operacao_id is not None:
         parent = db.get(Operacao, body.operacao_id)
         if not parent:
             raise ConflictError("Operação inexistente")
+    if body.cliente_id is not None:
+        cl = db.get(Cliente, body.cliente_id)
+        if not cl:
+            raise ConflictError("Cliente inexistente")
     user = Usuario(
         email=str(body.email).lower(),
         senha_hash=hash_password(body.password),
         tipo=body.tipo.value,
         operacao_id=body.operacao_id,
+        cliente_id=body.cliente_id,
     )
     db.add(user)
     db.commit()
@@ -42,18 +73,66 @@ def create_usuario_admin(db: Session, body: UsuarioCreate) -> Usuario:
     return user
 
 
+def _usuario_to_admin_out(user: Usuario, operacao_nome: str | None = None) -> UserAdminOut:
+    return UserAdminOut(
+        id=user.id,
+        email=user.email,
+        tipo=UserRole(user.tipo),
+        operacao_id=user.operacao_id,
+        cliente_id=user.cliente_id,
+        created_at=user.created_at,
+        operacao_nome=operacao_nome,
+    )
+
+
+def list_usuarios_admin(
+    db: Session,
+    *,
+    tipo: UserRole | None = None,
+    operacao_id: int | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> tuple[list[UserAdminOut], int]:
+    base = select(Usuario, Operacao.nome).outerjoin(Operacao, Usuario.operacao_id == Operacao.id)
+    count_q = select(func.count()).select_from(Usuario)
+    if tipo is not None:
+        base = base.where(Usuario.tipo == tipo.value)
+        count_q = count_q.where(Usuario.tipo == tipo.value)
+    if operacao_id is not None:
+        base = base.where(Usuario.operacao_id == operacao_id)
+        count_q = count_q.where(Usuario.operacao_id == operacao_id)
+    total = int(db.scalar(count_q) or 0)
+    rows = db.execute(
+        base.order_by(Usuario.created_at.desc()).limit(limit).offset(offset)
+    ).all()
+    items = [_usuario_to_admin_out(user, op_nome) for user, op_nome in rows]
+    return items, total
+
+
 def get_operacao_or_404(db: Session, operacao_id: int) -> Operacao | None:
     return db.get(Operacao, operacao_id)
 
 
-def list_operacoes(db: Session, user: CurrentUser) -> list[Operacao]:
+def list_operacoes(db: Session, user: CurrentUser) -> list[OperacaoOut]:
     if user.role != UserRole.ADMIN:
         raise ForbiddenError("Somente admin")
-    return list(db.scalars(select(Operacao).order_by(Operacao.id)).all())
+    rows = list(db.scalars(select(Operacao).order_by(Operacao.id)).all())
+    return [operacao_to_out(op) for op in rows]
 
 
-def update_operacao(db: Session, operacao_id: int, body: OperacaoUpdate) -> Operacao:
+def get_telegram_template_meta() -> list[dict]:
+    return list_template_meta()
+
+
+def preview_telegram_template(*, key: str, template: str | None, context: dict | None) -> str:
+    overrides = {key: template} if template else None
+    ctx = context or sample_context_for_key(key)
+    return render_template(key, overrides=overrides, **ctx)
+
+
+def update_operacao(db: Session, operacao_id: int, body: OperacaoUpdate) -> OperacaoOut:
     from motopay.domain.exceptions import NotFoundError
+
     op = db.get(Operacao, operacao_id)
     if not op:
         raise NotFoundError("Operação não encontrada")
@@ -63,7 +142,13 @@ def update_operacao(db: Session, operacao_id: int, body: OperacaoUpdate) -> Oper
         op.multa_fixa_percentual = body.multa_fixa_percentual
     if body.juros_diario_percentual is not None:
         op.juros_diario_percentual = body.juros_diario_percentual
+    if body.telegram_templates is not None:
+        op.telegram_templates = merge_template_overrides(op.telegram_templates, body.telegram_templates)
+    if body.payment_provider is not None:
+        op.payment_provider = body.payment_provider.value
+    if body.mercadopago_access_token is not None:
+        op.mercadopago_access_token = body.mercadopago_access_token.strip() or None
     db.add(op)
     db.commit()
     db.refresh(op)
-    return op
+    return operacao_to_out(op)

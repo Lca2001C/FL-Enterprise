@@ -1,5 +1,35 @@
 /** Formas aproximadas do JSON da API (decimais viram number). */
 
+export type Paginated<T> = {
+  items: T[];
+  total: number;
+  limit: number;
+  offset: number;
+};
+
+export type UserOut = {
+  id: number;
+  email: string;
+  tipo: 'admin' | 'dono' | 'operador' | 'cliente';
+  operacao_id: number | null;
+  cliente_id: number | null;
+};
+
+export type UserAdminOut = UserOut & {
+  created_at: string;
+  operacao_nome: string | null;
+};
+
+export type OperacaoOut = {
+  id: number;
+  nome: string;
+  created_at: string;
+  multa_fixa_percentual: number;
+  juros_diario_percentual: number;
+  telegram_templates: Record<string, string>;
+  payment_provider: 'asaas' | 'mercadopago';
+};
+
 export type MotoOut = {
   id: number;
   operacao_id: number;
@@ -37,12 +67,29 @@ export type ContratoOut = {
   promessa_pagamento_em: string | null;
   promessa_notas: string | null;
   asaas_subscription_id: string | null;
+  mercadopago_subscription_id: string | null;
 };
 
 export type OperacaoConfig = {
   nome: string;
   multa_fixa_percentual: number;
   juros_diario_percentual: number;
+  telegram_templates: Record<string, string>;
+  payment_provider: 'asaas' | 'mercadopago';
+  mercadopago_access_token?: string;
+};
+
+export type TelegramTemplateMeta = {
+  key: string;
+  label: string;
+  description: string;
+  placeholders: string[];
+  group: 'notificacoes' | 'bot';
+  default: string;
+};
+
+export type TelegramTemplatePreviewOut = {
+  text: string;
 };
 
 export type FinanceiroOut = {
@@ -63,6 +110,8 @@ export type CobrancaOut = {
   valor: number;
   vencimento: string;
   asaas_payment_id: string | null;
+  mercadopago_payment_id: string | null;
+  payment_gateway: 'asaas' | 'mercadopago';
   pix_copia_cola: string | null;
   status: string;
   dias_atraso: number;
@@ -109,6 +158,12 @@ export type AppTab =
   | 'financeiro'
   | 'metricas'
   | 'cobrancas'
-  | 'ajustes';
+  | 'ajustes'
+  | 'admin-operacoes'
+  | 'admin-usuarios'
+  | 'conta'
+  | 'portal';
 
-export type ContractsFilter = 'todos' | 'ativos' | 'inadimplentes';
+export type ContractsFilter = 'todos' | 'ativos' | 'inadimplentes' | 'com_promessa';
+
+export const PAGE_SIZE = 50;

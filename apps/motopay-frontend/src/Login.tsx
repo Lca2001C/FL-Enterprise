@@ -5,8 +5,8 @@ import { parseApiError } from './utils/apiError';
 
 const Login = () => {
   const { login, apiBase, setApiBase } = useAuth();
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [email, setEmail] = useState(import.meta.env.PROD ? '' : 'admin@motopay.local');
+  const [password, setPassword] = useState(import.meta.env.PROD ? '' : 'adminadmin');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [showSettings, setShowSettings] = useState(false);

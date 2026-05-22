@@ -32,6 +32,9 @@ class Operacao(Base):
     )
     multa_fixa_percentual: Mapped[Decimal] = mapped_column(Numeric(5, 2), server_default="2.00", nullable=False)
     juros_diario_percentual: Mapped[Decimal] = mapped_column(Numeric(5, 2), server_default="0.10", nullable=False)
+    telegram_templates: Mapped[dict[str, str] | None] = mapped_column(JSONB, nullable=True)
+    payment_provider: Mapped[str] = mapped_column(String(32), nullable=False, server_default="asaas")
+    mercadopago_access_token: Mapped[str | None] = mapped_column(String(512), nullable=True)
 
     usuarios: Mapped[list[Usuario]] = relationship(back_populates="operacao")
     motos: Mapped[list[Moto]] = relationship(back_populates="operacao")
@@ -48,11 +51,15 @@ class Usuario(Base):
     operacao_id: Mapped[int | None] = mapped_column(
         BigInteger, ForeignKey("operacoes.id", ondelete="RESTRICT"), nullable=True
     )
+    cliente_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("clientes.id", ondelete="SET NULL"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
     operacao: Mapped[Operacao | None] = relationship(back_populates="usuarios")
+    cliente: Mapped[Cliente | None] = relationship(foreign_keys=[cliente_id])
 
 
 class Moto(Base):
@@ -114,6 +121,8 @@ class Contrato(Base):
     asaas_subscription_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     promessa_pagamento_em: Mapped[date | None] = mapped_column(Date, nullable=True)
     promessa_notas: Mapped[str | None] = mapped_column(Text, nullable=True)
+    ultima_cobranca_telegram_em: Mapped[date | None] = mapped_column(Date, nullable=True)
+    mercadopago_subscription_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -161,6 +170,8 @@ class Cobranca(Base):
     valor: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
     vencimento: Mapped[date] = mapped_column(Date, nullable=False)
     asaas_payment_id: Mapped[str | None] = mapped_column(String(64), unique=True, nullable=True, index=True)
+    mercadopago_payment_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    payment_gateway: Mapped[str] = mapped_column(String(32), nullable=False, server_default="asaas")
     pix_copia_cola: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
     created_at: Mapped[datetime] = mapped_column(

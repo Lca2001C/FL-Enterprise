@@ -15,12 +15,19 @@ from motopay.infrastructure.security.rate_limit import (
 )
 from motopay.infrastructure.security.refresh_tokens import (
     create_refresh_token,
+    revoke_all_refresh_tokens_for_user,
     revoke_refresh_token,
     validate_refresh_token,
 )
 from motopay.interfaces.api.deps import CurrentUser, get_current_user
-from motopay.interfaces.api.schemas import LoginRequest, RefreshRequest, TokenResponse, UserOut
-from motopay.services.auth_service import authenticate_user, create_access_token
+from motopay.interfaces.api.schemas import (
+    ChangePasswordRequest,
+    LoginRequest,
+    RefreshRequest,
+    TokenResponse,
+    UserOut,
+)
+from motopay.services.auth_service import authenticate_user, change_password, create_access_token
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -73,11 +80,35 @@ def logout(body: RefreshRequest) -> dict[str, bool]:
     return {"ok": True}
 
 
+@router.post("/logout-all")
+def logout_all(
+    user: CurrentUser = Depends(get_current_user),
+) -> dict[str, int]:
+    removed = revoke_all_refresh_tokens_for_user(user.id)
+    return {"ok": True, "revoked": removed}
+
+
+@router.post("/change-password")
+def change_password_route(
+    body: ChangePasswordRequest,
+    user: CurrentUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict[str, bool]:
+    try:
+        change_password(db, user.id, current=body.current_password, new=body.new_password)
+    except UnauthorizedError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+    revoke_all_refresh_tokens_for_user(user.id)
+    return {"ok": True}
+
+
 @router.get("/me", response_model=UserOut)
-def read_me(user: CurrentUser = Depends(get_current_user)) -> UserOut:
+def read_me(user: CurrentUser = Depends(get_current_user), db: Session = Depends(get_db)) -> UserOut:
+    u = db.get(Usuario, user.id)
     return UserOut(
         id=user.id,
         email=user.email,
         tipo=user.role,
         operacao_id=user.operacao_id,
+        cliente_id=u.cliente_id if u else user.cliente_id,
     )

@@ -50,3 +50,18 @@ def revoke_refresh_token(token: str) -> None:
         get_redis_connection().delete(f"{_PREFIX}{token}")
     except redis.RedisError as e:
         logger.warning("refresh_token_revoke_failed: %s", e)
+
+
+def revoke_all_refresh_tokens_for_user(user_id: int) -> int:
+    """Remove todos refresh tokens do usuário (scan por padrão)."""
+    r = get_redis_connection()
+    removed = 0
+    try:
+        for key in r.scan_iter(f"{_PREFIX}*"):
+            raw = r.get(key)
+            if raw is not None and int(raw) == user_id:
+                r.delete(key)
+                removed += 1
+    except (redis.RedisError, ValueError) as e:
+        logger.warning("refresh_token_revoke_all_failed user_id=%s: %s", user_id, e)
+    return removed

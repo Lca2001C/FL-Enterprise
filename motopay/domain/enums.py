@@ -37,3 +37,13 @@ class DomainEventType(str, Enum):
     PAGAMENTO_CONFIRMADO = "PAGAMENTO_CONFIRMADO"
     CLIENTE_INADIMPLENTE = "CLIENTE_INADIMPLENTE"
     MOTO_EM_MANUTENCAO = "MOTO_EM_MANUTENCAO"
+
+
+class PaymentProvider(str, Enum):
+    ASAAS = "asaas"
+    MERCADOPAGO = "mercadopago"
+
+
+class PaymentGateway(str, Enum):
+    ASAAS = "asaas"
+    MERCADOPAGO = "mercadopago"

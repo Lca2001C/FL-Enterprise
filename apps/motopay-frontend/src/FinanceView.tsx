@@ -1,16 +1,21 @@
 import { useState, useEffect, type FormEvent } from 'react';
 import { ArrowUpCircle, ArrowDownCircle, Download, Plus } from 'lucide-react';
 import { useAuth } from './AuthContext';
-import type { FinanceiroOut, MotoOut } from './apiTypes';
+import type { FinanceiroOut, MotoOut, Paginated } from './apiTypes';
+import { PAGE_SIZE } from './apiTypes';
 import { exportCsv, formatBrl, formatDate, todayIso } from './utils/format';
 import { parseApiError } from './utils/apiError';
+import { fetchAllPaginated } from './utils/fetchPaginated';
 import EmptyState from './components/EmptyState';
 import ErrorBanner from './components/ErrorBanner';
+import AdminScopeBanner from './components/AdminScopeBanner';
 
 const FinanceView = () => {
   const { api } = useAuth();
   const [entries, setEntries] = useState<FinanceiroOut[]>([]);
   const [motos, setMotos] = useState<MotoOut[]>([]);
+  const [total, setTotal] = useState(0);
+  const [offset, setOffset] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [showModal, setShowModal] = useState(false);
@@ -22,16 +27,20 @@ const FinanceView = () => {
     moto_id: '',
   });
 
-  const fetchFinance = async () => {
+  const fetchFinance = async (pageOffset = offset) => {
     setLoading(true);
     setError('');
     try {
-      const [finRes, motoRes] = await Promise.all([
-        api.get<FinanceiroOut[]>('/api/v1/financeiro'),
-        api.get<MotoOut[]>('/api/v1/motos'),
+      const [finRes, motoItems] = await Promise.all([
+        api.get<Paginated<FinanceiroOut>>('/api/v1/financeiro', {
+          params: { limit: PAGE_SIZE, offset: pageOffset },
+        }),
+        fetchAllPaginated<MotoOut>(api, '/api/v1/motos'),
       ]);
-      setEntries(finRes.data);
-      setMotos(motoRes.data);
+      setEntries(finRes.data.items);
+      setTotal(finRes.data.total);
+      setOffset(pageOffset);
+      setMotos(motoItems);
     } catch (e) {
       setError(parseApiError(e, 'Erro ao carregar financeiro'));
     } finally {
@@ -80,7 +89,7 @@ const FinanceView = () => {
           <h2>Movimentação Financeira</h2>
           <p className="text-muted">Histórico de entradas e saídas</p>
         </div>
-        <div className="header-actions">
+        <div className="header-actions" data-tour="finance-actions">
           <button type="button" className="btn-secondary" onClick={handleExport} disabled={entries.length === 0}>
             <Download size={20} /> Exportar CSV
           </button>
@@ -91,6 +100,7 @@ const FinanceView = () => {
       </div>
 
       {error && <ErrorBanner message={error} onDismiss={() => setError('')} />}
+      <AdminScopeBanner />
 
       <div className="glass table-container">
         {loading ? (
@@ -146,6 +156,30 @@ const FinanceView = () => {
           </table>
         )}
       </div>
+
+      {total > PAGE_SIZE && (
+        <div className="pagination glass">
+          <button
+            type="button"
+            className="btn-secondary"
+            disabled={offset === 0 || loading}
+            onClick={() => void fetchFinance(Math.max(0, offset - PAGE_SIZE))}
+          >
+            Anterior
+          </button>
+          <span className="text-muted">
+            {offset + 1}–{Math.min(offset + PAGE_SIZE, total)} de {total}
+          </span>
+          <button
+            type="button"
+            className="btn-secondary"
+            disabled={offset + PAGE_SIZE >= total || loading}
+            onClick={() => void fetchFinance(offset + PAGE_SIZE)}
+          >
+            Próxima
+          </button>
+        </div>
+      )}
 
       {showModal && (
         <div className="modal-overlay">
@@ -293,6 +327,14 @@ const FinanceView = () => {
           justify-content: flex-end;
           gap: 12px;
           margin-top: 20px;
+        }
+        .pagination {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 12px 16px;
+          margin-top: 16px;
+          border-radius: 12px;
         }
       `}</style>
     </div>

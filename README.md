@@ -35,7 +35,8 @@ Mais do que um sistema de controle, ele evolui para uma **infraestrutura intelig
 
 ### 💳 Automação de Pagamentos
 
-* Integração com gateways (Asaas / Mercado Pago)
+* Integração **Asaas** (Pix, assinatura, webhook completo)
+* **Mercado Pago — MVP:** Pix + assinatura recorrente (`preapproval`) + webhook; escopo menor que Asaas (sem paridade total de cartão/recorrência)
 * Cobranças recorrentes:
 
   * Semanais
@@ -155,6 +156,7 @@ O sistema possui **dois níveis de permissão**, focando simplicidade e controle
 * Visualização financeira completa da sua operação
 * Registro de manutenção
 * Acompanhamento de inadimplência
+* **Tour guiado no painel:** após login, use o banner na Visão Geral ou o botão **Tour guiado** no menu lateral para percorrer as telas com explicações sobre frota, cobrança automática, Telegram e ajustes. Para repetir depois, acesse **Minha Conta → Ajuda → Reiniciar tour guiado**.
 
 ---
 
@@ -185,12 +187,13 @@ Reações automáticas:
 ## 📲 Experiência do Usuário (UX)
 
 * **Painel web (React/Vite):** [`apps/motopay-frontend`](apps/motopay-frontend) — usado por **admin** e **dono** da operação.
+* **Admin — Usuários:** aba **Usuários** lista todos os donos/operadores/clientes do sistema (filtros por tipo e operação) e permite criar novos acessos.
 * **Dono:** vê apenas dados da sua operação (`operacao_id` no token). Telas principais:
   * **Contratos** — nova locação (cliente + moto + valor), encerrar, gerar Pix/assinatura Asaas.
   * **Clientes** — cadastro com **Telegram ID** (obrigatório para bot: lembretes, Pix em atraso, confirmação).
   * **Cobranças** — listagem com multa/juros, copiar Pix em `pendente` ou `atrasado`.
   * **Dashboard** — inadimplência resumida com atalho para contratos e copiar Pix.
-  * **Ajustes** — multa fixa e juros diários (`/operacoes/me`).
+  * **Ajustes** — multa fixa, juros diários e **mensagens do Telegram** (notificações e comandos do bot), editáveis por operação em *Ajustes da Operação*; placeholders como `{placa}` e `{valor_total}`; worker e bot leem do banco na próxima mensagem (sem redeploy).
 * **Admin:** mesmo painel + seletor de operação no topo; branding "MotoPay Admin".
 * Sessão renovada automaticamente via refresh token (`POST /auth/refresh`).
 * **PWA (instalável no celular):** após deploy em **HTTPS**, o mesmo painel pode ser adicionado à tela inicial (Chrome/Android: menu “Instalar app”; Safari/iOS: Compartilhar → “Adicionar à Tela de Início”).  
@@ -292,10 +295,14 @@ cp .env.example .env
 # - REDIS_URL, ASAAS_*, TELEGRAM_BOT_TOKEN, ASAAS_WEBHOOK_TOKEN
 python -m pip install -e .
 
-# Se 'alembic' der erro de "module not found", use o caminho completo do executável:
-# Exemplo Windows: .../Scripts/alembic upgrade head
+# Se 'alembic' der erro de "module not found", use o executável do venv (Windows):
+#   .\Scripts\alembic.exe upgrade head
+# Ou: py -m alembic upgrade head (se não houver pasta local `alembic/` conflitando)
 alembic upgrade head
-# Inclui 003_operacao_multas (multa/juros % por operação, usados nas cobranças).
+# Migrações até 005_product_expansion (payment_provider, MP ids, promessa dedup, cliente_id em usuarios).
+
+# Postgres local na porta 5434 (se 5432 estiver ocupada):
+# DATABASE_URL=postgresql+psycopg://postgres:postgres@localhost:5434/motopay
 
 PYTHONPATH=. python scripts/seed_admin.py
 ```
@@ -352,6 +359,30 @@ Configure na Asaas a URL:
 
 O corpo JSON esperado segue o padrão Asaas (`event`, `payment`). Eventos `PAYMENT_RECEIVED` / `PAYMENT_CONFIRMED` atualizam `cobrancas`, lançam `financeiro`, recalculam score e enfileiram notificação Telegram.
 
+### Webhook Mercado Pago (MVP)
+
+`POST {API_PUBLIC_BASE_URL}/webhooks/mercadopago`
+
+Configure `MERCADOPAGO_ACCESS_TOKEN` e opcionalmente `MERCADOPAGO_WEBHOOK_SECRET`. Pagamentos Pix confirmados (`approved`) disparam o mesmo fluxo de baixa que a Asaas.
+
+### Papéis de usuário
+
+| Papel | Acesso |
+|-------|--------|
+| **admin** | Todas as operações; criar operações e usuários |
+| **dono** | CRUD da própria operação + ajustes |
+| **operador** | CRUD operacional (frota, clientes, contratos, cobranças); sem ajustes/usuários |
+| **cliente** | Portal: contrato ativo, cobranças pendentes (`/api/v1/portal/*`) |
+
+### Bot Telegram — comandos
+
+* `/promessa <dias> <motivo>` — registrar promessa de pagamento
+* `/pix` — última cobrança pendente com Pix
+* `/status` — vencimento e inadimplência
+* `/ajuda` — ajuda fixa ou resposta via OpenAI se `AI_BOT_ENABLED=true`
+
+Beat diário configurável: `CELERY_BEAT_HOUR` / `CELERY_BEAT_MINUTE` (padrão 11:00).
+
 ### Health check da API
 
 * **GET** `/health` — retorno JSON `{"status":"ok"}`. Usado pelo `docker compose` (serviço `api`) e por balanceadores. Base path raiz (não usa prefixo `/api/v1`).
@@ -359,6 +390,16 @@ O corpo JSON esperado segue o padrão Asaas (`event`, `payment`). Eventos `PAYME
 ### Deploy nuvem (Railway · Supabase · Upstash · Vercel)
 
 Referência rápida (detalhes de variáveis: [`.env.example`](.env.example)):
+
+#### Checklist rápido (pré-produção)
+
+1. **`ENVIRONMENT=production`** e **`JWT_SECRET`** forte (sem prefixo `change-me`).
+2. **`ASAAS_API_KEY`**, URL de **Asaas produção** (não `sandbox`), **`ASAAS_WEBHOOK_TOKEN`**, webhook Asaas HTTPS apontando para **`/webhooks/asaas`** na API (token em query ou header; ver seção webhook).
+3. **`TELEGRAM_BOT_TOKEN`**, **`REDIS_URL`** (ex.: Upstash **`rediss://`**), Postgres (`DATABASE_URL` pooler + `DATABASE_MIGRATION_URL` direto para Alembic se precisar).
+4. **`TRUSTED_PROXY_IPS`** se a API ficar atrás de proxy/balanceador; **`CORS_ORIGINS`** com a(s) URL(s) do admin (ex.: Vercel).
+5. Build do admin com **`VITE_API_BASE_URL`** = URL HTTPS pública da API.
+6. **Release/deploy:** `alembic upgrade head` antes de aceitar tráfego; pelo menos um processo **Celery Beat** para agendamentos.
+7. Seeds: só com **`ALLOW_PRODUCTION_SEED=true`** e senhas fortes via **`SEED_*`** — não use credenciais padrão (`adminadmin` / `donodono`).
 
 **Supabase (Postgres)**
 
@@ -389,6 +430,17 @@ Referência rápida (detalhes de variáveis: [`.env.example`](.env.example)):
 `vercel.json` no frontend inclui rewrites SPA (fallback `index.html`) e headers de segurança compatíveis com chamadas HTTPS à API.
 
 ### Docker
+
+**Início rápido (recomendado):**
+
+```bash
+chmod +x scripts/start.sh   # uma vez (Linux/macOS/Git Bash)
+./scripts/start.sh
+```
+
+O script [`scripts/start.sh`](scripts/start.sh) cria `.env` se ausente, sobe `db`, `redis`, `api`, `worker`, `beat`, `frontend` (e `bot` se `TELEGRAM_BOT_TOKEN` estiver definido), aguarda `/health`, executa migrations e seed. Opções: `--dev` (hot reload), `--no-seed`, `--down` (parar stack).
+
+**Manual:**
 
 ```bash
 docker compose up --build
@@ -436,6 +488,8 @@ Mensagens como `lookup proxycamg...: no such host` indicam que o Docker está us
 
 * **Repositório:** não versionar `.env`, `_env` nem arquivos `celerybeat-schedule*`. Quem já commitou `_env` ou `.env` no passado deve auditar o histórico, por exemplo: `git log --all --full-history --name-only -- _env` (e o mesmo para `.env`). Se aparecerem commits com segredos, rotacione credenciais e considere `git filter-repo`.
 * **`JWT_SECRET`:** com `ENVIRONMENT=production`, a aplicação **recusa** valores ausentes ou que comecem com `change-me` (`RuntimeError` ao carregar config). Em desenvolvimento (`development`), o placeholder do `.env.example` ainda é aceito. Gere um segredo forte: `python -c "import secrets; print(secrets.token_hex(32))"`.
+* **Produção (config):** além disso, com `ENVIRONMENT=production` a API **exige** `ASAAS_WEBHOOK_TOKEN`, `ASAAS_API_KEY`, `TELEGRAM_BOT_TOKEN` e URL da Asaas **sem** sandbox, salvo escape hatches em [`.env.example`](.env.example) (`ALLOW_PRODUCTION_WITHOUT_*`, `ALLOW_ASAAS_SANDBOX_IN_PRODUCTION`). Lista vazia de `CORS_ORIGINS`, Redis ou banco em `localhost` só gera **aviso de log**.
+* **Seed em produção:** `scripts/seed_admin.py` **sai com erro** se `ENVIRONMENT=production` sem `ALLOW_PRODUCTION_SEED=true`; use sempre senhas customizadas neste cenário.
 * **Telegram:** sem `TELEGRAM_BOT_TOKEN` (bot criado no @BotFather), o bot e parte das notificações não funcionam.
 * **Asaas:** sem `ASAAS_API_KEY` e webhook configurado, cobranças Pix e confirmação de pagamento ficam bloqueadas.
 * **Vazamento no histórico Git:** se `.env` ou chaves reais já foram commitados, além de remover do índice atual, **rotacione** todos os segredos (JWT, Asaas, Telegram, senha do banco) e, se o remoto já foi público, considere limpar o histórico com ferramentas como `git filter-repo` com apoio do time.

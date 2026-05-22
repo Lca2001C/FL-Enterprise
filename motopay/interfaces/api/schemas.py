@@ -2,11 +2,27 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Any
+from typing import Any, Generic, TypeVar
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
-from motopay.domain.enums import CicloCobranca, ContratoStatus, FinanceiroTipo, MotoStatus, UserRole
+from motopay.domain.enums import (
+    CicloCobranca,
+    ContratoStatus,
+    FinanceiroTipo,
+    MotoStatus,
+    PaymentProvider,
+    UserRole,
+)
+
+T = TypeVar("T")
+
+
+class Paginated(BaseModel, Generic[T]):
+    items: list[T]
+    total: int
+    limit: int
+    offset: int
 
 
 class TokenResponse(BaseModel):
@@ -31,6 +47,17 @@ class UserOut(BaseModel):
     email: str
     tipo: UserRole
     operacao_id: int | None
+    cliente_id: int | None = None
+
+
+class UserAdminOut(UserOut):
+    created_at: datetime
+    operacao_nome: str | None = None
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str = Field(min_length=8, max_length=128)
 
 
 class OperacaoCreate(BaseModel):
@@ -45,12 +72,36 @@ class OperacaoOut(BaseModel):
     created_at: datetime
     multa_fixa_percentual: Decimal
     juros_diario_percentual: Decimal
+    telegram_templates: dict[str, str] = Field(default_factory=dict)
+    payment_provider: PaymentProvider = PaymentProvider.ASAAS
 
 
 class OperacaoUpdate(BaseModel):
     nome: str | None = None
     multa_fixa_percentual: Decimal | None = None
     juros_diario_percentual: Decimal | None = None
+    telegram_templates: dict[str, str | None] | None = None
+    payment_provider: PaymentProvider | None = None
+    mercadopago_access_token: str | None = None
+
+
+class TelegramTemplatePreviewRequest(BaseModel):
+    key: str = Field(min_length=1)
+    template: str | None = None
+    context: dict[str, Any] | None = None
+
+
+class TelegramTemplatePreviewOut(BaseModel):
+    text: str
+
+
+class TelegramTemplateMetaOut(BaseModel):
+    key: str
+    label: str
+    description: str
+    placeholders: list[str]
+    group: str
+    default: str
 
 
 class UsuarioCreate(BaseModel):
@@ -58,6 +109,7 @@ class UsuarioCreate(BaseModel):
     password: str = Field(min_length=8, max_length=128)
     tipo: UserRole
     operacao_id: int | None = None
+    cliente_id: int | None = None
 
 
 class MotoCreate(BaseModel):
@@ -144,6 +196,7 @@ class ContratoOut(BaseModel):
     promessa_pagamento_em: date | None
     promessa_notas: str | None
     asaas_subscription_id: str | None = None
+    mercadopago_subscription_id: str | None = None
 
 
 class FinanceiroCreate(BaseModel):
@@ -175,6 +228,8 @@ class CobrancaOut(BaseModel):
     valor: Decimal
     vencimento: date
     asaas_payment_id: str | None
+    mercadopago_payment_id: str | None = None
+    payment_gateway: str = "asaas"
     pix_copia_cola: str | None
     status: str
     dias_atraso: int = 0
