@@ -440,6 +440,16 @@ chmod +x scripts/start.sh   # uma vez (Linux/macOS/Git Bash)
 
 O script [`scripts/start.sh`](scripts/start.sh) cria `.env` se ausente, sobe `db`, `redis`, `api`, `worker`, `beat`, `frontend` (e `bot` se `TELEGRAM_BOT_TOKEN` estiver definido), aguarda `/health`, executa migrations e seed. Opções: `--dev` (hot reload), `--no-seed`, `--down` (parar stack).
 
+**Dados demo (opcional):** após o seed inicial (`seed_admin.py`), popule motos, clientes e cobranças de exemplo com:
+
+```bash
+docker compose run --rm api python scripts/seed_demo.py
+# ou, fora do Docker:
+PYTHONPATH=. python scripts/seed_demo.py
+```
+
+Requer que [`scripts/seed_admin.py`](scripts/seed_admin.py) já tenha sido executado (cria operação e usuários base).
+
 **Manual:**
 
 ```bash
@@ -462,9 +472,13 @@ Serviços aguardam `db` e `redis` **saudáveis** antes de subir a API; o worker 
 
 Mensagens como `lookup proxycamg...: no such host` indicam que o Docker está usando um **proxy** (`HTTP_PROXY`/`HTTPS_PROXY` ou configuração no Docker Desktop) cujo hostname **não resolve** na sua rede (ex.: fora da VPN corporativa).
 
-1. **Proxy só no shell** — limpa `HTTP_PROXY`/`HTTPS_PROXY` **só nesta execução** e roda o compose:
-   - PowerShell: `.\scripts\docker_compose_up.ps1`
-   - Bash: `bash scripts/docker_compose_up.sh`
+1. **Proxy só no shell** — limpa `HTTP_PROXY`/`HTTPS_PROXY` **só nesta execução** e sobe a stack:
+   - Bash / Git Bash: `./scripts/start.sh` (já faz `unset` de proxy antes do compose)
+   - PowerShell (manual):
+     ```powershell
+     Remove-Item Env:HTTP_PROXY, Env:HTTPS_PROXY, Env:http_proxy, Env:https_proxy -ErrorAction SilentlyContinue
+     docker compose up --build
+     ```
    Se o pull **ainda** falhar, o daemon do Docker pode estar usando proxy nas configurações do Desktop (passo seguinte).
 
 2. **Docker Desktop** → *Settings* → *Resources* → *Proxies*: desative proxy manual incorreto ou *Apply & Restart* após corrigir.
@@ -479,7 +493,6 @@ Mensagens como `lookup proxycamg...: no such host` indicam que o Docker está us
 * `motopay/services` — regras de negócio e casos de uso
 * `motopay/infrastructure` — SQLAlchemy, Celery, Asaas, Telegram
 * `motopay/interfaces/api` — FastAPI, DTOs Pydantic
-* `motopay/interfaces/events` — publicação de eventos
 * `apps/motopay-frontend` — UI administrativa React (Vite; consome a API via HTTP)
 
 ---

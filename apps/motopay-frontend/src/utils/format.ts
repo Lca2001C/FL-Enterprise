@@ -29,7 +29,7 @@ export function todayIso(): string {
   return new Date().toISOString().split('T')[0];
 }
 
-export function addDaysIso(iso: string, days: number): string {
+function addDaysIso(iso: string, days: number): string {
   const d = new Date(iso + 'T12:00:00');
   d.setDate(d.getDate() + days);
   return d.toISOString().split('T')[0];

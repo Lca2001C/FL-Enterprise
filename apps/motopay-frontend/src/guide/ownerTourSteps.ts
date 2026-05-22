@@ -142,7 +142,7 @@ export function isOwnerTourEligible(role: string | null | undefined): boolean {
   return role === 'dono' || role === 'admin';
 }
 
-export function hasOwnerTourCompleted(): boolean {
+function hasOwnerTourCompleted(): boolean {
   return localStorage.getItem(OWNER_TOUR_DONE_KEY) === '1';
 }
 
@@ -154,7 +154,7 @@ export function clearOwnerTourCompleted(): void {
   localStorage.removeItem(OWNER_TOUR_DONE_KEY);
 }
 
-export function hasOwnerTourBannerDismissed(): boolean {
+function hasOwnerTourBannerDismissed(): boolean {
   return localStorage.getItem(OWNER_TOUR_BANNER_DISMISSED_KEY) === '1';
 }
 
