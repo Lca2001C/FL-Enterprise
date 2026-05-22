@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from jose import JWTError, jwt
@@ -13,7 +13,8 @@ from motopay.domain.enums import UserRole
 from motopay.domain.exceptions import UnauthorizedError
 from motopay.infrastructure.db.models import Usuario
 
-pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
+# bcrypt para novos hashes; pbkdf2_sha256 mantido para hashes legados do seed/migração.
+pwd_context = CryptContext(schemes=["bcrypt", "pbkdf2_sha256"], deprecated="auto")
 
 
 def hash_password(plain: str) -> str:
@@ -35,7 +36,7 @@ def authenticate_user(db: Session, email: str, password: str) -> Usuario:
 
 def create_access_token(*, user: Usuario) -> str:
     settings = get_settings()
-    expire = datetime.now(timezone.utc) + timedelta(minutes=settings.jwt_expire_minutes)
+    expire = datetime.now(UTC) + timedelta(minutes=settings.jwt_expire_minutes)
     payload: dict[str, Any] = {
         "sub": str(user.id),
         "email": user.email,

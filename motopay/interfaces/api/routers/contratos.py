@@ -7,8 +7,10 @@ from motopay.interfaces.api.schemas import ContratoCreate, ContratoOut, Contrato
 from motopay.services.fleet_service import (
     create_contrato,
     get_contrato,
-    list_contratos as list_contratos_service,
     update_contrato,
+)
+from motopay.services.fleet_service import (
+    list_contratos as list_contratos_service,
 )
 
 router = APIRouter(prefix="/contratos", tags=["contratos"])

@@ -7,8 +7,10 @@ from motopay.interfaces.api.schemas import MotoCreate, MotoOut, MotoUpdate
 from motopay.services.fleet_service import (
     create_moto,
     get_moto,
-    list_motos as list_motos_service,
     update_moto,
+)
+from motopay.services.fleet_service import (
+    list_motos as list_motos_service,
 )
 
 router = APIRouter(prefix="/motos", tags=["motos"])

@@ -119,14 +119,23 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, [apiBase]);
 
   const login = async (email: string, password: string) => {
-    const response = await api.post<{ access_token: string }>('/api/v1/auth/login', {
-      email,
-      password,
-    });
+    const response = await api.post<{ access_token: string; refresh_token: string }>(
+      '/api/v1/auth/login',
+      {
+        email,
+        password,
+      }
+    );
+    localStorage.setItem('refresh_token', response.data.refresh_token);
     setToken(response.data.access_token);
   };
 
   const logout = () => {
+    const refreshToken = localStorage.getItem('refresh_token');
+    if (refreshToken) {
+      void api.post('/api/v1/auth/logout', { refresh_token: refreshToken }).catch(() => undefined);
+      localStorage.removeItem('refresh_token');
+    }
     setToken(null);
     setUser(null);
     setOperacaoScopeId(null);

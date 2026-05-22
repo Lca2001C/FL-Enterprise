@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from functools import lru_cache
 
 from pydantic import model_validator
@@ -11,11 +13,25 @@ class Settings(BaseSettings):
     jwt_secret: str = "change-me"
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 60
+    refresh_token_expire_days: int = 7
     redis_url: str = "redis://localhost:6379/0"
+
+    login_rate_limit_enabled: bool = True
+    login_rate_limit_max_attempts: int = 5
+    login_rate_limit_window_seconds: int = 900
+    refresh_rate_limit_max_attempts: int = 20
+    refresh_rate_limit_window_seconds: int = 900
+    webhook_rate_limit_max_attempts: int = 30
+    webhook_rate_limit_window_seconds: int = 900
+
+    # IPs de proxy reverso confiáveis (vírgula). Só então X-Forwarded-For/X-Real-IP são usados.
+    trusted_proxy_ips: str = ""
 
     asaas_api_key: str = ""
     asaas_api_base_url: str = "https://sandbox.asaas.com/api/v3"
     asaas_webhook_token: str = ""
+    # Valida status do pagamento na API Asaas antes de confirmar (requer ASAAS_API_KEY).
+    asaas_webhook_verify_with_api: bool = True
 
     telegram_bot_token: str = ""
     api_public_base_url: str = "http://localhost:8000"
@@ -26,12 +42,16 @@ class Settings(BaseSettings):
     cors_origins: str = ""
 
     @model_validator(mode="after")
-    def reject_default_jwt_in_production(self) -> Settings:
-        if self.environment == "production" and (
-            not self.jwt_secret or self.jwt_secret.startswith("change-me")
-        ):
+    def reject_insecure_defaults_in_production(self) -> Settings:
+        if self.environment != "production":
+            return self
+        if not self.jwt_secret or self.jwt_secret.startswith("change-me"):
             raise RuntimeError(
                 "JWT_SECRET não foi configurado para produção (use um segredo forte; valores que começam com 'change-me' são recusados)."
+            )
+        if not self.asaas_webhook_token.strip():
+            raise RuntimeError(
+                "ASAAS_WEBHOOK_TOKEN não foi configurado para produção (webhook Asaas exige token não vazio)."
             )
         return self
 

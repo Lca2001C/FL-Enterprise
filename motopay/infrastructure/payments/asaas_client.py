@@ -76,3 +76,12 @@ class AsaasClient:
             pix_copia_cola=str(pix) if pix else None,
             invoice_url=data.get("invoiceUrl"),
         )
+
+    def get_payment(self, payment_id: str) -> dict[str, Any]:
+        r = httpx.get(
+            f"{self._base}/payments/{payment_id}",
+            headers=self._headers(),
+            timeout=30.0,
+        )
+        r.raise_for_status()
+        return r.json()

@@ -16,6 +16,9 @@ motopay/infrastructure/messaging/celery_app.py
 motopay/infrastructure/messaging/tasks.py
 motopay/infrastructure/payments/__init__.py
 motopay/infrastructure/payments/asaas_client.py
+motopay/infrastructure/security/__init__.py
+motopay/infrastructure/security/rate_limit.py
+motopay/infrastructure/security/refresh_tokens.py
 motopay/infrastructure/telegram/__init__.py
 motopay/infrastructure/telegram/bot_main.py
 motopay/infrastructure/telegram/notify.py
@@ -51,3 +54,6 @@ motopay_admin.egg-info/SOURCES.txt
 motopay_admin.egg-info/dependency_links.txt
 motopay_admin.egg-info/requires.txt
 motopay_admin.egg-info/top_level.txt
+tests/test_auth.py
+tests/test_scope.py
+tests/test_webhook.py

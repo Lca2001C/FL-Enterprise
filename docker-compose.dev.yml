@@ -1,0 +1,16 @@
+# Override para desenvolvimento local: monta o código-fonte nos containers (hot reload).
+# Uso: docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+services:
+  api:
+    volumes:
+      - .:/app
+  worker:
+    volumes:
+      - .:/app
+  beat:
+    volumes:
+      - .:/app
+      - celery_beat_data:/data
+  bot:
+    volumes:
+      - .:/app

@@ -6,6 +6,8 @@ from motopay.interfaces.api.deps import CurrentUser, require_dono_or_admin, reso
 from motopay.interfaces.api.schemas import FinanceiroCreate, FinanceiroOut
 from motopay.services.finance_service import (
     create_financeiro,
+)
+from motopay.services.finance_service import (
     list_financeiro as list_financeiro_service,
 )
 

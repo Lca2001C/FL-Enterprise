@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from motopay.config import get_settings
+from motopay.domain.enums import UserRole
 from motopay.domain.exceptions import (
     ConflictError,
     ForbiddenError,
@@ -12,6 +13,7 @@ from motopay.domain.exceptions import (
     NotFoundError,
     UnauthorizedError,
 )
+from motopay.infrastructure.security.client_ip import get_client_ip
 from motopay.interfaces.api.routers import (
     analytics,
     auth,
@@ -24,8 +26,10 @@ from motopay.interfaces.api.routers import (
     usuarios,
     webhooks,
 )
+from motopay.services.auth_service import decode_token
 
 logger = logging.getLogger(__name__)
+audit_logger = logging.getLogger("motopay.audit")
 
 app = FastAPI(title="MotoPay Admin API", version="0.1.0")
 
@@ -53,6 +57,47 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
+    if get_settings().environment == "production":
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    return response
+
+
+@app.middleware("http")
+async def audit_admin_global_scope(request: Request, call_next):
+    response = await call_next(request)
+    path = request.url.path
+    if not path.startswith("/api/v1/") or path.startswith("/api/v1/auth/"):
+        return response
+    auth_header = request.headers.get("authorization", "")
+    if not auth_header.lower().startswith("bearer "):
+        return response
+    if request.query_params.get("operacao_id") or request.headers.get("x-operacao-id"):
+        return response
+    try:
+        data = decode_token(auth_header.split(" ", 1)[1])
+        role = UserRole(data["role"])
+    except (UnauthorizedError, KeyError, ValueError, TypeError):
+        return response
+    if role != UserRole.ADMIN:
+        return response
+    audit_logger.info(
+        "admin_global_scope sub=%s email=%s method=%s path=%s ip=%s",
+        data.get("sub"),
+        data.get("email"),
+        request.method,
+        path,
+        get_client_ip(request),
+    )
+    return response
 
 
 @app.exception_handler(UnauthorizedError)

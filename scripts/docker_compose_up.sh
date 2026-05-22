@@ -3,7 +3,7 @@
 set -euo pipefail
 unset HTTP_PROXY HTTPS_PROXY http_proxy https_proxy ALL_PROXY all_proxy
 if [[ $# -eq 0 ]]; then
-  docker compose up --build
+  docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
 else
-  docker compose "$@"
+  docker compose -f docker-compose.yml -f docker-compose.dev.yml "$@"
 fi

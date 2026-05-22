@@ -35,8 +35,6 @@ services:
     env_file: .env
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-motopay}
-    volumes:
-      - .:/app
     depends_on:
       redis:
         condition: service_healthy
@@ -63,8 +61,6 @@ services:
     env_file: .env
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-motopay}
-    volumes:
-      - .:/app
     depends_on:
       redis:
         condition: service_healthy
@@ -80,7 +76,6 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-motopay}
     volumes:
-      - .:/app
       - celery_beat_data:/data
     depends_on:
       redis:
@@ -96,8 +91,6 @@ services:
     env_file: .env
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-motopay}
-    volumes:
-      - .:/app
     depends_on:
       api:
         condition: service_healthy

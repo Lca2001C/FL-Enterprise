@@ -1,9 +1,9 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
+from motopay.domain.enums import UserRole
 from motopay.infrastructure.db.session import get_db
 from motopay.interfaces.api.deps import CurrentUser, require_admin
-from motopay.domain.enums import UserRole
 from motopay.interfaces.api.schemas import UserOut, UsuarioCreate
 from motopay.services.operacao_service import create_usuario_admin
 

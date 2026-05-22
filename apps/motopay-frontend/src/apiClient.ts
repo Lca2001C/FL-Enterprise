@@ -1,6 +1,6 @@
 import axios, { type AxiosInstance } from 'axios';
 
-function normalizeBase(url: string): string {
+export function normalizeBase(url: string): string {
   return url.replace(/\/$/, '');
 }
 

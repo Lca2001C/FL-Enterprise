@@ -2,13 +2,11 @@ from __future__ import annotations
 
 import os
 
-from sqlalchemy import select
-from sqlalchemy.orm import Session
-
 from motopay.domain.enums import UserRole
 from motopay.infrastructure.db.models import Operacao, Usuario
 from motopay.infrastructure.db.session import SessionLocal
 from motopay.services.auth_service import hash_password
+from sqlalchemy import select
 
 
 def main() -> None:

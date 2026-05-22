@@ -11,7 +11,7 @@ $env:ALL_PROXY = ""
 $env:all_proxy = ""
 
 if ($args.Count -eq 0) {
-    docker compose up --build
+    docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
 } else {
-    docker compose @args
+    docker compose -f docker-compose.yml -f docker-compose.dev.yml @args
 }

@@ -1,23 +1,76 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from motopay.domain.exceptions import UnauthorizedError
+from motopay.infrastructure.db.models import Usuario
 from motopay.infrastructure.db.session import get_db
+from motopay.infrastructure.security.client_ip import get_client_ip
+from motopay.infrastructure.security.rate_limit import (
+    assert_login_not_blocked,
+    assert_refresh_not_blocked,
+    clear_login_attempts,
+    clear_refresh_attempts,
+    record_login_failure,
+    record_refresh_failure,
+)
+from motopay.infrastructure.security.refresh_tokens import (
+    create_refresh_token,
+    revoke_refresh_token,
+    validate_refresh_token,
+)
 from motopay.interfaces.api.deps import CurrentUser, get_current_user
-from motopay.interfaces.api.schemas import LoginRequest, TokenResponse, UserOut
+from motopay.interfaces.api.schemas import LoginRequest, RefreshRequest, TokenResponse, UserOut
 from motopay.services.auth_service import authenticate_user, create_access_token
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
+def _issue_tokens(*, user: Usuario) -> TokenResponse:
+    access = create_access_token(user=user)
+    refresh = create_refresh_token(user.id)
+    return TokenResponse(access_token=access, refresh_token=refresh)
+
+
 @router.post("/login", response_model=TokenResponse)
-def login(body: LoginRequest, db: Session = Depends(get_db)) -> TokenResponse:
+def login(body: LoginRequest, request: Request, db: Session = Depends(get_db)) -> TokenResponse:
+    ip = get_client_ip(request)
+    assert_login_not_blocked(ip, body.email)
     try:
         user = authenticate_user(db, body.email, body.password)
     except UnauthorizedError:
+        record_login_failure(ip, body.email)
         raise HTTPException(status_code=401, detail="Credenciais inválidas") from None
-    token = create_access_token(user=user)
-    return TokenResponse(access_token=token)
+    clear_login_attempts(ip, body.email)
+    return _issue_tokens(user=user)
+
+
+@router.post("/refresh", response_model=TokenResponse)
+def refresh_tokens(
+    body: RefreshRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> TokenResponse:
+    ip = get_client_ip(request)
+    assert_refresh_not_blocked(ip)
+    user_id = validate_refresh_token(body.refresh_token)
+    if user_id is None:
+        record_refresh_failure(ip)
+        raise HTTPException(status_code=401, detail="Refresh token inválido ou expirado")
+    user = db.get(Usuario, user_id)
+    if not user:
+        revoke_refresh_token(body.refresh_token)
+        record_refresh_failure(ip)
+        raise HTTPException(status_code=401, detail="Refresh token inválido ou expirado")
+    revoke_refresh_token(body.refresh_token)
+    clear_refresh_attempts(ip)
+    return _issue_tokens(user=user)
+
+
+@router.post("/logout")
+def logout(body: RefreshRequest) -> dict[str, bool]:
+    if validate_refresh_token(body.refresh_token) is not None:
+        revoke_refresh_token(body.refresh_token)
+    return {"ok": True}
 
 
 @router.get("/me", response_model=UserOut)

@@ -1,0 +1,60 @@
+from __future__ import annotations
+
+import logging
+import secrets
+
+import redis
+
+from motopay.config import get_settings
+
+logger = logging.getLogger(__name__)
+
+_PREFIX = "refresh:"
+
+_redis_client: redis.Redis | None = None
+
+
+def _redis() -> redis.Redis:
+    global _redis_client
+    if _redis_client is None:
+        _redis_client = redis.from_url(get_settings().redis_url, decode_responses=True)
+    return _redis_client
+
+
+def _ttl_seconds() -> int:
+    return get_settings().refresh_token_expire_days * 24 * 3600
+
+
+def create_refresh_token(user_id: int) -> str:
+    token = secrets.token_urlsafe(32)
+    try:
+        _redis().setex(f"{_PREFIX}{token}", _ttl_seconds(), str(user_id))
+    except redis.RedisError as e:
+        logger.error("refresh_token_create_failed user_id=%s: %s", user_id, e)
+        raise
+    return token
+
+
+def validate_refresh_token(token: str) -> int | None:
+    if not token.strip():
+        return None
+    try:
+        raw = _redis().get(f"{_PREFIX}{token}")
+    except redis.RedisError as e:
+        logger.warning("refresh_token_validate_failed: %s", e)
+        return None
+    if raw is None:
+        return None
+    try:
+        return int(raw)
+    except ValueError:
+        return None
+
+
+def revoke_refresh_token(token: str) -> None:
+    if not token.strip():
+        return
+    try:
+        _redis().delete(f"{_PREFIX}{token}")
+    except redis.RedisError as e:
+        logger.warning("refresh_token_revoke_failed: %s", e)

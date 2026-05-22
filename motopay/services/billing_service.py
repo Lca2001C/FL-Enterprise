@@ -7,9 +7,22 @@ from dateutil.relativedelta import relativedelta
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from motopay.domain.enums import CicloCobranca, CobrancaStatus, DomainEventType, FinanceiroTipo, UserRole
+from motopay.domain.enums import (
+    CicloCobranca,
+    CobrancaStatus,
+    DomainEventType,
+    FinanceiroTipo,
+    UserRole,
+)
 from motopay.domain.exceptions import ForbiddenError, NotFoundError
-from motopay.infrastructure.db.models import Cliente, Cobranca, Contrato, EventoDominio, Financeiro, Operacao
+from motopay.infrastructure.db.models import (
+    Cliente,
+    Cobranca,
+    Contrato,
+    EventoDominio,
+    Financeiro,
+    Operacao,
+)
 from motopay.infrastructure.payments.asaas_client import AsaasClient
 from motopay.interfaces.api.deps import CurrentUser
 from motopay.interfaces.api.schemas import CobrancaOut

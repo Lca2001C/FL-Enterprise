@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from motopay.config import get_settings
 from motopay.domain.enums import ContratoStatus, DomainEventType
-from motopay.infrastructure.db.models import Cliente, Contrato, EventoDominio
+from motopay.infrastructure.db.models import Cliente, Contrato, EventoDominio, Moto
 from motopay.infrastructure.db.session import SessionLocal
 from motopay.infrastructure.messaging.celery_app import celery_app
 from motopay.infrastructure.telegram.notify import (
@@ -62,7 +62,24 @@ def handle_domain_event(self, event_id: int) -> None:
                     ]
                     message = msgs[min(nivel, 2)]
         elif ev.tipo == DomainEventType.MOTO_EM_MANUTENCAO.value:
-            pass
+            moto_id = ev.payload.get("moto_id")
+            if moto_id:
+                moto = db.get(Moto, int(moto_id))
+                ct = db.scalars(
+                    select(Contrato).where(
+                        Contrato.moto_id == int(moto_id),
+                        Contrato.status == ContratoStatus.ATIVO.value,
+                    )
+                ).first()
+                if ct:
+                    cliente = db.get(Cliente, ct.cliente_id)
+                    if cliente and cliente.telegram_id:
+                        chat_id = cliente.telegram_id
+                        placa = moto.placa if moto else str(moto_id)
+                        message = (
+                            f"🔧 A moto {placa} entrou em manutenção. "
+                            "Entraremos em contato sobre prazos e substituição, se aplicável."
+                        )
 
         if chat_id and message:
             try:
@@ -77,7 +94,7 @@ def handle_domain_event(self, event_id: int) -> None:
             except TelegramTransientError:
                 raise
 
-        ev.processado_em = datetime.now(timezone.utc)
+        ev.processado_em = datetime.now(UTC)
         db.add(ev)
         db.commit()
     finally:

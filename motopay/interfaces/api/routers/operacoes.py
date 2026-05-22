@@ -1,12 +1,17 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
+from motopay.domain.exceptions import ForbiddenError, NotFoundError
 from motopay.infrastructure.db.models import Operacao
 from motopay.infrastructure.db.session import get_db
 from motopay.interfaces.api.deps import CurrentUser, require_admin, require_dono_or_admin
 from motopay.interfaces.api.schemas import OperacaoCreate, OperacaoOut, OperacaoUpdate
-from motopay.domain.exceptions import ForbiddenError, NotFoundError
-from motopay.services.operacao_service import create_operacao, get_operacao_or_404, list_operacoes, update_operacao
+from motopay.services.operacao_service import (
+    create_operacao,
+    get_operacao_or_404,
+    list_operacoes,
+    update_operacao,
+)
 
 router = APIRouter(prefix="/operacoes", tags=["operacoes"])
 

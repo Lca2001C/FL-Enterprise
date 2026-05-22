@@ -1,10 +1,17 @@
-import os
 from datetime import date, timedelta
 from decimal import Decimal
-from sqlalchemy import select, text
+
+from motopay.domain.enums import (
+    CicloCobranca,
+    CobrancaStatus,
+    ContratoStatus,
+    FinanceiroTipo,
+    MotoStatus,
+)
+from motopay.infrastructure.db.models import Cliente, Cobranca, Contrato, Financeiro, Moto, Operacao
 from motopay.infrastructure.db.session import SessionLocal
-from motopay.infrastructure.db.models import Operacao, Moto, Cliente, Contrato, Financeiro, Cobranca
-from motopay.domain.enums import MotoStatus, ContratoStatus, CicloCobranca, FinanceiroTipo, CobrancaStatus
+from sqlalchemy import select, text
+
 
 def main():
     db = SessionLocal()

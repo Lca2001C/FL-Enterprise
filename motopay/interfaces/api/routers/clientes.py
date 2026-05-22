@@ -6,10 +6,12 @@ from motopay.interfaces.api.deps import CurrentUser, require_dono_or_admin, reso
 from motopay.interfaces.api.schemas import ClienteCreate, ClienteOut, ClienteUpdate
 from motopay.services.fleet_service import (
     create_cliente,
-    get_cliente,
-    list_clientes as list_clientes_service,
-    update_cliente,
     delete_cliente,
+    get_cliente,
+    update_cliente,
+)
+from motopay.services.fleet_service import (
+    list_clientes as list_clientes_service,
 )
 
 router = APIRouter(prefix="/clientes", tags=["clientes"])
