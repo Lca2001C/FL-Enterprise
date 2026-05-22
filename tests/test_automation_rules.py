@@ -45,6 +45,28 @@ def test_dedup_skips_same_day_telegram(
         mock_delay.delay.assert_not_called()
 
 
+def test_contract_expiry_finalizes_active(db_session, contrato_atrasado):
+    today = date.today()
+    contrato_atrasado.data_fim_vigencia = today - timedelta(days=1)
+    db_session.add(contrato_atrasado)
+    db_session.commit()
+
+    messaging_tasks._process_contract_expiry(db_session, today=today)
+    db_session.refresh(contrato_atrasado)
+    assert contrato_atrasado.status == ContratoStatus.FINALIZADO.value
+
+
+def test_contract_expiry_skips_without_end_date(db_session, contrato_atrasado):
+    today = date.today()
+    contrato_atrasado.data_fim_vigencia = None
+    db_session.add(contrato_atrasado)
+    db_session.commit()
+
+    messaging_tasks._process_contract_expiry(db_session, today=today)
+    db_session.refresh(contrato_atrasado)
+    assert contrato_atrasado.status == ContratoStatus.ATIVO.value
+
+
 def test_payment_clears_promessa(
     db_session, operacao_multas, contrato_atrasado, cliente_com_telegram
 ):

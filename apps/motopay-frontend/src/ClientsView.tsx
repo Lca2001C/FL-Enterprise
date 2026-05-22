@@ -397,27 +397,6 @@ const ClientsView = () => {
         .icon-btn.danger:hover {
           color: var(--danger);
         }
-        .modal-overlay {
-          position: fixed;
-          inset: 0;
-          background: rgba(0, 0, 0, 0.8);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          z-index: 1000;
-          padding: 16px;
-        }
-        .modal-content {
-          width: 100%;
-          max-width: 450px;
-          padding: 30px;
-        }
-        .modal-actions {
-          display: flex;
-          justify-content: flex-end;
-          gap: 12px;
-          margin-top: 20px;
-        }
         .btn-secondary {
           background: var(--secondary);
           color: white;

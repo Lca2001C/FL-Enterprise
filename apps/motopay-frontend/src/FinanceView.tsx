@@ -307,27 +307,6 @@ const FinanceView = () => {
           opacity: 0.5;
           cursor: not-allowed;
         }
-        .modal-overlay {
-          position: fixed;
-          inset: 0;
-          background: rgba(0, 0, 0, 0.8);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          z-index: 1000;
-          padding: 16px;
-        }
-        .modal-content {
-          width: 100%;
-          max-width: 420px;
-          padding: 30px;
-        }
-        .modal-actions {
-          display: flex;
-          justify-content: flex-end;
-          gap: 12px;
-          margin-top: 20px;
-        }
         .pagination {
           display: flex;
           align-items: center;

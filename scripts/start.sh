@@ -8,6 +8,13 @@ unset HTTP_PROXY HTTPS_PROXY http_proxy https_proxy ALL_PROXY all_proxy
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
+# Git Bash (MSYS) reescreve argumentos que parecem caminhos Unix ao chamar docker.exe
+# (ex.: /app/alembic.ini vira caminho Windows inválido no container). O Alembic então
+# lê config vazio e falha com: No 'script_location' key found in configuration.
+if [[ -n "${MSYSTEM:-}" ]] || [[ -n "${MSYS:-}" ]]; then
+  export MSYS2_ARG_CONV_EXCL='*'
+fi
+
 USE_DEV=0
 RUN_SEED=1
 ACTION="up"

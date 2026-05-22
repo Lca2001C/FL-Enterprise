@@ -302,6 +302,7 @@ def create_contrato(
         ciclo=body.ciclo.value,
         status=body.status.value,
         data_inicio=body.data_inicio,
+        data_fim_vigencia=body.data_fim_vigencia,
         proximo_vencimento=body.proximo_vencimento,
     )
     db.add(ct)
@@ -324,7 +325,13 @@ def update_contrato(
         ct.status = body.status.value
     if body.valor_recorrente is not None:
         ct.valor_recorrente = body.valor_recorrente
+    if body.data_fim_vigencia is not None:
+        if body.data_fim_vigencia < ct.data_inicio:
+            raise ConflictError("data_fim_vigencia deve ser igual ou posterior a data_inicio")
+        ct.data_fim_vigencia = body.data_fim_vigencia
     if body.proximo_vencimento is not None:
+        if body.proximo_vencimento < ct.data_inicio:
+            raise ConflictError("proximo_vencimento deve ser igual ou posterior a data_inicio")
         ct.proximo_vencimento = body.proximo_vencimento
     db.add(ct)
     db.commit()

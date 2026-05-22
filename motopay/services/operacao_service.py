@@ -7,21 +7,30 @@ from motopay.domain.enums import PaymentProvider, UserRole
 from motopay.domain.exceptions import ConflictError, ForbiddenError
 from motopay.infrastructure.db.models import Operacao, Usuario
 from motopay.infrastructure.telegram.templates import (
+    list_custom_message_triggers,
     list_template_meta,
     merge_template_overrides,
+    render_custom_body,
     render_template,
     resolve_templates,
     sample_context_for_key,
+    validate_custom_messages,
 )
 from motopay.interfaces.api.deps import CurrentUser
 from motopay.interfaces.api.schemas import (
     OperacaoCreate,
     OperacaoOut,
     OperacaoUpdate,
+    TelegramCustomMessage,
     UserAdminOut,
     UsuarioCreate,
 )
 from motopay.services.auth_service import hash_password
+
+
+def _custom_messages_out(op: Operacao) -> list[TelegramCustomMessage]:
+    raw = op.telegram_custom_messages or []
+    return [TelegramCustomMessage.model_validate(m) for m in raw]
 
 
 def operacao_to_out(op: Operacao) -> OperacaoOut:
@@ -32,6 +41,7 @@ def operacao_to_out(op: Operacao) -> OperacaoOut:
         multa_fixa_percentual=op.multa_fixa_percentual,
         juros_diario_percentual=op.juros_diario_percentual,
         telegram_templates=resolve_templates(op.telegram_templates),
+        telegram_custom_messages=_custom_messages_out(op),
         payment_provider=PaymentProvider(op.payment_provider or PaymentProvider.ASAAS.value),
     )
 
@@ -117,14 +127,42 @@ def get_telegram_template_meta() -> list[dict]:
     return list_template_meta()
 
 
-def preview_telegram_template(*, key: str, template: str | None, context: dict | None) -> str:
+def get_custom_message_triggers() -> list[dict]:
+    return list_custom_message_triggers()
+
+
+def preview_telegram_template(
+    *,
+    key: str | None = None,
+    trigger: str | None = None,
+    template: str | None = None,
+    context: dict | None = None,
+) -> str:
+    if trigger:
+        ctx = context or sample_context_for_key(trigger)
+        body = template or ""
+        return render_custom_body(body, **ctx)
+    assert key is not None
     overrides = {key: template} if template else None
     ctx = context or sample_context_for_key(key)
     return render_template(key, overrides=overrides, **ctx)
 
 
-def update_operacao(db: Session, operacao_id: int, body: OperacaoUpdate) -> OperacaoOut:
+def _apply_dono_restrictions(body: OperacaoUpdate) -> OperacaoUpdate:
+    return OperacaoUpdate(
+        multa_fixa_percentual=body.multa_fixa_percentual,
+        juros_diario_percentual=body.juros_diario_percentual,
+        telegram_templates=body.telegram_templates,
+    )
+
+
+def update_operacao(
+    db: Session, operacao_id: int, body: OperacaoUpdate, *, role: UserRole | None = None
+) -> OperacaoOut:
     from motopay.domain.exceptions import NotFoundError
+
+    if role == UserRole.DONO:
+        body = _apply_dono_restrictions(body)
 
     op = db.get(Operacao, operacao_id)
     if not op:
@@ -139,6 +177,11 @@ def update_operacao(db: Session, operacao_id: int, body: OperacaoUpdate) -> Oper
         op.telegram_templates = merge_template_overrides(
             op.telegram_templates, body.telegram_templates
         )
+    if body.telegram_custom_messages is not None:
+        validated = validate_custom_messages(
+            [m.model_dump() for m in body.telegram_custom_messages]
+        )
+        op.telegram_custom_messages = validated
     if body.payment_provider is not None:
         op.payment_provider = body.payment_provider.value
     if body.mercadopago_access_token is not None:

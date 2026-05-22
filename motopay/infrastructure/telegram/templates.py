@@ -9,6 +9,7 @@ from motopay.domain.exceptions import ConflictError
 from motopay.infrastructure.db.models import Operacao
 
 MAX_TEMPLATE_LENGTH = 2000
+MAX_CUSTOM_MESSAGES = 10
 
 DEFAULT_TELEGRAM_TEMPLATES: dict[str, str] = {
     "pagamento_confirmado": "✅ Pagamento confirmado! Obrigado. Sua locação segue em dia.",
@@ -215,6 +216,11 @@ TELEGRAM_TEMPLATE_META: dict[str, TelegramTemplateMeta] = {
 }
 
 
+CUSTOM_MESSAGE_TRIGGER_KEYS: frozenset[str] = frozenset(
+    {"pagamento_confirmado", "d1_reminder", "d0_reminder", "moto_manutencao"}
+)
+
+
 class _SafeFormatDict(dict[str, str]):
     def __missing__(self, key: str) -> str:
         return "{" + key + "}"
@@ -325,11 +331,6 @@ def build_overdue_html(
     return "\n".join(lines)
 
 
-def templates_for_operacao(operacao: Operacao | None) -> dict[str, str]:
-    overrides = operacao.telegram_templates if operacao else None
-    return resolve_templates(overrides)
-
-
 def list_template_meta() -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for meta in TELEGRAM_TEMPLATE_META.values():
@@ -388,3 +389,85 @@ def sample_context_for_key(key: str) -> dict[str, Any]:
         for ph in meta.placeholders:
             ctx.setdefault(ph, f"[{ph}]")
     return ctx
+
+
+def list_custom_message_triggers() -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for key in sorted(CUSTOM_MESSAGE_TRIGGER_KEYS):
+        meta = TELEGRAM_TEMPLATE_META[key]
+        rows.append(
+            {
+                "trigger": meta.key,
+                "label": meta.label,
+                "description": meta.description,
+                "placeholders": list(meta.placeholders),
+            }
+        )
+    return rows
+
+
+def validate_custom_messages(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    if len(messages) > MAX_CUSTOM_MESSAGES:
+        raise ConflictError(f"Máximo de {MAX_CUSTOM_MESSAGES} mensagens personalizadas")
+    seen_ids: set[str] = set()
+    normalized: list[dict[str, Any]] = []
+    for msg in messages:
+        msg_id = str(msg.get("id", "")).strip()
+        label = str(msg.get("label", "")).strip()
+        trigger = str(msg.get("trigger", "")).strip()
+        body = str(msg.get("body", "")).strip()
+        if not msg_id or msg_id in seen_ids:
+            raise ConflictError("Cada mensagem personalizada precisa de id único")
+        if trigger not in CUSTOM_MESSAGE_TRIGGER_KEYS:
+            raise ConflictError(f"Gatilho inválido: {trigger}")
+        if not label:
+            raise ConflictError("Nome da mensagem é obrigatório")
+        if not body:
+            raise ConflictError("Texto da mensagem é obrigatório")
+        if len(body) > MAX_TEMPLATE_LENGTH:
+            raise ConflictError(f"Mensagem excede {MAX_TEMPLATE_LENGTH} caracteres")
+        seen_ids.add(msg_id)
+        enabled = bool(msg.get("enabled", True))
+        replace_default = bool(msg.get("replace_default", False))
+        try:
+            render_custom_body(body, **sample_context_for_key(trigger))
+        except (KeyError, ValueError) as e:
+            raise ConflictError(f"Texto inválido para gatilho '{trigger}': {e}") from e
+        normalized.append(
+            {
+                "id": msg_id,
+                "label": label,
+                "trigger": trigger,
+                "body": body,
+                "enabled": enabled,
+                "replace_default": replace_default,
+            }
+        )
+    return normalized
+
+
+def render_custom_body(body: str, **context: Any) -> str:
+    safe_ctx: dict[str, str] = {name: str(raw) for name, raw in context.items()}
+    return body.format_map(_SafeFormatDict(safe_ctx))
+
+
+def custom_messages_for_trigger(
+    operacao: Operacao | None, trigger: str
+) -> list[dict[str, Any]]:
+    if operacao is None:
+        return []
+    raw = operacao.telegram_custom_messages or []
+    return [m for m in raw if m.get("trigger") == trigger and m.get("enabled", True)]
+
+
+def should_skip_default_template(operacao: Operacao | None, trigger: str) -> bool:
+    return any(m.get("replace_default") for m in custom_messages_for_trigger(operacao, trigger))
+
+
+def render_custom_messages_for_trigger(
+    operacao: Operacao | None, trigger: str, **context: Any
+) -> list[str]:
+    return [
+        render_custom_body(str(m["body"]), **context)
+        for m in custom_messages_for_trigger(operacao, trigger)
+    ]

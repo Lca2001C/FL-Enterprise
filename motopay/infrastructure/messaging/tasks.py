@@ -18,7 +18,12 @@ from motopay.infrastructure.telegram.notify import (
     send_telegram_html,
     send_telegram_text,
 )
-from motopay.infrastructure.telegram.templates import build_overdue_html, render_template
+from motopay.infrastructure.telegram.templates import (
+    build_overdue_html,
+    render_custom_messages_for_trigger,
+    render_template,
+    should_skip_default_template,
+)
 from motopay.services.billing_service import late_amounts_for_contrato, refresh_overdue_pix
 from motopay.services.scoring_service import effective_escalation_level, recalculate_cliente_score
 
@@ -33,11 +38,26 @@ _RETRY_KW = dict(
 )
 
 
-def _template_overrides(db: Session, operacao_id: int | None) -> dict[str, str] | None:
+
+def _get_operacao(db: Session, operacao_id: int | None) -> Operacao | None:
     if operacao_id is None:
         return None
-    op = db.get(Operacao, operacao_id)
-    return op.telegram_templates if op else None
+    return db.get(Operacao, operacao_id)
+
+
+def _send_trigger_text_messages(
+    *,
+    chat_id: str,
+    operacao: Operacao | None,
+    trigger: str,
+    default_text: str | None,
+    context: dict,
+) -> None:
+    skip_default = should_skip_default_template(operacao, trigger)
+    if default_text and not skip_default:
+        send_telegram_text(chat_id=chat_id, text=default_text)
+    for custom_text in render_custom_messages_for_trigger(operacao, trigger, **context):
+        send_telegram_text(chat_id=chat_id, text=custom_text)
 
 
 def _mark_telegram_sent(db: Session, contrato_id: int | None, today: date) -> None:
@@ -68,7 +88,10 @@ def handle_domain_event(self, event_id: int) -> None:
         use_html = False
         contrato_id_for_mark: int | None = None
         operacao_id = ev.payload.get("operacao_id")
-        overrides = _template_overrides(db, int(operacao_id) if operacao_id is not None else None)
+        op = _get_operacao(db, int(operacao_id) if operacao_id is not None else None)
+        overrides = op.telegram_templates if op else None
+        trigger_key: str | None = None
+        trigger_context: dict = {}
 
         if ev.tipo == DomainEventType.PAGAMENTO_CONFIRMADO.value:
             cid = ev.payload.get("cliente_id")
@@ -76,6 +99,7 @@ def handle_domain_event(self, event_id: int) -> None:
                 cliente = db.get(Cliente, int(cid))
                 if cliente and cliente.telegram_id:
                     chat_id = cliente.telegram_id
+                    trigger_key = "pagamento_confirmado"
                     message = render_template("pagamento_confirmado", overrides=overrides)
         elif ev.tipo == DomainEventType.CLIENTE_INADIMPLENTE.value:
             cid = ev.payload.get("cliente_id")
@@ -104,6 +128,8 @@ def handle_domain_event(self, event_id: int) -> None:
                     if cliente and cliente.telegram_id:
                         chat_id = cliente.telegram_id
                         placa = moto.placa if moto else str(moto_id)
+                        trigger_key = "moto_manutencao"
+                        trigger_context = {"placa": placa}
                         message = render_template(
                             "moto_manutencao", overrides=overrides, placa=placa
                         )
@@ -113,7 +139,16 @@ def handle_domain_event(self, event_id: int) -> None:
                 if use_html:
                     send_telegram_html(chat_id=chat_id, html=message)
                 else:
-                    send_telegram_text(chat_id=chat_id, text=message)
+                    if trigger_key:
+                        _send_trigger_text_messages(
+                            chat_id=chat_id,
+                            operacao=op,
+                            trigger=trigger_key,
+                            default_text=message,
+                            context=trigger_context,
+                        )
+                    else:
+                        send_telegram_text(chat_id=chat_id, text=message)
                 if ev.tipo == DomainEventType.CLIENTE_INADIMPLENTE.value:
                     _mark_telegram_sent(db, contrato_id_for_mark, today)
             except TelegramPermanentError as e:
@@ -146,16 +181,22 @@ def send_d1_reminder(self, contrato_id: int) -> None:
         cliente = db.get(Cliente, ct.cliente_id)
         if not cliente or not cliente.telegram_id:
             return
-        overrides = _template_overrides(db, ct.operacao_id)
-        text = render_template(
-            "d1_reminder",
-            overrides=overrides,
-            proximo_vencimento=ct.proximo_vencimento,
-            contrato_id=ct.id,
-            valor_recorrente=f"{ct.valor_recorrente:.2f}",
-        )
+        op = _get_operacao(db, ct.operacao_id)
+        overrides = op.telegram_templates if op else None
+        context = {
+            "proximo_vencimento": ct.proximo_vencimento,
+            "contrato_id": ct.id,
+            "valor_recorrente": f"{ct.valor_recorrente:.2f}",
+        }
+        text = render_template("d1_reminder", overrides=overrides, **context)
         try:
-            send_telegram_text(chat_id=cliente.telegram_id, text=text)
+            _send_trigger_text_messages(
+                chat_id=cliente.telegram_id,
+                operacao=op,
+                trigger="d1_reminder",
+                default_text=text,
+                context=context,
+            )
         except TelegramPermanentError as e:
             logger.warning("d1_reminder_permanent_failure contrato_id=%s: %s", contrato_id, e)
     finally:
@@ -174,16 +215,22 @@ def send_d0_reminder(self, contrato_id: int) -> None:
         cliente = db.get(Cliente, ct.cliente_id)
         if not cliente or not cliente.telegram_id:
             return
-        overrides = _template_overrides(db, ct.operacao_id)
-        text = render_template(
-            "d0_reminder",
-            overrides=overrides,
-            proximo_vencimento=ct.proximo_vencimento,
-            contrato_id=ct.id,
-            valor_recorrente=f"{ct.valor_recorrente:.2f}",
-        )
+        op = _get_operacao(db, ct.operacao_id)
+        overrides = op.telegram_templates if op else None
+        context = {
+            "proximo_vencimento": ct.proximo_vencimento,
+            "contrato_id": ct.id,
+            "valor_recorrente": f"{ct.valor_recorrente:.2f}",
+        }
+        text = render_template("d0_reminder", overrides=overrides, **context)
         try:
-            send_telegram_text(chat_id=cliente.telegram_id, text=text)
+            _send_trigger_text_messages(
+                chat_id=cliente.telegram_id,
+                operacao=op,
+                trigger="d0_reminder",
+                default_text=text,
+                context=context,
+            )
         except TelegramPermanentError as e:
             logger.warning("d0_reminder_permanent_failure contrato_id=%s: %s", contrato_id, e)
     finally:
@@ -198,11 +245,28 @@ def daily_automation_tick() -> None:
     tomorrow = today + timedelta(days=1)
     db = SessionLocal()
     try:
+        _process_contract_expiry(db, today)
         _process_d0(db, today)
         _process_d1(db, tomorrow)
         _process_delinquency(db, today)
     finally:
         db.close()
+
+
+def _process_contract_expiry(db: Session, today: date) -> None:
+    rows = db.scalars(
+        select(Contrato).where(
+            Contrato.status == ContratoStatus.ATIVO.value,
+            Contrato.data_fim_vigencia.isnot(None),
+            Contrato.data_fim_vigencia < today,
+        )
+    ).all()
+    if not rows:
+        return
+    for ct in rows:
+        ct.status = ContratoStatus.FINALIZADO.value
+        db.add(ct)
+    db.commit()
 
 
 def _process_d0(db: Session, today: date) -> None:

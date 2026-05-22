@@ -14,7 +14,16 @@ import { useAuth } from './AuthContext';
 import type { ClienteOut, CobrancaOut, ContratoOut, MotoOut, Paginated } from './apiTypes';
 import type { ContractsFilter } from './apiTypes';
 import { PAGE_SIZE } from './apiTypes';
-import { defaultVencimento, formatBrl, formatDate, todayIso } from './utils/format';
+import {
+  contractEndFromPreset,
+  defaultVencimento,
+  formatBrl,
+  formatDate,
+  paymentDueFromPreset,
+  todayIso,
+  type VencimentoPreset,
+  type VigenciaPreset,
+} from './utils/format';
 import { parseApiError } from './utils/apiError';
 import { fetchAllPaginated, offsetAfterDelete } from './utils/fetchPaginated';
 import EmptyState from './components/EmptyState';
@@ -22,6 +31,23 @@ import ErrorBanner from './components/ErrorBanner';
 import AdminScopeBanner from './components/AdminScopeBanner';
 
 type FilterTab = ContractsFilter;
+
+const VIGENCIA_OPTIONS: { value: VigenciaPreset; label: string }[] = [
+  { value: 'indeterminado', label: 'Indeterminado' },
+  { value: '1m', label: '1 mês' },
+  { value: '3m', label: '3 meses' },
+  { value: '6m', label: '6 meses' },
+  { value: '1a', label: '1 ano' },
+  { value: 'custom', label: 'Personalizado' },
+];
+
+const VENCIMENTO_OPTIONS: { value: VencimentoPreset; label: string }[] = [
+  { value: 'ciclo', label: 'Conforme ciclo' },
+  { value: '7d', label: 'Em 7 dias' },
+  { value: '15d', label: 'Em 15 dias' },
+  { value: '30d', label: 'Em 30 dias' },
+  { value: 'custom', label: 'Personalizado' },
+];
 
 const ContractsView = () => {
   const {
@@ -50,9 +76,12 @@ const ContractsView = () => {
     valor_recorrente: '',
     ciclo: 'mensal' as 'semanal' | 'mensal',
     data_inicio: todayIso(),
+    data_fim_vigencia: '',
     proximo_vencimento: defaultVencimento('mensal', todayIso()),
     gerar_pix: true,
   });
+  const [vigenciaModo, setVigenciaModo] = useState<VigenciaPreset>('indeterminado');
+  const [vencimentoModo, setVencimentoModo] = useState<VencimentoPreset>('ciclo');
 
   const clienteMap = useMemo(
     () => Object.fromEntries(clientes.map((c) => [c.id, c])),
@@ -139,18 +168,71 @@ const ContractsView = () => {
   };
 
   const handleCicloChange = (ciclo: 'semanal' | 'mensal') => {
+    setForm((prev) => {
+      const next = { ...prev, ciclo };
+      if (vencimentoModo !== 'custom') {
+        next.proximo_vencimento = paymentDueFromPreset(prev.data_inicio, ciclo, vencimentoModo);
+      }
+      return next;
+    });
+  };
+
+  const handleDataInicioChange = (data_inicio: string) => {
+    setForm((prev) => {
+      const next = { ...prev, data_inicio };
+      if (vigenciaModo !== 'custom') {
+        next.data_fim_vigencia = contractEndFromPreset(data_inicio, vigenciaModo);
+      }
+      if (vencimentoModo !== 'custom') {
+        next.proximo_vencimento = paymentDueFromPreset(data_inicio, prev.ciclo, vencimentoModo);
+      }
+      return next;
+    });
+  };
+
+  const handleVigenciaModoChange = (modo: VigenciaPreset) => {
+    setVigenciaModo(modo);
     setForm((prev) => ({
       ...prev,
-      ciclo,
-      proximo_vencimento: defaultVencimento(ciclo, prev.data_inicio),
+      data_fim_vigencia:
+        modo === 'custom'
+          ? prev.data_fim_vigencia || contractEndFromPreset(prev.data_inicio, '3m')
+          : contractEndFromPreset(prev.data_inicio, modo),
     }));
+  };
+
+  const handleVencimentoModoChange = (modo: VencimentoPreset) => {
+    setVencimentoModo(modo);
+    setForm((prev) => ({
+      ...prev,
+      proximo_vencimento:
+        modo === 'custom'
+          ? prev.proximo_vencimento
+          : paymentDueFromPreset(prev.data_inicio, prev.ciclo, modo),
+    }));
+  };
+
+  const resetForm = () => {
+    const inicio = todayIso();
+    setVigenciaModo('indeterminado');
+    setVencimentoModo('ciclo');
+    setForm({
+      cliente_id: '',
+      moto_id: '',
+      valor_recorrente: '',
+      ciclo: 'mensal',
+      data_inicio: inicio,
+      data_fim_vigencia: '',
+      proximo_vencimento: defaultVencimento('mensal', inicio),
+      gerar_pix: true,
+    });
   };
 
   const handleCreate = async (e: FormEvent) => {
     e.preventDefault();
     setError('');
     try {
-      const body = {
+      const body: Record<string, unknown> = {
         cliente_id: parseInt(form.cliente_id, 10),
         moto_id: parseInt(form.moto_id, 10),
         valor_recorrente: parseFloat(form.valor_recorrente),
@@ -159,20 +241,15 @@ const ContractsView = () => {
         data_inicio: form.data_inicio,
         proximo_vencimento: form.proximo_vencimento,
       };
+      if (form.data_fim_vigencia) {
+        body.data_fim_vigencia = form.data_fim_vigencia;
+      }
       const res = await api.post<ContratoOut>('/api/v1/contratos', body);
       if (form.gerar_pix) {
         await api.post('/api/v1/cobrancas/pix', { contrato_id: res.data.id });
       }
       setShowModal(false);
-      setForm({
-        cliente_id: '',
-        moto_id: '',
-        valor_recorrente: '',
-        ciclo: 'mensal',
-        data_inicio: todayIso(),
-        proximo_vencimento: defaultVencimento('mensal', todayIso()),
-        gerar_pix: true,
-      });
+      resetForm();
       await fetchContratos(offset);
       await fetchMeta();
     } catch (err) {
@@ -321,7 +398,8 @@ const ContractsView = () => {
                 <th>Moto</th>
                 <th>Valor</th>
                 <th>Ciclo</th>
-                <th>Próx. vencimento</th>
+                <th>Venc. pagamento</th>
+                <th>Fim vigência</th>
                 <th>Promessa</th>
                 <th>Assinatura</th>
                 <th>Status</th>
@@ -353,6 +431,13 @@ const ContractsView = () => {
                     <td>{formatBrl(ct.valor_recorrente)}</td>
                     <td>{ct.ciclo}</td>
                     <td>{formatDate(ct.proximo_vencimento)}</td>
+                    <td>
+                      {ct.data_fim_vigencia ? (
+                        formatDate(ct.data_fim_vigencia)
+                      ) : (
+                        <span className="text-muted">Indeterminado</span>
+                      )}
+                    </td>
                     <td>
                       {ct.promessa_pagamento_em ? (
                         <div style={{ fontSize: '0.8rem' }}>
@@ -470,7 +555,7 @@ const ContractsView = () => {
 
       {showModal && (
         <div className="modal-overlay">
-          <div className="glass modal-content animate-fade">
+          <div className="glass modal-content modal-content--wide animate-fade">
             <h3>Nova locação</h3>
             <form onSubmit={(e) => void handleCreate(e)}>
               <div className="input-group">
@@ -530,32 +615,95 @@ const ContractsView = () => {
                   <option value="semanal">Semanal</option>
                 </select>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <div className="input-group">
-                  <label className="input-label">Início</label>
-                  <input
-                    type="date"
-                    className="input-field"
-                    value={form.data_inicio}
-                    onChange={(e) =>
-                      setForm({
-                        ...form,
-                        data_inicio: e.target.value,
-                        proximo_vencimento: defaultVencimento(form.ciclo, e.target.value),
-                      })
-                    }
-                    required
-                  />
+              <div className="input-group">
+                <label className="input-label">Início do contrato</label>
+                <input
+                  type="date"
+                  className="input-field"
+                  value={form.data_inicio}
+                  onChange={(e) => handleDataInicioChange(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div className="form-cards-row">
+                <div className="date-option-card glass">
+                  <h4>Tempo do contrato</h4>
+                  <p className="text-muted date-card-hint">
+                    Até quando a locação permanece ativa (encerramento automático).
+                  </p>
+                  <div className="date-option-grid">
+                    {VIGENCIA_OPTIONS.map((opt) => (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        className={`date-chip ${vigenciaModo === opt.value ? 'active' : ''}`}
+                        onClick={() => handleVigenciaModoChange(opt.value)}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="date-effective">
+                    {vigenciaModo === 'indeterminado' ? (
+                      <span className="text-muted">Sem data de término</span>
+                    ) : vigenciaModo === 'custom' ? (
+                      <>
+                        <span className="text-muted">Data escolhida: </span>
+                        {form.data_fim_vigencia ? formatDate(form.data_fim_vigencia) : '—'}
+                      </>
+                    ) : (
+                      <>
+                        <span className="text-muted">Encerra em: </span>
+                        {formatDate(form.data_fim_vigencia)}
+                      </>
+                    )}
+                  </p>
+                  {vigenciaModo === 'custom' && (
+                    <input
+                      type="date"
+                      className="input-field"
+                      value={form.data_fim_vigencia}
+                      min={form.data_inicio}
+                      onChange={(e) => setForm({ ...form, data_fim_vigencia: e.target.value })}
+                      required
+                    />
+                  )}
                 </div>
-                <div className="input-group">
-                  <label className="input-label">Próximo vencimento</label>
-                  <input
-                    type="date"
-                    className="input-field"
-                    value={form.proximo_vencimento}
-                    onChange={(e) => setForm({ ...form, proximo_vencimento: e.target.value })}
-                    required
-                  />
+
+                <div className="date-option-card glass">
+                  <h4>Vencimento do pagamento</h4>
+                  <p className="text-muted date-card-hint">
+                    Quando o cliente deve pagar (primeiro vencimento).
+                  </p>
+                  <div className="date-option-grid">
+                    {VENCIMENTO_OPTIONS.map((opt) => (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        className={`date-chip ${vencimentoModo === opt.value ? 'active' : ''}`}
+                        onClick={() => handleVencimentoModoChange(opt.value)}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="date-effective">
+                    <span className="text-muted">Vence em: </span>
+                    {formatDate(form.proximo_vencimento)}
+                  </p>
+                  {vencimentoModo === 'custom' && (
+                    <input
+                      type="date"
+                      className="input-field"
+                      value={form.proximo_vencimento}
+                      min={form.data_inicio}
+                      onChange={(e) =>
+                        setForm({ ...form, proximo_vencimento: e.target.value })
+                      }
+                      required
+                    />
+                  )}
                 </div>
               </div>
               <label className="checkbox-row">
@@ -714,29 +862,69 @@ const ContractsView = () => {
         .icon-btn.danger:hover {
           color: var(--danger);
         }
-        .modal-overlay {
-          position: fixed;
-          inset: 0;
-          background: rgba(0, 0, 0, 0.8);
+        .form-cards-row {
+          display: flex;
+          flex-wrap: wrap;
+          justify-content: center;
+          gap: 16px;
+          margin: 20px 0;
+        }
+        .date-option-card {
+          flex: 1 1 260px;
+          max-width: 300px;
+          width: 100%;
+          padding: 18px;
+          border-radius: 12px;
+          text-align: center;
+        }
+        .date-option-card h4 {
+          font-size: 0.95rem;
+          margin-bottom: 6px;
+        }
+        .date-card-hint {
+          font-size: 0.75rem;
+          margin-bottom: 12px;
+          line-height: 1.35;
+        }
+        .date-option-grid {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+          justify-content: center;
+          margin-bottom: 12px;
+        }
+        .date-chip {
+          background: var(--secondary);
+          border: 1px solid var(--glass-border);
+          color: var(--text-muted);
+          padding: 6px 12px;
+          border-radius: 8px;
+          cursor: pointer;
+          font-size: 0.78rem;
+          transition: border-color 0.15s, background 0.15s, color 0.15s;
+        }
+        .date-chip:hover {
+          border-color: var(--primary);
+          color: var(--primary);
+        }
+        .date-chip.active {
+          border-color: var(--primary);
+          background: var(--primary-glow);
+          color: var(--primary);
+          font-weight: 600;
+        }
+        .date-effective {
+          font-size: 0.85rem;
+          margin-bottom: 10px;
+          min-height: 1.25rem;
+        }
+        .checkbox-row {
           display: flex;
           align-items: center;
-          justify-content: center;
-          z-index: 1000;
-          backdrop-filter: blur(4px);
-          padding: 16px;
-        }
-        .modal-content {
-          width: 100%;
-          max-width: 480px;
-          padding: 30px;
-          max-height: 90vh;
-          overflow-y: auto;
-        }
-        .modal-actions {
-          display: flex;
-          justify-content: flex-end;
-          gap: 12px;
-          margin-top: 20px;
+          gap: 8px;
+          margin-top: 12px;
+          font-size: 0.9rem;
+          cursor: pointer;
         }
         .btn-secondary {
           background: var(--secondary);
@@ -753,14 +941,6 @@ const ContractsView = () => {
           padding: 12px 16px;
           margin-top: 16px;
           border-radius: 12px;
-        }
-        .checkbox-row {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          margin-top: 12px;
-          font-size: 0.9rem;
-          cursor: pointer;
         }
       `}</style>
     </div>

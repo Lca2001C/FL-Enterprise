@@ -51,8 +51,6 @@ import TourWelcomeBanner from './components/TourWelcomeBanner';
 import { dismissOwnerTourBanner, shouldShowOwnerTourBanner, isOwnerTourEligible } from './guide/ownerTourSteps';
 import { useOwnerTour } from './guide/useOwnerTour';
 
-type OperacaoOpt = { id: number; nome: string };
-
 const TAB_LABELS: Partial<Record<AppTab, string>> = {
   dashboard: 'Visão Geral',
   motos: 'Gestão de Frota',
@@ -75,13 +73,40 @@ const Dashboard = () => {
     operacaoScopeId,
     setOperacaoScopeId,
     operacaoNome,
+    operacoes,
     activeTab,
     setActiveTab,
     navigateToContracts,
     registerOwnerTour,
   } = useAuth();
   const [sidebarOpen, setSidebarOpen] = React.useState(false);
+  const [isMobileNav, setIsMobileNav] = React.useState(false);
   const [stats, setStats] = React.useState<AnalyticsSummary | null>(null);
+
+  React.useEffect(() => {
+    const mq = window.matchMedia('(max-width: 768px)');
+    const update = () => {
+      setIsMobileNav(mq.matches);
+      if (!mq.matches) setSidebarOpen(false);
+    };
+    update();
+    mq.addEventListener('change', update);
+    return () => mq.removeEventListener('change', update);
+  }, []);
+
+  React.useEffect(() => {
+    if (!sidebarOpen) return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setSidebarOpen(false);
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [sidebarOpen]);
   const [recentActivity, setRecentActivity] = React.useState<RecentActivityItem[]>([]);
   const [inadimplentes, setInadimplentes] = React.useState<ContratoOut[]>([]);
   const [clientes, setClientes] = React.useState<ClienteOut[]>([]);
@@ -91,7 +116,6 @@ const Dashboard = () => {
   const [totalContratos, setTotalContratos] = React.useState(0);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState('');
-  const [operacoes, setOperacoes] = React.useState<OperacaoOpt[]>([]);
   const [copiedContratoId, setCopiedContratoId] = React.useState<number | null>(null);
   const [showTourBanner, setShowTourBanner] = React.useState(false);
   const activeTabRef = React.useRef(activeTab);
@@ -180,17 +204,6 @@ const Dashboard = () => {
   React.useEffect(() => {
     if (activeTab === 'dashboard') void fetchStats();
   }, [activeTab, api]);
-
-  React.useEffect(() => {
-    if (!isAdmin) {
-      setOperacoes([]);
-      return;
-    }
-    void api
-      .get<OperacaoOpt[]>('/api/v1/operacoes')
-      .then((r) => setOperacoes(r.data))
-      .catch(() => setOperacoes([]));
-  }, [isAdmin, api]);
 
   const goToTab = (tab: AppTab) => {
     setActiveTab(tab);
@@ -423,7 +436,11 @@ const Dashboard = () => {
           onClick={() => setSidebarOpen(false)}
         />
       )}
-      <aside className={`sidebar glass ${sidebarOpen ? 'open' : ''}`}>
+      <aside
+        id="app-sidebar"
+        className={`sidebar ${isMobileNav ? 'sidebar-solid' : 'glass'} ${sidebarOpen ? 'open' : ''}`}
+        aria-hidden={isMobileNav && !sidebarOpen}
+      >
         <div className="sidebar-header">
           <Shield size={24} color="#6366f1" />
           <span className="brand-font sidebar-brand">{brandTitle}</span>
@@ -549,6 +566,8 @@ const Dashboard = () => {
                 className="menu-btn mobile-only"
                 onClick={() => setSidebarOpen(true)}
                 aria-label="Abrir menu"
+                aria-expanded={isMobileNav ? sidebarOpen : undefined}
+                aria-controls="app-sidebar"
               >
                 <Menu size={22} />
               </button>
@@ -619,6 +638,14 @@ const Dashboard = () => {
           flex-direction: column;
           z-index: 200;
         }
+        .sidebar-solid {
+          background: var(--bg-sidebar);
+          backdrop-filter: none;
+          -webkit-backdrop-filter: none;
+          border: none;
+          border-right: 1px solid var(--glass-border);
+          box-shadow: none;
+        }
         .sidebar-header {
           padding: 18px 20px;
           padding-top: calc(12px + env(safe-area-inset-top, 0px));
@@ -636,6 +663,7 @@ const Dashboard = () => {
         }
         .sidebar-close,
         .menu-btn {
+          display: inline-flex;
           background: none;
           border: none;
           color: var(--text-muted);
@@ -645,9 +673,15 @@ const Dashboard = () => {
           min-height: 44px;
           align-items: center;
           justify-content: center;
+          flex-shrink: 0;
           -webkit-tap-highlight-color: transparent;
           touch-action: manipulation;
           border-radius: 10px;
+        }
+        .sidebar-close:hover,
+        .menu-btn:hover {
+          color: white;
+          background: rgba(255, 255, 255, 0.06);
         }
         .mobile-only {
           display: none;
@@ -655,7 +689,10 @@ const Dashboard = () => {
         .nav-menu {
           padding: 12px 16px;
           flex: 1;
+          min-height: 0;
           overflow-y: auto;
+          overscroll-behavior: contain;
+          -webkit-overflow-scrolling: touch;
         }
         .content {
           margin-left: var(--sidebar-width);
@@ -784,7 +821,9 @@ const Dashboard = () => {
         }
         .sidebar-footer {
           padding: 16px;
+          padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
           border-top: 1px solid var(--glass-border);
+          flex-shrink: 0;
         }
         .conta-link {
           width: 100%;
@@ -946,23 +985,33 @@ const Dashboard = () => {
         }
         @media (max-width: 768px) {
           .mobile-only {
-            display: flex;
+            display: inline-flex;
           }
           .sidebar {
+            width: min(var(--sidebar-width), calc(100vw - 48px));
+            max-width: 100%;
             transform: translateX(-100%);
             transition: transform 0.25s ease;
+            pointer-events: none;
+            background: var(--bg-sidebar);
+            backdrop-filter: none;
+            -webkit-backdrop-filter: none;
+            box-shadow: none;
           }
           .sidebar.open {
             transform: translateX(0);
+            pointer-events: auto;
+            box-shadow: 8px 0 32px rgba(0, 0, 0, 0.45);
           }
           .sidebar-backdrop {
             display: block;
             position: fixed;
             inset: 0;
-            background: rgba(0, 0, 0, 0.5);
+            background: rgba(0, 0, 0, 0.55);
             z-index: 150;
             border: none;
             cursor: pointer;
+            -webkit-tap-highlight-color: transparent;
           }
           .content {
             margin-left: 0;
@@ -972,6 +1021,44 @@ const Dashboard = () => {
             padding-bottom: calc(28px + env(safe-area-inset-bottom, 0px));
             padding-left: max(16px, env(safe-area-inset-left, 0px));
             padding-right: max(16px, env(safe-area-inset-right, 0px));
+          }
+          .content-header {
+            margin-bottom: 20px;
+          }
+          .header-left {
+            align-items: center;
+            min-width: 0;
+            flex: 1;
+          }
+          .header-left h1 {
+            font-size: 1.25rem;
+            line-height: 1.2;
+          }
+          .header-left .text-muted {
+            font-size: 0.8rem;
+          }
+          .header-row {
+            gap: 12px;
+          }
+          .header-actions {
+            width: 100%;
+            flex-wrap: wrap;
+          }
+          .scope-select {
+            flex: 1;
+            min-width: min(100%, 200px);
+          }
+          .scope-select .input-field {
+            width: 100%;
+          }
+        }
+        @media (max-width: 640px) {
+          .header-row {
+            flex-direction: column;
+            align-items: stretch;
+          }
+          .header-actions .btn-primary {
+            width: 100%;
           }
         }
         @media (max-width: 480px) {

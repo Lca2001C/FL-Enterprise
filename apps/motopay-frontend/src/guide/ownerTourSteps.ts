@@ -110,7 +110,7 @@ const ALL_STEPS: OwnerTourStep[] = [
     tourId: 'settings-billing',
     title: 'Ajustes da operação',
     description:
-      'Configure multa fixa, juros diários, templates de mensagens do Telegram e o gateway de pagamento (Asaas ou Mercado Pago).',
+      'Configure multa fixa, juros diários e textos do Telegram enviados pelo bot e pelas notificações automáticas.',
   },
   {
     id: 'automation',

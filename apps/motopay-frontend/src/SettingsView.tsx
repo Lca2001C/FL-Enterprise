@@ -4,6 +4,7 @@ import { useAuth } from './AuthContext';
 import type { OperacaoConfig, TelegramTemplateMeta, TelegramTemplatePreviewOut } from './apiTypes';
 import { parseApiError } from './utils/apiError';
 import ErrorBanner from './components/ErrorBanner';
+import AdminCustomMessagesPanel from './components/AdminCustomMessagesPanel';
 
 const GROUP_LABELS: Record<string, string> = {
   notificacoes: 'Notificações automáticas',
@@ -17,6 +18,7 @@ const SettingsView = () => {
     multa_fixa_percentual: 0,
     juros_diario_percentual: 0,
     telegram_templates: {},
+    telegram_custom_messages: [],
     payment_provider: 'asaas',
   });
   const [mpToken, setMpToken] = useState('');
@@ -29,6 +31,7 @@ const SettingsView = () => {
   const [toast, setToast] = useState('');
 
   const isAdmin = user?.tipo === 'admin';
+  const isDono = user?.tipo === 'dono';
   const adminTargetId = isAdmin && operacaoScopeId != null && operacaoScopeId > 0 ? operacaoScopeId : null;
 
   const showToast = (msg: string) => {
@@ -49,6 +52,7 @@ const SettingsView = () => {
             multa_fixa_percentual: 0,
             juros_diario_percentual: 0,
             telegram_templates: {},
+            telegram_custom_messages: [],
             payment_provider: 'asaas',
           });
           setMpToken('');
@@ -56,11 +60,22 @@ const SettingsView = () => {
           return;
         }
         const r = await api.get<OperacaoConfig>(`/api/v1/operacoes/${adminTargetId}`);
-        setConfig({ ...r.data, payment_provider: r.data.payment_provider ?? 'asaas' });
+        setConfig({
+          ...r.data,
+          payment_provider: r.data.payment_provider ?? 'asaas',
+          telegram_custom_messages: r.data.telegram_custom_messages ?? [],
+        });
         setMpToken('');
       } else {
         const r = await api.get<OperacaoConfig>('/api/v1/operacoes/me');
-        setConfig({ ...r.data, payment_provider: r.data.payment_provider ?? 'asaas' });
+        setConfig({
+          nome: r.data.nome,
+          multa_fixa_percentual: r.data.multa_fixa_percentual,
+          juros_diario_percentual: r.data.juros_diario_percentual,
+          telegram_templates: r.data.telegram_templates,
+          telegram_custom_messages: [],
+          payment_provider: r.data.payment_provider ?? 'asaas',
+        });
         setMpToken('');
       }
     } catch (e) {
@@ -75,11 +90,19 @@ const SettingsView = () => {
   }, [user?.tipo, adminTargetId, api]);
 
   const buildPatchBody = () => {
+    if (isDono) {
+      return {
+        multa_fixa_percentual: config.multa_fixa_percentual,
+        juros_diario_percentual: config.juros_diario_percentual,
+        telegram_templates: config.telegram_templates,
+      };
+    }
     const body: Record<string, unknown> = {
       nome: config.nome,
       multa_fixa_percentual: config.multa_fixa_percentual,
       juros_diario_percentual: config.juros_diario_percentual,
       telegram_templates: config.telegram_templates,
+      telegram_custom_messages: config.telegram_custom_messages,
       payment_provider: config.payment_provider,
     };
     if (mpToken.trim()) {
@@ -159,7 +182,9 @@ const SettingsView = () => {
         <div className="view-header">
           <div>
             <h2>Ajustes da Operação</h2>
-            <p className="text-muted">Selecione uma operação no seletor do topo para carregar e editar as configurações.</p>
+            <p className="text-muted">
+              Selecione uma operação no seletor do topo para carregar e editar as configurações.
+            </p>
           </div>
         </div>
       </div>
@@ -171,7 +196,11 @@ const SettingsView = () => {
       <div className="view-header">
         <div>
           <h2>Ajustes da Operação</h2>
-          <p className="text-muted">Configure regras de cobrança e mensagens do Telegram</p>
+          <p className="text-muted">
+            {isDono
+              ? 'Configure multas, juros e mensagens do Telegram'
+              : 'Configure regras de cobrança, gateway e mensagens do Telegram'}
+          </p>
         </div>
       </div>
 
@@ -180,60 +209,64 @@ const SettingsView = () => {
 
       <div className="glass card" style={{ maxWidth: '720px' }}>
         <form onSubmit={handleSave}>
-          <div className="settings-section">
-            <h3 style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
-              <ShieldCheck size={20} color="var(--primary)" /> Identificação
-            </h3>
-            <div className="input-group">
-              <label className="input-label">Nome da Operação</label>
-              <input
-                type="text"
-                className="input-field"
-                value={config.nome}
-                onChange={(e) => setConfig({ ...config, nome: e.target.value })}
-              />
-            </div>
-          </div>
-
-          <div className="settings-section" style={{ marginTop: 40 }}>
-            <h3 style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
-              <CreditCard size={20} color="var(--primary)" /> Gateway de pagamento
-            </h3>
-            <div className="input-group">
-              <label className="input-label">Provedor</label>
-              <select
-                className="input-field"
-                value={config.payment_provider}
-                onChange={(e) =>
-                  setConfig({
-                    ...config,
-                    payment_provider: e.target.value as 'asaas' | 'mercadopago',
-                  })
-                }
-              >
-                <option value="asaas">Asaas</option>
-                <option value="mercadopago">Mercado Pago</option>
-              </select>
-            </div>
-            {config.payment_provider === 'mercadopago' && (
+          {isAdmin && (
+            <div className="settings-section">
+              <h3 style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
+                <ShieldCheck size={20} color="var(--primary)" /> Identificação
+              </h3>
               <div className="input-group">
-                <label className="input-label">Access Token Mercado Pago</label>
+                <label className="input-label">Nome da Operação</label>
                 <input
-                  type="password"
+                  type="text"
                   className="input-field"
-                  value={mpToken}
-                  onChange={(e) => setMpToken(e.target.value)}
-                  placeholder="Deixe em branco para manter o token atual"
-                  autoComplete="off"
+                  value={config.nome}
+                  onChange={(e) => setConfig({ ...config, nome: e.target.value })}
                 />
-                <small className="text-muted">
-                  O token não é exibido após salvar. Informe novamente apenas para alterar.
-                </small>
               </div>
-            )}
-          </div>
+            </div>
+          )}
 
-          <div className="settings-section" style={{ marginTop: 40 }} data-tour="settings-billing">
+          {isAdmin && (
+            <div className="settings-section" style={{ marginTop: 40 }}>
+              <h3 style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
+                <CreditCard size={20} color="var(--primary)" /> Gateway de pagamento
+              </h3>
+              <div className="input-group">
+                <label className="input-label">Provedor</label>
+                <select
+                  className="input-field"
+                  value={config.payment_provider}
+                  onChange={(e) =>
+                    setConfig({
+                      ...config,
+                      payment_provider: e.target.value as 'asaas' | 'mercadopago',
+                    })
+                  }
+                >
+                  <option value="asaas">Asaas</option>
+                  <option value="mercadopago">Mercado Pago</option>
+                </select>
+              </div>
+              {config.payment_provider === 'mercadopago' && (
+                <div className="input-group">
+                  <label className="input-label">Access Token Mercado Pago</label>
+                  <input
+                    type="password"
+                    className="input-field"
+                    value={mpToken}
+                    onChange={(e) => setMpToken(e.target.value)}
+                    placeholder="Deixe em branco para manter o token atual"
+                    autoComplete="off"
+                  />
+                  <small className="text-muted">
+                    O token não é exibido após salvar. Informe novamente apenas para alterar.
+                  </small>
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="settings-section" style={{ marginTop: isDono ? 0 : 40 }} data-tour="settings-billing">
             <h3 style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
               <Percent size={20} color="var(--warning)" /> Regras de Multa e Juros
             </h3>
@@ -241,10 +274,10 @@ const SettingsView = () => {
               Essas taxas serão aplicadas automaticamente em todas as cobranças que ultrapassarem o vencimento.
             </p>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+            <div className="fee-grid">
               <div className="input-group">
                 <label className="input-label">Multa Fixa (%)</label>
-                <div style={{ position: 'relative' }}>
+                <div className="input-suffix-wrap">
                   <input
                     type="number"
                     step="0.01"
@@ -253,25 +286,15 @@ const SettingsView = () => {
                     onChange={(e) =>
                       setConfig({ ...config, multa_fixa_percentual: parseFloat(e.target.value) })
                     }
-                    style={{ paddingRight: '35px' }}
                   />
-                  <span
-                    style={{
-                      position: 'absolute',
-                      right: 15,
-                      top: 12,
-                      color: 'var(--text-muted)',
-                    }}
-                  >
-                    %
-                  </span>
+                  <span className="input-suffix">%</span>
                 </div>
                 <small className="text-muted">Aplicada uma única vez no atraso</small>
               </div>
 
               <div className="input-group">
                 <label className="input-label">Juros Diários (%)</label>
-                <div style={{ position: 'relative' }}>
+                <div className="input-suffix-wrap">
                   <input
                     type="number"
                     step="0.01"
@@ -280,18 +303,8 @@ const SettingsView = () => {
                     onChange={(e) =>
                       setConfig({ ...config, juros_diario_percentual: parseFloat(e.target.value) })
                     }
-                    style={{ paddingRight: '35px' }}
                   />
-                  <span
-                    style={{
-                      position: 'absolute',
-                      right: 15,
-                      top: 12,
-                      color: 'var(--text-muted)',
-                    }}
-                  >
-                    %
-                  </span>
+                  <span className="input-suffix">%</span>
                 </div>
                 <small className="text-muted">Acumulado por dia de atraso</small>
               </div>
@@ -299,16 +312,7 @@ const SettingsView = () => {
           </div>
 
           <div className="settings-section" style={{ marginTop: 40 }}>
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                gap: 12,
-                marginBottom: 20,
-                flexWrap: 'wrap',
-              }}
-            >
+            <div className="section-title-row">
               <h3 style={{ display: 'flex', alignItems: 'center', gap: 10, margin: 0 }}>
                 <MessageSquare size={20} color="var(--primary)" /> Mensagens Telegram
               </h3>
@@ -323,8 +327,7 @@ const SettingsView = () => {
             </div>
             <p className="text-muted" style={{ fontSize: '0.85rem', marginBottom: 24 }}>
               Textos enviados pelo bot e pelas notificações automáticas. Use placeholders como{' '}
-              <code>{'{placa}'}</code> ou <code>{'{valor_total}'}</code> onde indicado. Alterações valem na
-              próxima mensagem (sem redeploy).
+              <code>{'{placa}'}</code> ou <code>{'{valor_total}'}</code> onde indicado.
             </p>
 
             {Object.entries(groupedMeta).map(([group, items]) => (
@@ -335,16 +338,7 @@ const SettingsView = () => {
                   const isCustom = value !== meta.default;
                   return (
                     <div key={meta.key} className="input-group" style={{ marginBottom: 20 }}>
-                      <div
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          gap: 8,
-                          marginBottom: 6,
-                          flexWrap: 'wrap',
-                        }}
-                      >
+                      <div className="section-title-row" style={{ marginBottom: 6 }}>
                         <label className="input-label" style={{ marginBottom: 0 }}>
                           {meta.label}
                           {isCustom && (
@@ -399,15 +393,16 @@ const SettingsView = () => {
             ))}
           </div>
 
-          <div
-            style={{
-              marginTop: 40,
-              borderTop: '1px solid var(--glass-border)',
-              paddingTop: 20,
-              display: 'flex',
-              justifyContent: 'flex-end',
-            }}
-          >
+          {isAdmin && (
+            <AdminCustomMessagesPanel
+              api={api}
+              config={config}
+              setConfig={setConfig}
+              onError={setError}
+            />
+          )}
+
+          <div className="form-footer">
             <button
               type="submit"
               className="btn-primary"
@@ -427,6 +422,31 @@ const SettingsView = () => {
         }
         .input-group {
           margin-bottom: 15px;
+        }
+        .section-title-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+          margin-bottom: 20px;
+          flex-wrap: wrap;
+        }
+        .fee-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 20px;
+        }
+        .input-suffix-wrap {
+          position: relative;
+        }
+        .input-suffix-wrap .input-field {
+          padding-right: 35px;
+        }
+        .input-suffix {
+          position: absolute;
+          right: 15px;
+          top: 12px;
+          color: var(--text-muted);
         }
         .btn-secondary {
           background: var(--secondary);
@@ -459,6 +479,18 @@ const SettingsView = () => {
           margin-top: 8px;
           white-space: pre-wrap;
           font-family: inherit;
+        }
+        .form-footer {
+          margin-top: 40px;
+          border-top: 1px solid var(--glass-border);
+          padding-top: 20px;
+          display: flex;
+          justify-content: flex-end;
+        }
+        @media (max-width: 640px) {
+          .fee-grid {
+            grid-template-columns: 1fr;
+          }
         }
       `}</style>
     </div>

@@ -10,7 +10,7 @@ import {
 } from 'react';
 import type { AxiosInstance } from 'axios';
 import { createApiClient } from './apiClient';
-import type { AppTab, ContractsFilter } from './apiTypes';
+import type { AppTab, ContractsFilter, OperacaoOut } from './apiTypes';
 
 export type AuthUser = {
   id: number;
@@ -27,6 +27,9 @@ type AuthContextValue = {
   operacaoScopeId: number | null;
   setOperacaoScopeId: (id: number | null) => void;
   operacaoNome: string | null;
+  operacoes: OperacaoOut[];
+  operacoesLoading: boolean;
+  refreshOperacoes: () => Promise<void>;
   api: AxiosInstance;
   login: (email: string, password: string) => Promise<unknown>;
   logout: () => void;
@@ -81,6 +84,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     readScopeFromStorage()
   );
   const [operacaoNome, setOperacaoNome] = useState<string | null>(null);
+  const [operacoes, setOperacoes] = useState<OperacaoOut[]>([]);
+  const [operacoesLoading, setOperacoesLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<AppTab>('dashboard');
   const [contractsFilter, setContractsFilter] = useState<ContractsFilter>('todos');
   const [contractsClienteId, setContractsClienteId] = useState<number | null>(null);
@@ -125,6 +130,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setToken(null);
     setUser(null);
     setOperacaoNome(null);
+    setOperacoes([]);
     setOperacaoScopeId(null);
   }, [apiBase]);
 
@@ -167,6 +173,22 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [api, user, operacaoScopeId]);
 
+  const refreshOperacoes = useCallback(async () => {
+    if (!user || user.tipo !== 'admin') {
+      setOperacoes([]);
+      return;
+    }
+    setOperacoesLoading(true);
+    try {
+      const r = await api.get<OperacaoOut[]>('/api/v1/operacoes');
+      setOperacoes(r.data);
+    } catch {
+      setOperacoes([]);
+    } finally {
+      setOperacoesLoading(false);
+    }
+  }, [api, user]);
+
   const fetchMe = async () => {
     if (!token) return;
     const response = await api.get<AuthUser>('/api/v1/auth/me');
@@ -196,6 +218,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     if (user) void fetchOperacaoNome();
   }, [user, operacaoScopeId, fetchOperacaoNome]);
+
+  useEffect(() => {
+    void refreshOperacoes();
+  }, [refreshOperacoes]);
 
   useEffect(() => {
     localStorage.setItem(LS_API_BASE, apiBase);
@@ -229,6 +255,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       operacaoScopeId,
       setOperacaoScopeId,
       operacaoNome,
+      operacoes,
+      operacoesLoading,
+      refreshOperacoes,
       api,
       login,
       logout,
@@ -250,6 +279,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       apiBase,
       operacaoScopeId,
       operacaoNome,
+      operacoes,
+      operacoesLoading,
+      refreshOperacoes,
       api,
       activeTab,
       contractsFilter,

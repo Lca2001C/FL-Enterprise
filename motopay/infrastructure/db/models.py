@@ -37,6 +37,7 @@ class Operacao(Base):
         Numeric(5, 2), server_default="0.10", nullable=False
     )
     telegram_templates: Mapped[dict[str, str] | None] = mapped_column(JSONB, nullable=True)
+    telegram_custom_messages: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB, nullable=True)
     payment_provider: Mapped[str] = mapped_column(
         String(32), nullable=False, server_default="asaas"
     )
@@ -115,6 +116,7 @@ class Contrato(Base):
     ciclo: Mapped[str] = mapped_column(String(16), nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
     data_inicio: Mapped[date] = mapped_column(Date, nullable=False)
+    data_fim_vigencia: Mapped[date | None] = mapped_column(Date, nullable=True)
     proximo_vencimento: Mapped[date] = mapped_column(Date, nullable=False, index=True)
     nivel_escalonamento_cobranca: Mapped[int] = mapped_column(
         BigInteger, nullable=False, server_default="0"

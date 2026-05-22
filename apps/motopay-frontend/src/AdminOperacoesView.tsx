@@ -1,4 +1,4 @@
-import { useState, useEffect, type FormEvent } from 'react';
+import { useState, type FormEvent } from 'react';
 import { Building2, Plus } from 'lucide-react';
 import { useAuth } from './AuthContext';
 import type { OperacaoOut } from './apiTypes';
@@ -8,9 +8,7 @@ import EmptyState from './components/EmptyState';
 import ErrorBanner from './components/ErrorBanner';
 
 const AdminOperacoesView = () => {
-  const { api } = useAuth();
-  const [operacoes, setOperacoes] = useState<OperacaoOut[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { api, operacoes, operacoesLoading, refreshOperacoes, setOperacaoScopeId } = useAuth();
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState('');
   const [toast, setToast] = useState('');
@@ -21,32 +19,31 @@ const AdminOperacoesView = () => {
     setTimeout(() => setToast(''), 4000);
   };
 
-  const fetchOperacoes = async () => {
-    setLoading(true);
-    setError('');
-    try {
-      const r = await api.get<OperacaoOut[]>('/api/v1/operacoes');
-      setOperacoes(r.data);
-    } catch (e) {
-      setError(parseApiError(e, 'Erro ao carregar operações'));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    void fetchOperacoes();
-  }, [api]);
-
   const handleCreate = async (e: FormEvent) => {
     e.preventDefault();
+    const trimmed = nome.trim();
+    if (!trimmed) {
+      setError('Informe o nome da operação.');
+      return;
+    }
+    if (trimmed.length > 255) {
+      setError('Nome da operação deve ter no máximo 255 caracteres.');
+      return;
+    }
+    const duplicate = operacoes.some((op) => op.nome.toLowerCase() === trimmed.toLowerCase());
+    if (duplicate) {
+      setError('Já existe uma operação com este nome.');
+      return;
+    }
+
     setCreating(true);
     setError('');
     try {
-      await api.post<OperacaoOut>('/api/v1/operacoes', { nome: nome.trim() });
+      const res = await api.post<OperacaoOut>('/api/v1/operacoes', { nome: trimmed });
       setNome('');
       showToast('Operação criada com sucesso.');
-      await fetchOperacoes();
+      await refreshOperacoes();
+      setOperacaoScopeId(res.data.id);
     } catch (err) {
       setError(parseApiError(err, 'Erro ao criar operação'));
     } finally {
@@ -77,6 +74,7 @@ const AdminOperacoesView = () => {
             placeholder="Nome da operação"
             value={nome}
             onChange={(e) => setNome(e.target.value)}
+            maxLength={255}
             required
           />
           <button type="submit" className="btn-primary" disabled={creating || !nome.trim()}>
@@ -86,7 +84,7 @@ const AdminOperacoesView = () => {
       </div>
 
       <div className="glass table-container">
-        {loading ? (
+        {operacoesLoading ? (
           <p style={{ padding: 40, textAlign: 'center' }}>Carregando operações...</p>
         ) : operacoes.length === 0 ? (
           <EmptyState

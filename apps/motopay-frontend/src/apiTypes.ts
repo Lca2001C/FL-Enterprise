@@ -59,6 +59,7 @@ export type ContratoOut = {
   ciclo: string;
   status: string;
   data_inicio: string;
+  data_fim_vigencia: string | null;
   proximo_vencimento: string;
   nivel_escalonamento_cobranca: number;
   dias_atraso_acumulado: number;
@@ -74,8 +75,25 @@ export type OperacaoConfig = {
   multa_fixa_percentual: number;
   juros_diario_percentual: number;
   telegram_templates: Record<string, string>;
+  telegram_custom_messages: TelegramCustomMessage[];
   payment_provider: 'asaas' | 'mercadopago';
   mercadopago_access_token?: string;
+};
+
+export type TelegramCustomMessage = {
+  id: string;
+  label: string;
+  trigger: string;
+  body: string;
+  enabled: boolean;
+  replace_default: boolean;
+};
+
+export type CustomMessageTriggerMeta = {
+  trigger: string;
+  label: string;
+  description: string;
+  placeholders: string[];
 };
 
 export type TelegramTemplateMeta = {

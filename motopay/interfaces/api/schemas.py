@@ -4,7 +4,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, Generic, TypeVar
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
 
 from motopay.domain.enums import (
     CicloCobranca,
@@ -63,6 +63,22 @@ class OperacaoCreate(BaseModel):
     nome: str = Field(min_length=1, max_length=255)
 
 
+class TelegramCustomMessage(BaseModel):
+    id: str = Field(min_length=1, max_length=64)
+    label: str = Field(min_length=1, max_length=80)
+    trigger: str = Field(min_length=1, max_length=64)
+    body: str = Field(min_length=1, max_length=2000)
+    enabled: bool = True
+    replace_default: bool = False
+
+
+class CustomMessageTriggerMetaOut(BaseModel):
+    trigger: str
+    label: str
+    description: str
+    placeholders: list[str]
+
+
 class OperacaoOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -72,6 +88,7 @@ class OperacaoOut(BaseModel):
     multa_fixa_percentual: Decimal
     juros_diario_percentual: Decimal
     telegram_templates: dict[str, str] = Field(default_factory=dict)
+    telegram_custom_messages: list[TelegramCustomMessage] = Field(default_factory=list)
     payment_provider: PaymentProvider = PaymentProvider.ASAAS
 
 
@@ -80,14 +97,24 @@ class OperacaoUpdate(BaseModel):
     multa_fixa_percentual: Decimal | None = None
     juros_diario_percentual: Decimal | None = None
     telegram_templates: dict[str, str | None] | None = None
+    telegram_custom_messages: list[TelegramCustomMessage] | None = None
     payment_provider: PaymentProvider | None = None
     mercadopago_access_token: str | None = None
 
 
 class TelegramTemplatePreviewRequest(BaseModel):
-    key: str = Field(min_length=1)
+    key: str | None = None
+    trigger: str | None = None
     template: str | None = None
     context: dict[str, Any] | None = None
+
+    @model_validator(mode="after")
+    def require_key_or_trigger(self) -> TelegramTemplatePreviewRequest:
+        if not self.key and not self.trigger:
+            raise ValueError("Informe key ou trigger")
+        if self.key and self.trigger:
+            raise ValueError("Informe apenas key ou trigger")
+        return self
 
 
 class TelegramTemplatePreviewOut(BaseModel):
@@ -167,12 +194,22 @@ class ContratoCreate(BaseModel):
     ciclo: CicloCobranca
     status: ContratoStatus = ContratoStatus.ATIVO
     data_inicio: date
+    data_fim_vigencia: date | None = None
     proximo_vencimento: date
+
+    @model_validator(mode="after")
+    def validate_dates(self) -> ContratoCreate:
+        if self.proximo_vencimento < self.data_inicio:
+            raise ValueError("proximo_vencimento deve ser igual ou posterior a data_inicio")
+        if self.data_fim_vigencia is not None and self.data_fim_vigencia < self.data_inicio:
+            raise ValueError("data_fim_vigencia deve ser igual ou posterior a data_inicio")
+        return self
 
 
 class ContratoUpdate(BaseModel):
     status: ContratoStatus | None = None
     valor_recorrente: Decimal | None = None
+    data_fim_vigencia: date | None = None
     proximo_vencimento: date | None = None
 
 
@@ -187,6 +224,7 @@ class ContratoOut(BaseModel):
     ciclo: str
     status: str
     data_inicio: date
+    data_fim_vigencia: date | None
     proximo_vencimento: date
     nivel_escalonamento_cobranca: int
     dias_atraso_acumulado: int

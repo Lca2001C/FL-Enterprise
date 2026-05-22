@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, type FormEvent } from 'react';
 import { Filter, UserPlus, Users } from 'lucide-react';
 import { useAuth } from './AuthContext';
-import type { OperacaoOut, Paginated, UserAdminOut } from './apiTypes';
+import type { Paginated, UserAdminOut } from './apiTypes';
 import { PAGE_SIZE } from './apiTypes';
 import { formatDate, roleLabel } from './utils/format';
 import { parseApiError } from './utils/apiError';
@@ -18,14 +18,12 @@ function operacaoLabel(u: UserAdminOut): string {
 }
 
 const AdminUsuariosView = () => {
-  const { api } = useAuth();
-  const [operacoes, setOperacoes] = useState<OperacaoOut[]>([]);
+  const { api, operacoes, operacoesLoading } = useAuth();
   const [usuarios, setUsuarios] = useState<UserAdminOut[]>([]);
   const [total, setTotal] = useState(0);
   const [offset, setOffset] = useState(0);
   const [tipoFilter, setTipoFilter] = useState<TipoFilter>('todos');
   const [operacaoFilter, setOperacaoFilter] = useState('');
-  const [loadingMeta, setLoadingMeta] = useState(true);
   const [loadingUsers, setLoadingUsers] = useState(true);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState('');
@@ -63,21 +61,6 @@ const AdminUsuariosView = () => {
     },
     [api, operacaoFilter, tipoFilter]
   );
-
-  useEffect(() => {
-    const loadMeta = async () => {
-      setLoadingMeta(true);
-      try {
-        const opsRes = await api.get<OperacaoOut[]>('/api/v1/operacoes');
-        setOperacoes(opsRes.data);
-      } catch (e) {
-        setError(parseApiError(e, 'Erro ao carregar dados'));
-      } finally {
-        setLoadingMeta(false);
-      }
-    };
-    void loadMeta();
-  }, [api]);
 
   useEffect(() => {
     void fetchUsuarios(0);
@@ -220,8 +203,8 @@ const AdminUsuariosView = () => {
         <h3 style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
           <UserPlus size={20} color="var(--primary)" /> Novo dono
         </h3>
-        {loadingMeta ? (
-          <p className="text-muted">Carregando...</p>
+        {operacoesLoading ? (
+          <p className="text-muted">Carregando operações...</p>
         ) : (
           <form onSubmit={(e) => void handleCreate(e)}>
             <div className="input-group">

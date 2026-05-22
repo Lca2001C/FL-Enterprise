@@ -5,6 +5,7 @@ from motopay.domain.exceptions import ForbiddenError, NotFoundError
 from motopay.infrastructure.db.session import get_db
 from motopay.interfaces.api.deps import CurrentUser, require_admin, require_settings_access
 from motopay.interfaces.api.schemas import (
+    CustomMessageTriggerMetaOut,
     OperacaoCreate,
     OperacaoOut,
     OperacaoUpdate,
@@ -14,6 +15,7 @@ from motopay.interfaces.api.schemas import (
 )
 from motopay.services.operacao_service import (
     create_operacao,
+    get_custom_message_triggers,
     get_operacao_or_404,
     get_telegram_template_meta,
     list_operacoes,
@@ -32,12 +34,24 @@ def telegram_template_meta(
     return get_telegram_template_meta()
 
 
+@router.get("/custom-message-triggers", response_model=list[CustomMessageTriggerMetaOut])
+def custom_message_triggers(
+    _: CurrentUser = Depends(require_settings_access),
+) -> list[CustomMessageTriggerMetaOut]:
+    return get_custom_message_triggers()
+
+
 @router.post("/telegram-template-preview", response_model=TelegramTemplatePreviewOut)
 def telegram_template_preview(
     body: TelegramTemplatePreviewRequest,
     _: CurrentUser = Depends(require_settings_access),
 ) -> TelegramTemplatePreviewOut:
-    text = preview_telegram_template(key=body.key, template=body.template, context=body.context)
+    text = preview_telegram_template(
+        key=body.key,
+        trigger=body.trigger,
+        template=body.template,
+        context=body.context,
+    )
     return TelegramTemplatePreviewOut(text=text)
 
 
@@ -79,7 +93,7 @@ def update_my_op(
 ) -> OperacaoOut:
     if not user.operacao_id:
         raise ForbiddenError("Usuário sem operação vinculada")
-    return update_operacao(db, user.operacao_id, body)
+    return update_operacao(db, user.operacao_id, body, role=user.role)
 
 
 @router.get("/{operacao_id:int}", response_model=OperacaoOut)
