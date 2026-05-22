@@ -3,7 +3,6 @@ from __future__ import annotations
 import logging
 
 import pytest
-
 from motopay.config.settings import Settings, get_settings
 
 

@@ -3,6 +3,7 @@
 Revision ID: 004_operacao_telegram_templates
 Revises: 003_operacao_multas
 """
+
 from collections.abc import Sequence
 
 import sqlalchemy as sa

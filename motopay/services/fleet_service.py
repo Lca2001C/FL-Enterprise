@@ -7,8 +7,6 @@ from motopay.domain.enums import ContratoStatus, DomainEventType, MotoStatus, Us
 from motopay.domain.exceptions import ConflictError, ForbiddenError, NotFoundError
 from motopay.infrastructure.db.models import Cliente, Contrato, EventoDominio, Moto
 from motopay.interfaces.api.deps import CurrentUser
-
-_SCOPED_ROLES = frozenset({UserRole.DONO, UserRole.OPERADOR})
 from motopay.interfaces.api.schemas import (
     ClienteCreate,
     ClienteUpdate,
@@ -18,9 +16,12 @@ from motopay.interfaces.api.schemas import (
     MotoUpdate,
 )
 
+_SCOPED_ROLES = frozenset({UserRole.DONO, UserRole.OPERADOR})
+
 
 def _moto_query(user: CurrentUser, operacao_scope: int | None) -> Select:
     from sqlalchemy.orm import joinedload
+
     q = select(Moto).options(joinedload(Moto.contratos).joinedload(Contrato.cliente))
     if user.role in _SCOPED_ROLES:
         q = q.where(Moto.operacao_id == user.operacao_id)
@@ -48,7 +49,9 @@ def list_motos(
     total = db.scalar(select(func.count()).select_from(base.subquery())) or 0
     motos = list(db.scalars(base.order_by(Moto.id).limit(limit).offset(offset)).all())
     for m in motos:
-        active_ct = next((ct for ct in m.contratos if ct.status == ContratoStatus.ATIVO.value), None)
+        active_ct = next(
+            (ct for ct in m.contratos if ct.status == ContratoStatus.ATIVO.value), None
+        )
         if active_ct:
             m.cliente_nome = active_ct.cliente.nome
     return motos, int(total)
@@ -60,12 +63,18 @@ def get_moto(db: Session, user: CurrentUser, operacao_scope: int | None, moto_id
         raise NotFoundError("Moto não encontrada")
     if user.role in _SCOPED_ROLES and m.operacao_id != user.operacao_id:
         raise ForbiddenError("Moto fora do escopo")
-    if user.role == UserRole.ADMIN and operacao_scope is not None and m.operacao_id != operacao_scope:
+    if (
+        user.role == UserRole.ADMIN
+        and operacao_scope is not None
+        and m.operacao_id != operacao_scope
+    ):
         raise ForbiddenError("Moto fora do escopo informado")
     return m
 
 
-def create_moto(db: Session, user: CurrentUser, operacao_scope: int | None, body: MotoCreate) -> Moto:
+def create_moto(
+    db: Session, user: CurrentUser, operacao_scope: int | None, body: MotoCreate
+) -> Moto:
     operacao_id = operacao_scope if user.role == UserRole.ADMIN else user.operacao_id
     if operacao_id is None:
         raise ForbiddenError("Informe operacao_id")
@@ -94,7 +103,9 @@ def update_moto(
     if body.placa is not None:
         placa = body.placa.upper().strip()
         clash = db.scalars(
-            select(Moto).where(Moto.operacao_id == m.operacao_id, Moto.placa == placa, Moto.id != m.id)
+            select(Moto).where(
+                Moto.operacao_id == m.operacao_id, Moto.placa == placa, Moto.id != m.id
+            )
         ).first()
         if clash:
             raise ConflictError("Placa já cadastrada nesta operação")
@@ -106,7 +117,11 @@ def update_moto(
     db.add(m)
     db.commit()
     db.refresh(m)
-    if body.status is not None and m.status == MotoStatus.MANUTENCAO.value and old_status != MotoStatus.MANUTENCAO.value:
+    if (
+        body.status is not None
+        and m.status == MotoStatus.MANUTENCAO.value
+        and old_status != MotoStatus.MANUTENCAO.value
+    ):
         from motopay.infrastructure.messaging.tasks import handle_domain_event
 
         ev = EventoDominio(
@@ -122,6 +137,7 @@ def update_moto(
 
 def _cliente_query(user: CurrentUser, operacao_scope: int | None) -> Select:
     from sqlalchemy.orm import joinedload
+
     q = select(Cliente).options(joinedload(Cliente.contratos).joinedload(Contrato.moto))
     if user.role in _SCOPED_ROLES:
         q = q.where(Cliente.operacao_id == user.operacao_id)
@@ -146,30 +162,42 @@ def list_clientes(
     total = db.scalar(select(func.count()).select_from(base.subquery())) or 0
     clientes = list(db.scalars(base.order_by(Cliente.id).limit(limit).offset(offset)).all())
     for c in clientes:
-        active_ct = next((ct for ct in c.contratos if ct.status == ContratoStatus.ATIVO.value), None)
+        active_ct = next(
+            (ct for ct in c.contratos if ct.status == ContratoStatus.ATIVO.value), None
+        )
         if active_ct:
             c.moto_placa = active_ct.moto.placa
             c.moto_modelo = active_ct.moto.modelo
     return clientes, int(total)
 
 
-def get_cliente(db: Session, user: CurrentUser, operacao_scope: int | None, cliente_id: int) -> Cliente:
+def get_cliente(
+    db: Session, user: CurrentUser, operacao_scope: int | None, cliente_id: int
+) -> Cliente:
     c = db.get(Cliente, cliente_id)
     if not c:
         raise NotFoundError("Cliente não encontrado")
     if user.role in _SCOPED_ROLES and c.operacao_id != user.operacao_id:
         raise ForbiddenError("Cliente fora do escopo")
-    if user.role == UserRole.ADMIN and operacao_scope is not None and c.operacao_id != operacao_scope:
+    if (
+        user.role == UserRole.ADMIN
+        and operacao_scope is not None
+        and c.operacao_id != operacao_scope
+    ):
         raise ForbiddenError("Cliente fora do escopo informado")
     return c
 
 
-def create_cliente(db: Session, user: CurrentUser, operacao_scope: int | None, body: ClienteCreate) -> Cliente:
+def create_cliente(
+    db: Session, user: CurrentUser, operacao_scope: int | None, body: ClienteCreate
+) -> Cliente:
     operacao_id = operacao_scope if user.role == UserRole.ADMIN else user.operacao_id
     if operacao_id is None:
         raise ForbiddenError("Informe operacao_id")
     cpf = body.cpf.strip()
-    exists = db.scalars(select(Cliente).where(Cliente.operacao_id == operacao_id, Cliente.cpf == cpf)).first()
+    exists = db.scalars(
+        select(Cliente).where(Cliente.operacao_id == operacao_id, Cliente.cpf == cpf)
+    ).first()
     if exists:
         raise ConflictError("CPF já cadastrado nesta operação")
     c = Cliente(
@@ -237,18 +265,26 @@ def list_contratos(
     return rows, int(total)
 
 
-def get_contrato(db: Session, user: CurrentUser, operacao_scope: int | None, contrato_id: int) -> Contrato:
+def get_contrato(
+    db: Session, user: CurrentUser, operacao_scope: int | None, contrato_id: int
+) -> Contrato:
     ct = db.get(Contrato, contrato_id)
     if not ct:
         raise NotFoundError("Contrato não encontrado")
     if user.role in _SCOPED_ROLES and ct.operacao_id != user.operacao_id:
         raise ForbiddenError("Contrato fora do escopo")
-    if user.role == UserRole.ADMIN and operacao_scope is not None and ct.operacao_id != operacao_scope:
+    if (
+        user.role == UserRole.ADMIN
+        and operacao_scope is not None
+        and ct.operacao_id != operacao_scope
+    ):
         raise ForbiddenError("Contrato fora do escopo informado")
     return ct
 
 
-def create_contrato(db: Session, user: CurrentUser, operacao_scope: int | None, body: ContratoCreate) -> Contrato:
+def create_contrato(
+    db: Session, user: CurrentUser, operacao_scope: int | None, body: ContratoCreate
+) -> Contrato:
     operacao_id = operacao_scope if user.role == UserRole.ADMIN else user.operacao_id
     if operacao_id is None:
         raise ForbiddenError("Informe operacao_id")
@@ -277,7 +313,11 @@ def create_contrato(db: Session, user: CurrentUser, operacao_scope: int | None, 
 
 
 def update_contrato(
-    db: Session, user: CurrentUser, operacao_scope: int | None, contrato_id: int, body: ContratoUpdate
+    db: Session,
+    user: CurrentUser,
+    operacao_scope: int | None,
+    contrato_id: int,
+    body: ContratoUpdate,
 ) -> Contrato:
     ct = get_contrato(db, user, operacao_scope, contrato_id)
     if body.status is not None:

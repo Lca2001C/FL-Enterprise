@@ -35,6 +35,9 @@ def my_cobrancas(
     lim = clamp_limit(limit)
     off = clamp_offset(offset)
     rows, total = list_cobrancas_for_cliente(
-        db, cliente_id=user.cliente_id, limit=lim, offset=off  # type: ignore[arg-type]
+        db,
+        cliente_id=user.cliente_id,
+        limit=lim,
+        offset=off,  # type: ignore[arg-type]
     )
     return Paginated(items=rows, total=total, limit=lim, offset=off)

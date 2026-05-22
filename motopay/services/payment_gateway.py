@@ -9,7 +9,6 @@ from motopay.infrastructure.db.models import Cliente, Operacao
 from motopay.infrastructure.payments.asaas_client import AsaasClient, AsaasPaymentResult
 from motopay.infrastructure.payments.mercadopago_client import (
     MercadoPagoClient,
-    MercadoPagoPaymentResult,
     mp_configured_for_operacao,
     mp_token_for_operacao,
 )

@@ -23,7 +23,11 @@ def main() -> None:
 
     db = SessionLocal()
     try:
-        existing = db.scalars(select(Usuario).where(Usuario.email == os.getenv("SEED_ADMIN_EMAIL", "admin@motopay.local"))).first()
+        existing = db.scalars(
+            select(Usuario).where(
+                Usuario.email == os.getenv("SEED_ADMIN_EMAIL", "admin@motopay.local")
+            )
+        ).first()
         if existing:
             print("Seed já aplicado (admin existe).")
             return

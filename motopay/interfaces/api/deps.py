@@ -125,7 +125,9 @@ def operacao_scope(
 OperacaoScoped = Annotated[tuple[CurrentUser, int | None], Depends(operacao_scope)]
 
 
-def assert_resource_operacao(resource_operacao_id: int, scope_operacao_id: int | None, user: CurrentUser) -> None:
+def assert_resource_operacao(
+    resource_operacao_id: int, scope_operacao_id: int | None, user: CurrentUser
+) -> None:
     if user.role == UserRole.ADMIN and scope_operacao_id is None:
         return
     if scope_operacao_id is None:

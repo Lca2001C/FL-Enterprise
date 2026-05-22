@@ -3,6 +3,7 @@
 Revision ID: 005_product_expansion
 Revises: 004_operacao_telegram_templates
 """
+
 from collections.abc import Sequence
 
 import sqlalchemy as sa
@@ -44,7 +45,12 @@ def upgrade() -> None:
     )
     op.add_column(
         "usuarios",
-        sa.Column("cliente_id", sa.BigInteger(), sa.ForeignKey("clientes.id", ondelete="SET NULL"), nullable=True),
+        sa.Column(
+            "cliente_id",
+            sa.BigInteger(),
+            sa.ForeignKey("clientes.id", ondelete="SET NULL"),
+            nullable=True,
+        ),
     )
 
 

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Smoke checklist — valida API e comportamentos por aba do admin (stack local)."""
+
 from __future__ import annotations
 
 import json
@@ -7,7 +8,7 @@ import os
 import sys
 import urllib.error
 import urllib.request
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 API = os.getenv("SMOKE_API_BASE", "http://localhost:8000").rstrip("/")
 FRONT = os.getenv("SMOKE_FRONT_BASE", "http://localhost:5173").rstrip("/")
@@ -144,7 +145,9 @@ def main() -> int:
     scope_id = ops[0]["id"] if isinstance(ops, list) and ops else None
 
     if scope_id:
-        code, motos = get_json(admin_token, "/api/v1/motos?limit=50&offset=0&q=test", scope=scope_id)
+        code, motos = get_json(
+            admin_token, "/api/v1/motos?limit=50&offset=0&q=test", scope=scope_id
+        )
         record(
             "Admin com escopo",
             "Filtro motos q + escopo",
@@ -153,10 +156,14 @@ def main() -> int:
         )
         code, ct = get_json(
             admin_token,
-            f"/api/v1/contratos?limit=50&offset=0&inadimplente=true&cliente_id=1",
+            "/api/v1/contratos?limit=50&offset=0&inadimplente=true&cliente_id=1",
             scope=scope_id,
         )
-        record("Admin com escopo", "Contratos inadimplente+cliente_id", code == 200 and isinstance(ct, dict))
+        record(
+            "Admin com escopo",
+            "Contratos inadimplente+cliente_id",
+            code == 200 and isinstance(ct, dict),
+        )
     else:
         record("Admin com escopo", "Operação disponível para teste", False, "nenhuma operação")
 
@@ -228,7 +235,9 @@ def main() -> int:
 
     # Admin usuários
     code, users = get_json(admin_token, "/api/v1/usuarios?limit=50&offset=0")
-    record("Admin Usuários", "Listagem", code == 200 and isinstance(users, dict) and "items" in users)
+    record(
+        "Admin Usuários", "Listagem", code == 200 and isinstance(users, dict) and "items" in users
+    )
 
     # Paginação — offset > 0 quando total > PAGE_SIZE
     code, page0 = get_json(dono_token, "/api/v1/motos?limit=50&offset=0")

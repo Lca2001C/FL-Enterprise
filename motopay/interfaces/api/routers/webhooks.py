@@ -18,7 +18,10 @@ from motopay.infrastructure.security.rate_limit import (
     record_webhook_failure,
 )
 from motopay.infrastructure.security.webhook_auth import extract_webhook_token, verify_webhook_token
-from motopay.services.billing_service import handle_mercadopago_payment_confirmed, handle_payment_confirmed
+from motopay.services.billing_service import (
+    handle_mercadopago_payment_confirmed,
+    handle_payment_confirmed,
+)
 
 router = APIRouter(tags=["webhooks"])
 

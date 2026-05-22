@@ -39,7 +39,9 @@ def list_financeiro(
     return rows, int(total)
 
 
-def create_financeiro(db: Session, user: CurrentUser, operacao_scope: int | None, body: FinanceiroCreate) -> Financeiro:
+def create_financeiro(
+    db: Session, user: CurrentUser, operacao_scope: int | None, body: FinanceiroCreate
+) -> Financeiro:
     operacao_id = operacao_scope if user.role == UserRole.ADMIN else user.operacao_id
     if operacao_id is None:
         raise ForbiddenError("Informe operacao_id")

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import pytest
-
 from motopay.domain.exceptions import ConflictError
 from motopay.infrastructure.telegram.templates import (
     DEFAULT_TELEGRAM_TEMPLATES,

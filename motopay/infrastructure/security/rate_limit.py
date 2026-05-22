@@ -69,7 +69,9 @@ def assert_login_not_blocked(ip: str, email: str) -> None:
 
 def record_login_failure(ip: str, email: str) -> None:
     settings = get_settings()
-    _record_failure(key=_login_key(ip, email), window_seconds=settings.login_rate_limit_window_seconds)
+    _record_failure(
+        key=_login_key(ip, email), window_seconds=settings.login_rate_limit_window_seconds
+    )
 
 
 def clear_login_attempts(ip: str, email: str) -> None:

@@ -49,7 +49,9 @@ def _mark_telegram_sent(db: Session, contrato_id: int | None, today: date) -> No
         db.add(ct)
 
 
-@celery_app.task(bind=True, name="motopay.infrastructure.messaging.tasks.handle_domain_event", **_RETRY_KW)
+@celery_app.task(
+    bind=True, name="motopay.infrastructure.messaging.tasks.handle_domain_event", **_RETRY_KW
+)
 def handle_domain_event(self, event_id: int) -> None:
     db = SessionLocal()
     try:
@@ -83,7 +85,9 @@ def handle_domain_event(self, event_id: int) -> None:
                 cliente = db.get(Cliente, int(cid))
                 if cliente and cliente.telegram_id:
                     chat_id = cliente.telegram_id
-                    message = build_overdue_html(overrides=overrides, payload=ev.payload, nivel=nivel)
+                    message = build_overdue_html(
+                        overrides=overrides, payload=ev.payload, nivel=nivel
+                    )
                     use_html = True
         elif ev.tipo == DomainEventType.MOTO_EM_MANUTENCAO.value:
             moto_id = ev.payload.get("moto_id")
@@ -100,7 +104,9 @@ def handle_domain_event(self, event_id: int) -> None:
                     if cliente and cliente.telegram_id:
                         chat_id = cliente.telegram_id
                         placa = moto.placa if moto else str(moto_id)
-                        message = render_template("moto_manutencao", overrides=overrides, placa=placa)
+                        message = render_template(
+                            "moto_manutencao", overrides=overrides, placa=placa
+                        )
 
         if chat_id and message:
             try:
@@ -128,7 +134,9 @@ def handle_domain_event(self, event_id: int) -> None:
         db.close()
 
 
-@celery_app.task(bind=True, name="motopay.infrastructure.messaging.tasks.send_d1_reminder", **_RETRY_KW)
+@celery_app.task(
+    bind=True, name="motopay.infrastructure.messaging.tasks.send_d1_reminder", **_RETRY_KW
+)
 def send_d1_reminder(self, contrato_id: int) -> None:
     db = SessionLocal()
     try:
@@ -154,7 +162,9 @@ def send_d1_reminder(self, contrato_id: int) -> None:
         db.close()
 
 
-@celery_app.task(bind=True, name="motopay.infrastructure.messaging.tasks.send_d0_reminder", **_RETRY_KW)
+@celery_app.task(
+    bind=True, name="motopay.infrastructure.messaging.tasks.send_d0_reminder", **_RETRY_KW
+)
 def send_d0_reminder(self, contrato_id: int) -> None:
     db = SessionLocal()
     try:

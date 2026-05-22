@@ -32,7 +32,9 @@ def test_promessa_skips_telegram_in_delinquency(db_session, operacao_multas, con
         mock_delay.delay.assert_not_called()
 
 
-def test_dedup_skips_same_day_telegram(db_session, operacao_multas, contrato_atrasado, cliente_com_telegram):
+def test_dedup_skips_same_day_telegram(
+    db_session, operacao_multas, contrato_atrasado, cliente_com_telegram
+):
     contrato_atrasado.inadimplente = True
     contrato_atrasado.ultima_cobranca_telegram_em = date.today()
     db_session.add(contrato_atrasado)
@@ -43,7 +45,9 @@ def test_dedup_skips_same_day_telegram(db_session, operacao_multas, contrato_atr
         mock_delay.delay.assert_not_called()
 
 
-def test_payment_clears_promessa(db_session, operacao_multas, contrato_atrasado, cliente_com_telegram):
+def test_payment_clears_promessa(
+    db_session, operacao_multas, contrato_atrasado, cliente_com_telegram
+):
     contrato_atrasado.promessa_pagamento_em = date.today()
     contrato_atrasado.promessa_notas = "pagar sexta"
     db_session.add(contrato_atrasado)

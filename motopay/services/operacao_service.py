@@ -14,7 +14,13 @@ from motopay.infrastructure.telegram.templates import (
     sample_context_for_key,
 )
 from motopay.interfaces.api.deps import CurrentUser
-from motopay.interfaces.api.schemas import OperacaoCreate, OperacaoOut, OperacaoUpdate, UserAdminOut, UsuarioCreate
+from motopay.interfaces.api.schemas import (
+    OperacaoCreate,
+    OperacaoOut,
+    OperacaoUpdate,
+    UserAdminOut,
+    UsuarioCreate,
+)
 from motopay.services.auth_service import hash_password
 
 
@@ -102,9 +108,7 @@ def list_usuarios_admin(
         base = base.where(Usuario.operacao_id == operacao_id)
         count_q = count_q.where(Usuario.operacao_id == operacao_id)
     total = int(db.scalar(count_q) or 0)
-    rows = db.execute(
-        base.order_by(Usuario.created_at.desc()).limit(limit).offset(offset)
-    ).all()
+    rows = db.execute(base.order_by(Usuario.created_at.desc()).limit(limit).offset(offset)).all()
     items = [_usuario_to_admin_out(user, op_nome) for user, op_nome in rows]
     return items, total
 
@@ -143,7 +147,9 @@ def update_operacao(db: Session, operacao_id: int, body: OperacaoUpdate) -> Oper
     if body.juros_diario_percentual is not None:
         op.juros_diario_percentual = body.juros_diario_percentual
     if body.telegram_templates is not None:
-        op.telegram_templates = merge_template_overrides(op.telegram_templates, body.telegram_templates)
+        op.telegram_templates = merge_template_overrides(
+            op.telegram_templates, body.telegram_templates
+        )
     if body.payment_provider is not None:
         op.payment_provider = body.payment_provider.value
     if body.mercadopago_access_token is not None:

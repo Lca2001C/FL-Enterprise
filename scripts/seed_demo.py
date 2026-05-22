@@ -71,14 +71,23 @@ def main():
         contratos = []
         for i in range(6):
             # Os primeiros 6 clientes pegam as primeiras 6 motos
-            is_atrasado = (i == 2) # Carlos Souza está atrasado
-            vencimento = date.today() - timedelta(days=5) if is_atrasado else date.today() + timedelta(days=i+1)
-            
+            is_atrasado = i == 2  # Carlos Souza está atrasado
+            vencimento = (
+                date.today() - timedelta(days=5)
+                if is_atrasado
+                else date.today() + timedelta(days=i + 1)
+            )
+
             ct = Contrato(
-                operacao_id=op.id, cliente_id=clientes[i].id, moto_id=motos[i].id,
-                valor_recorrente=Decimal(str(250.0 + (i * 20))), ciclo=CicloCobranca.SEMANAL.value,
-                status=ContratoStatus.ATIVO.value, data_inicio=date.today() - timedelta(days=90),
-                proximo_vencimento=vencimento, inadimplente=is_atrasado
+                operacao_id=op.id,
+                cliente_id=clientes[i].id,
+                moto_id=motos[i].id,
+                valor_recorrente=Decimal(str(250.0 + (i * 20))),
+                ciclo=CicloCobranca.SEMANAL.value,
+                status=ContratoStatus.ATIVO.value,
+                data_inicio=date.today() - timedelta(days=90),
+                proximo_vencimento=vencimento,
+                inadimplente=is_atrasado,
             )
             db.add(ct)
             contratos.append(ct)
@@ -91,15 +100,19 @@ def main():
             for sem in range(12):
                 # Simular alguns atrasos ou faltas de pagamento para o Carlos (contrato 2)
                 if ct.cliente_id == clientes[2].id and sem > 9:
-                    continue # Carlos parou de pagar há 2 semanas
-                
-                db.add(Financeiro(
-                    operacao_id=op.id, tipo=FinanceiroTipo.RECEITA.value, 
-                    valor=ct.valor_recorrente, 
-                    data=date.today() - timedelta(days=(sem*7) + 3), 
-                    descricao=f"Aluguel Semanal - {ct.cliente.nome}", 
-                    moto_id=ct.moto_id, contrato_id=ct.id
-                ))
+                    continue  # Carlos parou de pagar há 2 semanas
+
+                db.add(
+                    Financeiro(
+                        operacao_id=op.id,
+                        tipo=FinanceiroTipo.RECEITA.value,
+                        valor=ct.valor_recorrente,
+                        data=date.today() - timedelta(days=(sem * 7) + 3),
+                        descricao=f"Aluguel Semanal - {ct.cliente.nome}",
+                        moto_id=ct.moto_id,
+                        contrato_id=ct.id,
+                    )
+                )
 
         # Despesas de Manutenção para as Motos
         manutencoes = [
@@ -113,24 +126,42 @@ def main():
         for val, desc, mid in manutencoes:
             # Várias manutenções em datas diferentes
             for m_idx in range(2):
-                db.add(Financeiro(
-                    operacao_id=op.id, tipo=FinanceiroTipo.DESPESA.value, 
-                    valor=Decimal(str(val * (m_idx + 1))), 
-                    data=date.today() - timedelta(days=(m_idx * 30) + 15), 
-                    descricao=desc, moto_id=mid
-                ))
+                db.add(
+                    Financeiro(
+                        operacao_id=op.id,
+                        tipo=FinanceiroTipo.DESPESA.value,
+                        valor=Decimal(str(val * (m_idx + 1))),
+                        data=date.today() - timedelta(days=(m_idx * 30) + 15),
+                        descricao=desc,
+                        moto_id=mid,
+                    )
+                )
 
         # 5. Gerar Cobranças detalhadas
         for ct in contratos:
             # Uma recebida
-            db.add(Cobranca(operacao_id=op.id, contrato_id=ct.id, valor=ct.valor_recorrente, vencimento=date.today()-timedelta(days=7), status=CobrancaStatus.RECEBIDO.value))
+            db.add(
+                Cobranca(
+                    operacao_id=op.id,
+                    contrato_id=ct.id,
+                    valor=ct.valor_recorrente,
+                    vencimento=date.today() - timedelta(days=7),
+                    status=CobrancaStatus.RECEBIDO.value,
+                )
+            )
             # Uma pendente
-            db.add(Cobranca(
-                operacao_id=op.id, contrato_id=ct.id, valor=ct.valor_recorrente, 
-                vencimento=ct.proximo_vencimento, 
-                status=CobrancaStatus.ATRASADO.value if ct.inadimplente else CobrancaStatus.PENDENTE.value,
-                pix_copia_cola=f"00020101021226870014br.gov.bcb.pix2565asaas.com/p/v2/DEMO_PIX_{ct.id}_BR5913MOTOPAY"
-            ))
+            db.add(
+                Cobranca(
+                    operacao_id=op.id,
+                    contrato_id=ct.id,
+                    valor=ct.valor_recorrente,
+                    vencimento=ct.proximo_vencimento,
+                    status=CobrancaStatus.ATRASADO.value
+                    if ct.inadimplente
+                    else CobrancaStatus.PENDENTE.value,
+                    pix_copia_cola=f"00020101021226870014br.gov.bcb.pix2565asaas.com/p/v2/DEMO_PIX_{ct.id}_BR5913MOTOPAY",
+                )
+            )
 
         db.commit()
         print("MEGA DEMO carregado com sucesso! Sistema pronto para demonstração completa.")
@@ -139,6 +170,7 @@ def main():
         print(f"Erro ao carregar demo: {e}")
     finally:
         db.close()
+
 
 if __name__ == "__main__":
     main()

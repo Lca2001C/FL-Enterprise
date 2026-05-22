@@ -3,6 +3,7 @@
 Revision ID: 003_operacao_multas
 Revises: 002_cliente_asaas
 """
+
 from collections.abc import Sequence
 
 import sqlalchemy as sa
@@ -21,7 +22,9 @@ def upgrade() -> None:
     )
     op.add_column(
         "operacoes",
-        sa.Column("juros_diario_percentual", sa.Numeric(5, 2), server_default="0.10", nullable=False),
+        sa.Column(
+            "juros_diario_percentual", sa.Numeric(5, 2), server_default="0.10", nullable=False
+        ),
     )
 
 

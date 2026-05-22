@@ -16,7 +16,9 @@ from motopay.services.billing_service import get_open_cobranca
 from motopay.services.negotiation_service import record_promessa_from_telegram_user
 
 
-def _cliente_for_telegram(db, telegram_user_id: str) -> tuple[Cliente | None, dict[str, str] | None]:
+def _cliente_for_telegram(
+    db, telegram_user_id: str
+) -> tuple[Cliente | None, dict[str, str] | None]:
     cliente = db.scalars(select(Cliente).where(Cliente.telegram_id == telegram_user_id)).first()
     overrides: dict[str, str] | None = None
     if cliente:
@@ -75,7 +77,9 @@ async def cmd_promessa(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     try:
         with SessionLocal() as db:
             try:
-                ok = record_promessa_from_telegram_user(db, telegram_user_id=uid, days=days, notas=notas)
+                ok = record_promessa_from_telegram_user(
+                    db, telegram_user_id=uid, days=days, notas=notas
+                )
             except Exception:
                 db.rollback()
                 raise
@@ -178,7 +182,9 @@ async def cmd_ajuda(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                     "score": cliente.score,
                     "inadimplente": ct.inadimplente if ct else False,
                     "proximo_vencimento": str(ct.proximo_vencimento) if ct else None,
-                    "promessa": str(ct.promessa_pagamento_em) if ct and ct.promessa_pagamento_em else None,
+                    "promessa": str(ct.promessa_pagamento_em)
+                    if ct and ct.promessa_pagamento_em
+                    else None,
                 }
     ai = ai_reply(user_message=question, context=ctx)
     if ai:

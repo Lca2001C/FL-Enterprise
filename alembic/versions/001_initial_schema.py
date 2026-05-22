@@ -5,6 +5,7 @@ Revises:
 Create Date: 2026-05-06
 
 """
+
 from collections.abc import Sequence
 
 import sqlalchemy as sa
@@ -22,7 +23,12 @@ def upgrade() -> None:
         "operacoes",
         sa.Column("id", sa.BigInteger(), autoincrement=True, nullable=False),
         sa.Column("nome", sa.String(length=255), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_table(
@@ -32,7 +38,12 @@ def upgrade() -> None:
         sa.Column("senha_hash", sa.String(length=255), nullable=False),
         sa.Column("tipo", sa.String(length=32), nullable=False),
         sa.Column("operacao_id", sa.BigInteger(), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
         sa.ForeignKeyConstraint(["operacao_id"], ["operacoes.id"], ondelete="RESTRICT"),
         sa.PrimaryKeyConstraint("id"),
     )
@@ -80,22 +91,36 @@ def upgrade() -> None:
         sa.Column("status", sa.String(length=32), nullable=False),
         sa.Column("data_inicio", sa.Date(), nullable=False),
         sa.Column("proximo_vencimento", sa.Date(), nullable=False),
-        sa.Column("nivel_escalonamento_cobranca", sa.BigInteger(), server_default="0", nullable=False),
+        sa.Column(
+            "nivel_escalonamento_cobranca", sa.BigInteger(), server_default="0", nullable=False
+        ),
         sa.Column("dias_atraso_acumulado", sa.BigInteger(), server_default="0", nullable=False),
         sa.Column("inadimplente", sa.Boolean(), server_default="false", nullable=False),
         sa.Column("asaas_customer_id", sa.String(length=64), nullable=True),
         sa.Column("asaas_subscription_id", sa.String(length=64), nullable=True),
         sa.Column("promessa_pagamento_em", sa.Date(), nullable=True),
         sa.Column("promessa_notas", sa.Text(), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
         sa.ForeignKeyConstraint(["cliente_id"], ["clientes.id"]),
         sa.ForeignKeyConstraint(["moto_id"], ["motos.id"]),
         sa.ForeignKeyConstraint(["operacao_id"], ["operacoes.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_index(op.f("ix_contratos_operacao_id"), "contratos", ["operacao_id"], unique=False)
-    op.create_index(op.f("ix_contratos_proximo_vencimento"), "contratos", ["proximo_vencimento"], unique=False)
+    op.create_index(
+        op.f("ix_contratos_proximo_vencimento"), "contratos", ["proximo_vencimento"], unique=False
+    )
     op.create_index(op.f("ix_contratos_status"), "contratos", ["status"], unique=False)
 
     op.create_table(
@@ -108,7 +133,12 @@ def upgrade() -> None:
         sa.Column("data", sa.Date(), nullable=False),
         sa.Column("moto_id", sa.BigInteger(), nullable=True),
         sa.Column("contrato_id", sa.BigInteger(), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
         sa.ForeignKeyConstraint(["contrato_id"], ["contratos.id"]),
         sa.ForeignKeyConstraint(["moto_id"], ["motos.id"]),
         sa.ForeignKeyConstraint(["operacao_id"], ["operacoes.id"], ondelete="CASCADE"),
@@ -128,7 +158,12 @@ def upgrade() -> None:
         sa.Column("asaas_payment_id", sa.String(length=64), nullable=True),
         sa.Column("pix_copia_cola", sa.Text(), nullable=True),
         sa.Column("status", sa.String(length=32), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
         sa.ForeignKeyConstraint(["contrato_id"], ["contratos.id"]),
         sa.ForeignKeyConstraint(["operacao_id"], ["operacoes.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
@@ -143,7 +178,12 @@ def upgrade() -> None:
         sa.Column("tipo", sa.String(length=64), nullable=False),
         sa.Column("payload", postgresql.JSONB(astext_type=sa.Text()), nullable=False),
         sa.Column("processado_em", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_index(op.f("ix_eventos_dominio_tipo"), "eventos_dominio", ["tipo"], unique=False)

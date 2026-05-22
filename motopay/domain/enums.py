@@ -7,11 +7,13 @@ class UserRole(str, Enum):
     OPERADOR = "operador"
     CLIENTE = "cliente"
 
+
 class MotoStatus(str, Enum):
     DISPONIVEL = "disponivel"
     ALUGADA = "alugada"
     MANUTENCAO = "manutencao"
     INATIVA = "inativa"
+
 
 class ContratoStatus(str, Enum):
     ATIVO = "ativo"
@@ -19,19 +21,23 @@ class ContratoStatus(str, Enum):
     CANCELADO = "cancelado"
     PENDENTE = "pendente"
 
+
 class CicloCobranca(str, Enum):
     SEMANAL = "semanal"
     MENSAL = "mensal"
 
+
 class FinanceiroTipo(str, Enum):
     RECEITA = "receita"
     DESPESA = "despesa"
+
 
 class CobrancaStatus(str, Enum):
     PENDENTE = "pendente"
     RECEBIDO = "recebido"
     ATRASADO = "atrasado"
     CANCELADO = "cancelado"
+
 
 class DomainEventType(str, Enum):
     PAGAMENTO_CONFIRMADO = "PAGAMENTO_CONFIRMADO"

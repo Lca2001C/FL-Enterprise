@@ -103,7 +103,9 @@ def change_password_route(
 
 
 @router.get("/me", response_model=UserOut)
-def read_me(user: CurrentUser = Depends(get_current_user), db: Session = Depends(get_db)) -> UserOut:
+def read_me(
+    user: CurrentUser = Depends(get_current_user), db: Session = Depends(get_db)
+) -> UserOut:
     u = db.get(Usuario, user.id)
     return UserOut(
         id=user.id,

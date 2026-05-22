@@ -132,11 +132,15 @@ def moto_ranking(
     if user.role in (UserRole.DONO, UserRole.OPERADOR) and op is None:
         raise ForbiddenError("Operação não definida")
     receita_expr = func.coalesce(
-        func.sum(case((Financeiro.tipo == FinanceiroTipo.RECEITA.value, Financeiro.valor), else_=0)),
+        func.sum(
+            case((Financeiro.tipo == FinanceiroTipo.RECEITA.value, Financeiro.valor), else_=0)
+        ),
         0,
     )
     despesa_expr = func.coalesce(
-        func.sum(case((Financeiro.tipo == FinanceiroTipo.DESPESA.value, Financeiro.valor), else_=0)),
+        func.sum(
+            case((Financeiro.tipo == FinanceiroTipo.DESPESA.value, Financeiro.valor), else_=0)
+        ),
         0,
     )
     stmt = (

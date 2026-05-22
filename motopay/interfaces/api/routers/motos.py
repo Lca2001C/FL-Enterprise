@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
-from motopay.domain.enums import ContratoStatus, MotoStatus
+from motopay.domain.enums import MotoStatus
 from motopay.infrastructure.db.session import get_db
 from motopay.interfaces.api.deps import CurrentUser, require_operacional, resolve_operacao_id
 from motopay.interfaces.api.pagination import clamp_limit, clamp_offset

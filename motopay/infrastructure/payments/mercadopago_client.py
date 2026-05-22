@@ -47,7 +47,9 @@ class MercadoPagoClient:
             "external_reference": external_reference,
             "payer": {"email": payer_email or "cliente@motopay.local"},
         }
-        r = httpx.post(f"{self._base}/v1/payments", headers=self._headers(), json=payload, timeout=60.0)
+        r = httpx.post(
+            f"{self._base}/v1/payments", headers=self._headers(), json=payload, timeout=60.0
+        )
         r.raise_for_status()
         data = r.json()
         poi = data.get("point_of_interaction") or {}
@@ -60,7 +62,9 @@ class MercadoPagoClient:
         )
 
     def get_payment(self, payment_id: str) -> dict[str, Any]:
-        r = httpx.get(f"{self._base}/v1/payments/{payment_id}", headers=self._headers(), timeout=30.0)
+        r = httpx.get(
+            f"{self._base}/v1/payments/{payment_id}", headers=self._headers(), timeout=30.0
+        )
         r.raise_for_status()
         return r.json()
 
@@ -84,7 +88,9 @@ class MercadoPagoClient:
             "payer_email": payer_email or "cliente@motopay.local",
             "back_url": get_settings().api_public_base_url,
         }
-        r = httpx.post(f"{self._base}/preapproval", headers=self._headers(), json=payload, timeout=60.0)
+        r = httpx.post(
+            f"{self._base}/preapproval", headers=self._headers(), json=payload, timeout=60.0
+        )
         r.raise_for_status()
         return str(r.json()["id"])
 

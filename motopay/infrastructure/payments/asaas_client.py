@@ -24,13 +24,22 @@ class AsaasClient:
         self._token = s.asaas_api_key
 
     def _headers(self) -> dict[str, str]:
-        return {"access_token": self._token, "Content-Type": "application/json", "User-Agent": "MotoPayAdmin/0.1"}
+        return {
+            "access_token": self._token,
+            "Content-Type": "application/json",
+            "User-Agent": "MotoPayAdmin/0.1",
+        }
 
     def create_customer(self, *, name: str, cpf_cnpj: str, phone: str | None) -> str:
-        payload: dict[str, Any] = {"name": name, "cpfCnpj": "".join(c for c in cpf_cnpj if c.isdigit())}
+        payload: dict[str, Any] = {
+            "name": name,
+            "cpfCnpj": "".join(c for c in cpf_cnpj if c.isdigit()),
+        }
         if phone:
             payload["mobilePhone"] = "".join(c for c in phone if c.isdigit())
-        r = httpx.post(f"{self._base}/customers", headers=self._headers(), json=payload, timeout=60.0)
+        r = httpx.post(
+            f"{self._base}/customers", headers=self._headers(), json=payload, timeout=60.0
+        )
         r.raise_for_status()
         data = r.json()
         return str(data["id"])
@@ -54,11 +63,15 @@ class AsaasClient:
             "description": description,
             "nextDueDate": next_due,
         }
-        r = httpx.post(f"{self._base}/subscriptions", headers=self._headers(), json=payload, timeout=60.0)
+        r = httpx.post(
+            f"{self._base}/subscriptions", headers=self._headers(), json=payload, timeout=60.0
+        )
         r.raise_for_status()
         return str(r.json()["id"])
 
-    def create_pix_payment(self, *, customer_id: str, value: Decimal, due_date: str, description: str) -> AsaasPaymentResult:
+    def create_pix_payment(
+        self, *, customer_id: str, value: Decimal, due_date: str, description: str
+    ) -> AsaasPaymentResult:
         payload = {
             "customer": customer_id,
             "billingType": "PIX",
@@ -66,7 +79,9 @@ class AsaasClient:
             "dueDate": due_date,
             "description": description,
         }
-        r = httpx.post(f"{self._base}/payments", headers=self._headers(), json=payload, timeout=60.0)
+        r = httpx.post(
+            f"{self._base}/payments", headers=self._headers(), json=payload, timeout=60.0
+        )
         r.raise_for_status()
         data = r.json()
         pix = data.get("pixCopiaECola") or data.get("pixCopyAndPaste")

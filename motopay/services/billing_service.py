@@ -203,7 +203,9 @@ def refresh_overdue_pix(db: Session, *, contrato: Contrato, today: date) -> Cobr
     cust_id = ensure_asaas_customer(db, cliente)
     gateway = cob.payment_gateway if cob else PaymentGateway.ASAAS.value
     if cob is not None:
-        cancel_external_payment(gateway=gateway, payment_id=cob.asaas_payment_id or cob.mercadopago_payment_id, op=op)
+        cancel_external_payment(
+            gateway=gateway, payment_id=cob.asaas_payment_id or cob.mercadopago_payment_id, op=op
+        )
 
     ext_id, pix, gw = create_pix_for_contrato(
         op=op,
@@ -241,7 +243,9 @@ def ensure_asaas_customer(db: Session, cliente: Cliente) -> str:
         return cliente.asaas_customer_id
     if _asaas_configured():
         client = AsaasClient()
-        cid = client.create_customer(name=cliente.nome, cpf_cnpj=cliente.cpf, phone=cliente.telefone)
+        cid = client.create_customer(
+            name=cliente.nome, cpf_cnpj=cliente.cpf, phone=cliente.telefone
+        )
     else:
         cid = f"demo_cust_{cliente.id}"
     cliente.asaas_customer_id = cid
@@ -370,9 +374,7 @@ def list_cobrancas(
     if status is not None:
         base = base.where(Cobranca.status == status.value)
     total = db.scalar(select(func.count()).select_from(base.subquery())) or 0
-    rows = list(
-        db.scalars(base.order_by(Cobranca.id.desc()).limit(limit).offset(offset)).all()
-    )
+    rows = list(db.scalars(base.order_by(Cobranca.id.desc()).limit(limit).offset(offset)).all())
     today = date.today()
     op_ids = {c.operacao_id for c in rows}
     ops: dict[int, Operacao] = {}
