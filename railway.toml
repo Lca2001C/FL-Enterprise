@@ -1,0 +1,3 @@
+# Railway: Dockerfile na raiz. Crie um serviço por processo na UI e defina Start Command lá.
+[build]
+builder = "dockerfile"

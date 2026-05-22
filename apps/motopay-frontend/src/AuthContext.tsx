@@ -4,10 +4,13 @@ import {
   useState,
   useEffect,
   useMemo,
+  useCallback,
+  useRef,
   type ReactNode,
 } from 'react';
 import type { AxiosInstance } from 'axios';
 import { createApiClient } from './apiClient';
+import type { AppTab, ContractsFilter } from './apiTypes';
 
 export type AuthUser = {
   id: number;
@@ -21,16 +24,22 @@ type AuthContextValue = {
   token: string | null;
   apiBase: string;
   setApiBase: (v: string) => void;
-  /** Escopo opcional para admin (query operacao_id). Dono usa sempre operacao_id do token. */
   operacaoScopeId: number | null;
   setOperacaoScopeId: (id: number | null) => void;
+  operacaoNome: string | null;
   api: AxiosInstance;
   login: (email: string, password: string) => Promise<unknown>;
   logout: () => void;
   fetchMe: () => Promise<void>;
+  activeTab: AppTab;
+  setActiveTab: (tab: AppTab) => void;
+  contractsFilter: ContractsFilter;
+  setContractsFilter: (f: ContractsFilter) => void;
+  navigateToContracts: (filter?: ContractsFilter) => void;
 };
 
 const LS_TOKEN = 'token';
+const LS_REFRESH = 'refresh_token';
 const LS_API_BASE = 'apiBase';
 const LS_SCOPE = 'operacao_scope_id';
 
@@ -66,6 +75,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [operacaoScopeId, setOperacaoScopeIdState] = useState<number | null>(() =>
     readScopeFromStorage()
   );
+  const [operacaoNome, setOperacaoNome] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<AppTab>('dashboard');
+  const [contractsFilter, setContractsFilter] = useState<ContractsFilter>('todos');
+  const tokenRef = useRef(token);
+  tokenRef.current = token;
 
   const setApiBase = (v: string) => {
     const n = v.replace(/\/$/, '');
@@ -79,15 +93,57 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     else localStorage.removeItem(LS_SCOPE);
   };
 
+  const logout = useCallback(() => {
+    const refreshToken = localStorage.getItem(LS_REFRESH);
+    const currentToken = tokenRef.current;
+    if (refreshToken && currentToken) {
+      void axiosLogout(apiBase, currentToken, refreshToken);
+    }
+    localStorage.removeItem(LS_REFRESH);
+    setToken(null);
+    setUser(null);
+    setOperacaoNome(null);
+    setOperacaoScopeId(null);
+  }, [apiBase]);
+
   const api = useMemo(
     () =>
       createApiClient(
         apiBase,
-        () => token,
-        () => effectiveOperacaoId(user, operacaoScopeId)
+        () => tokenRef.current,
+        () => effectiveOperacaoId(user, operacaoScopeId),
+        {
+          getRefreshToken: () => localStorage.getItem(LS_REFRESH),
+          onTokenRefreshed: (accessToken, refreshToken) => {
+            localStorage.setItem(LS_TOKEN, accessToken);
+            localStorage.setItem(LS_REFRESH, refreshToken);
+            setToken(accessToken);
+          },
+          onAuthFailed: () => logout(),
+        }
       ),
-    [apiBase, token, user, operacaoScopeId]
+    [apiBase, user, operacaoScopeId, logout]
   );
+
+  const fetchOperacaoNome = useCallback(async () => {
+    if (!user) {
+      setOperacaoNome(null);
+      return;
+    }
+    try {
+      if (user.tipo === 'dono') {
+        const r = await api.get<{ nome: string }>('/api/v1/operacoes/me');
+        setOperacaoNome(r.data.nome);
+      } else if (user.tipo === 'admin' && operacaoScopeId) {
+        const r = await api.get<{ nome: string }>(`/api/v1/operacoes/${operacaoScopeId}`);
+        setOperacaoNome(r.data.nome);
+      } else {
+        setOperacaoNome(null);
+      }
+    } catch {
+      setOperacaoNome(null);
+    }
+  }, [api, user, operacaoScopeId]);
 
   const fetchMe = async () => {
     if (!token) return;
@@ -106,13 +162,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         setToken(null);
         setUser(null);
         localStorage.removeItem(LS_TOKEN);
+        localStorage.removeItem(LS_REFRESH);
       });
     } else {
       localStorage.removeItem(LS_TOKEN);
       setUser(null);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- apenas token; evita loop com api/user
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
+
+  useEffect(() => {
+    if (user) void fetchOperacaoNome();
+  }, [user, operacaoScopeId, fetchOperacaoNome]);
 
   useEffect(() => {
     localStorage.setItem(LS_API_BASE, apiBase);
@@ -121,24 +182,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const login = async (email: string, password: string) => {
     const response = await api.post<{ access_token: string; refresh_token: string }>(
       '/api/v1/auth/login',
-      {
-        email,
-        password,
-      }
+      { email, password }
     );
-    localStorage.setItem('refresh_token', response.data.refresh_token);
+    localStorage.setItem(LS_REFRESH, response.data.refresh_token);
     setToken(response.data.access_token);
   };
 
-  const logout = () => {
-    const refreshToken = localStorage.getItem('refresh_token');
-    if (refreshToken) {
-      void api.post('/api/v1/auth/logout', { refresh_token: refreshToken }).catch(() => undefined);
-      localStorage.removeItem('refresh_token');
-    }
-    setToken(null);
-    setUser(null);
-    setOperacaoScopeId(null);
+  const navigateToContracts = (filter: ContractsFilter = 'inadimplentes') => {
+    setContractsFilter(filter);
+    setActiveTab('contratos');
   };
 
   const value = useMemo(
@@ -149,16 +201,33 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setApiBase,
       operacaoScopeId,
       setOperacaoScopeId,
+      operacaoNome,
       api,
       login,
       logout,
       fetchMe,
+      activeTab,
+      setActiveTab,
+      contractsFilter,
+      setContractsFilter,
+      navigateToContracts,
     }),
-    [user, token, apiBase, operacaoScopeId, api]
+    [user, token, apiBase, operacaoScopeId, operacaoNome, api, activeTab, contractsFilter]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
+
+async function axiosLogout(base: string, accessToken: string, refreshToken: string) {
+  const { default: axios } = await import('axios');
+  await axios
+    .post(
+      `${base.replace(/\/$/, '')}/api/v1/auth/logout`,
+      { refresh_token: refreshToken },
+      { headers: { Authorization: `Bearer ${accessToken}` } }
+    )
+    .catch(() => undefined);
+}
 
 export const useAuth = (): AuthContextValue => {
   const ctx = useContext(AuthContext);

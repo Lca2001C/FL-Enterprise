@@ -21,6 +21,30 @@ export type ClienteOut = {
   moto_modelo?: string | null;
 };
 
+export type ContratoOut = {
+  id: number;
+  operacao_id: number;
+  cliente_id: number;
+  moto_id: number;
+  valor_recorrente: number;
+  ciclo: string;
+  status: string;
+  data_inicio: string;
+  proximo_vencimento: string;
+  nivel_escalonamento_cobranca: number;
+  dias_atraso_acumulado: number;
+  inadimplente: boolean;
+  promessa_pagamento_em: string | null;
+  promessa_notas: string | null;
+  asaas_subscription_id: string | null;
+};
+
+export type OperacaoConfig = {
+  nome: string;
+  multa_fixa_percentual: number;
+  juros_diario_percentual: number;
+};
+
 export type FinanceiroOut = {
   id: number;
   operacao_id: number;
@@ -42,7 +66,28 @@ export type CobrancaOut = {
   pix_copia_cola: string | null;
   status: string;
   dias_atraso: number;
+  multa: number;
+  juros: number;
   valor_total: number;
+};
+
+export type AnalyticsSummary = {
+  receita_total: number;
+  despesa_total: number;
+  lucro_liquido: number;
+  motos_ativas: number;
+  clientes_inadimplentes: number;
+  total_cobrancas: number;
+  cobrancas_pendentes: number;
+  cobrancas_atrasadas: number;
+};
+
+export type RecentActivityItem = {
+  id: number;
+  tipo: string;
+  descricao: string;
+  data: string;
+  valor: number;
 };
 
 export type MotoAnalyticsRow = {
@@ -55,3 +100,15 @@ export type MotoAnalyticsRow = {
   roi: number | null;
   prejuizo: boolean;
 };
+
+export type AppTab =
+  | 'dashboard'
+  | 'motos'
+  | 'clientes'
+  | 'contratos'
+  | 'financeiro'
+  | 'metricas'
+  | 'cobrancas'
+  | 'ajustes';
+
+export type ContractsFilter = 'todos' | 'ativos' | 'inadimplentes';

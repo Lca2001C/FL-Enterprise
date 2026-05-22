@@ -80,3 +80,42 @@ def send_telegram_text(*, chat_id: str, text: str) -> None:
         if t is not None:
             raise t
     raise _classify_telegram_json_fail(data, r)
+
+
+def send_telegram_html(*, chat_id: str, html: str) -> None:
+    token = get_settings().telegram_bot_token
+    if not token or not chat_id:
+        return
+    url = f"https://api.telegram.org/bot{token}/sendMessage"
+    try:
+        r = httpx.post(
+            url,
+            json={"chat_id": chat_id, "text": html, "parse_mode": "HTML"},
+            timeout=30.0,
+        )
+    except httpx.TimeoutException as e:
+        raise TelegramTransientError("Telegram request timeout") from e
+    except httpx.ConnectError as e:
+        raise TelegramTransientError("Telegram connection error") from e
+    except httpx.RequestError as e:
+        raise TelegramTransientError(f"Telegram request error: {e}") from e
+
+    try:
+        data = r.json()
+    except ValueError as e:
+        t = _transient_from_http(r, r.text[:200])
+        if t is not None:
+            raise t from e
+        raise TelegramPermanentError("Resposta não-JSON do Telegram") from e
+
+    if not isinstance(data, dict):
+        raise TelegramPermanentError("Resposta inesperada do Telegram")
+
+    if data.get("ok") is True:
+        return
+
+    if not r.is_success:
+        t = _transient_from_http(r, str(data.get("description", r.text)))
+        if t is not None:
+            raise t
+    raise _classify_telegram_json_fail(data, r)

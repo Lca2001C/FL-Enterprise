@@ -3,49 +3,123 @@ import { AuthProvider, useAuth } from './AuthContext';
 import Login from './Login';
 import FleetView from './FleetView';
 import ClientsView from './ClientsView';
+import ContractsView from './ContractsView';
 import FinanceView from './FinanceView';
 import MetricsView from './MetricsView';
 import ChargesView from './ChargesView';
 import SettingsView from './SettingsView';
-import { LayoutDashboard, Users, Bike, Receipt, BarChart3, LogOut, Shield, Settings } from 'lucide-react';
+import {
+  LayoutDashboard,
+  Users,
+  Bike,
+  Receipt,
+  BarChart3,
+  LogOut,
+  Shield,
+  Settings,
+  FileText,
+  Menu,
+  X,
+  AlertTriangle,
+  Copy,
+  Check,
+} from 'lucide-react';
+import type {
+  AnalyticsSummary,
+  AppTab,
+  ClienteOut,
+  CobrancaOut,
+  ContratoOut,
+  MotoOut,
+  RecentActivityItem,
+} from './apiTypes';
+import { formatBrl, formatDate, roleLabel } from './utils/format';
+import { parseApiError } from './utils/apiError';
+import ErrorBanner from './components/ErrorBanner';
+import ReloadPrompt from './components/ReloadPrompt';
 
 type OperacaoOpt = { id: number; nome: string };
 
-type SummaryStats = {
-  receita_total?: number;
-  lucro_liquido?: number;
-  cobrancas_atrasadas?: number;
-  cobrancas_pendentes?: number;
-  motos_ativas?: number;
-};
-
-type RecentActivityItem = {
-  id: number;
-  tipo: string;
-  descricao: string;
-  data: string;
-  valor: number;
+const TAB_LABELS: Record<AppTab, string> = {
+  dashboard: 'Visão Geral',
+  motos: 'Gestão de Frota',
+  clientes: 'Clientes',
+  contratos: 'Contratos',
+  financeiro: 'Financeiro',
+  metricas: 'Métricas',
+  cobrancas: 'Cobranças',
+  ajustes: 'Ajustes',
 };
 
 const Dashboard = () => {
-  const { user, logout, api, operacaoScopeId, setOperacaoScopeId } = useAuth();
-  const [activeTab, setActiveTab] = React.useState('dashboard');
-  const [stats, setStats] = React.useState<SummaryStats | null>(null);
+  const {
+    user,
+    logout,
+    api,
+    operacaoScopeId,
+    setOperacaoScopeId,
+    operacaoNome,
+    activeTab,
+    setActiveTab,
+    navigateToContracts,
+  } = useAuth();
+  const [sidebarOpen, setSidebarOpen] = React.useState(false);
+  const [stats, setStats] = React.useState<AnalyticsSummary | null>(null);
   const [recentActivity, setRecentActivity] = React.useState<RecentActivityItem[]>([]);
+  const [inadimplentes, setInadimplentes] = React.useState<ContratoOut[]>([]);
+  const [clientes, setClientes] = React.useState<ClienteOut[]>([]);
+  const [cobrancas, setCobrancas] = React.useState<CobrancaOut[]>([]);
+  const [totalMotos, setTotalMotos] = React.useState(0);
   const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState('');
   const [operacoes, setOperacoes] = React.useState<OperacaoOpt[]>([]);
+  const [copiedContratoId, setCopiedContratoId] = React.useState<number | null>(null);
+
+  const isAdmin = user?.tipo === 'admin';
+  const brandTitle = isAdmin ? 'MotoPay Admin' : operacaoNome ? `MotoPay · ${operacaoNome}` : 'MotoPay Painel';
+  const roleDisplay =
+    user?.tipo === 'dono' && operacaoNome
+      ? `${roleLabel(user.tipo)} — ${operacaoNome}`
+      : roleLabel(user?.tipo);
+
+  const cobrancaByContrato = React.useMemo(() => {
+    const map: Record<number, CobrancaOut> = {};
+    for (const c of cobrancas) {
+      if (c.status === 'pendente' || c.status === 'atrasado') {
+        map[c.contrato_id] = c;
+      }
+    }
+    return map;
+  }, [cobrancas]);
+
+  const clienteMap = React.useMemo(
+    () => Object.fromEntries(clientes.map((c) => [c.id, c])),
+    [clientes]
+  );
+
+  const fleetPct =
+    totalMotos > 0 ? Math.round(((stats?.motos_ativas ?? 0) / totalMotos) * 100) : 0;
 
   const fetchStats = async () => {
     setLoading(true);
+    setError('');
     try {
-      const [sRes, aRes] = await Promise.all([
-        api.get('/api/v1/analytics/summary'),
-        api.get('/api/v1/analytics/recent-activity'),
+      const [sRes, aRes, ctRes, clRes, cobRes, motoRes] = await Promise.all([
+        api.get<AnalyticsSummary>('/api/v1/analytics/summary'),
+        api.get<RecentActivityItem[]>('/api/v1/analytics/recent-activity'),
+        api.get<ContratoOut[]>('/api/v1/contratos'),
+        api.get<ClienteOut[]>('/api/v1/clientes'),
+        api.get<CobrancaOut[]>('/api/v1/cobrancas'),
+        api.get<MotoOut[]>('/api/v1/motos'),
       ]);
-      setStats(sRes.data as SummaryStats);
-      setRecentActivity(aRes.data as RecentActivityItem[]);
+      setStats(sRes.data);
+      setRecentActivity(aRes.data);
+      setInadimplentes(ctRes.data.filter((c) => c.inadimplente));
+      setClientes(clRes.data);
+      setCobrancas(cobRes.data);
+      setTotalMotos(motoRes.data.length);
     } catch (e) {
-      console.error("Erro ao buscar stats", e);
+      setError(parseApiError(e, 'Erro ao buscar dados do dashboard'));
     } finally {
       setLoading(false);
     }
@@ -56,7 +130,7 @@ const Dashboard = () => {
   }, [activeTab, api]);
 
   React.useEffect(() => {
-    if (user?.tipo !== 'admin') {
+    if (!isAdmin) {
       setOperacoes([]);
       return;
     }
@@ -64,34 +138,51 @@ const Dashboard = () => {
       .get<OperacaoOpt[]>('/api/v1/operacoes')
       .then((r) => setOperacoes(r.data))
       .catch(() => setOperacoes([]));
-  }, [user?.tipo, api]);
-  
+  }, [isAdmin, api]);
+
+  const goToTab = (tab: AppTab) => {
+    setActiveTab(tab);
+    setSidebarOpen(false);
+  };
+
+  const copyPix = async (contratoId: number, pix: string) => {
+    await navigator.clipboard.writeText(pix);
+    setCopiedContratoId(contratoId);
+    setTimeout(() => setCopiedContratoId(null), 2000);
+  };
+
   const renderContent = () => {
     switch (activeTab) {
       case 'dashboard':
         return (
           <>
+            {error && <ErrorBanner message={error} onDismiss={() => setError('')} />}
             <div className="stats-grid">
-              <StatCard 
-                title="Receita Bruta" 
-                value={loading ? "..." : `R$ ${Number(stats?.receita_total || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`} 
-                trend="+80%" 
+              <StatCard
+                title="Receita Bruta"
+                value={
+                  loading
+                    ? '...'
+                    : formatBrl(stats?.receita_total ?? 0)
+                }
+                trend="Total recebido"
               />
-              <StatCard 
-                title="Lucro Líquido" 
-                value={loading ? "..." : `R$ ${Number(stats?.lucro_liquido || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`} 
-                trend="Saldo Real" 
+              <StatCard
+                title="Lucro Líquido"
+                value={loading ? '...' : formatBrl(stats?.lucro_liquido ?? 0)}
+                trend="Receitas − despesas"
               />
-              <StatCard 
-                title="Cobranças em Atraso" 
-                value={loading ? "..." : (stats?.cobrancas_atrasadas || 0).toString()} 
-                trend="Crítico" 
-                negative={(stats?.cobrancas_atrasadas || 0) > 0} 
+              <StatCard
+                title="Cobranças em Atraso"
+                value={loading ? '...' : String(stats?.cobrancas_atrasadas ?? 0)}
+                trend="Requer atenção"
+                negative={(stats?.cobrancas_atrasadas ?? 0) > 0}
               />
-              <StatCard 
-                title="Cobranças Pendentes" 
-                value={loading ? "..." : (stats?.cobrancas_pendentes || 0).toString()} 
-                trend="A vencer" 
+              <StatCard
+                title="Inadimplentes"
+                value={loading ? '...' : String(stats?.clientes_inadimplentes ?? 0)}
+                trend="Contratos em atraso"
+                negative={(stats?.clientes_inadimplentes ?? 0) > 0}
               />
             </div>
 
@@ -99,101 +190,189 @@ const Dashboard = () => {
               <div className="glass card animate-fade" style={{ animationDelay: '0.1s' }}>
                 <h3>Atividade Recente</h3>
                 <div className="placeholder-list">
-                  {loading ? <p>Carregando dados...</p> : recentActivity.length === 0 ? <p>Nenhuma atividade.</p> : recentActivity.map(act => (
-                    <div key={act.id} className="list-item">
-                      <div className={`dot ${act.tipo === 'receita' ? 'success' : 'danger'}`}></div>
-                      <div className="item-text">
-                        <p>{act.descricao}</p>
-                        <span>{new Date(act.data).toLocaleDateString('pt-BR')} - R$ {Number(act.valor).toLocaleString('pt-BR')}</span>
+                  {loading ? (
+                    <p>Carregando dados...</p>
+                  ) : recentActivity.length === 0 ? (
+                    <p className="text-muted">Nenhuma atividade.</p>
+                  ) : (
+                    recentActivity.map((act) => (
+                      <div key={act.id} className="list-item">
+                        <div className={`dot ${act.tipo === 'receita' ? 'success' : 'danger'}`} />
+                        <div className="item-text">
+                          <p>{act.descricao}</p>
+                          <span>
+                            {formatDate(act.data)} — {formatBrl(act.valor)}
+                          </span>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    ))
+                  )}
                 </div>
               </div>
-              
-              <div className="glass card animate-fade" style={{ animationDelay: '0.2s' }}>
-                <h3>Status da Frota</h3>
-                <div className="chart-placeholder">
+
+              <div className="side-stack">
+                <div className="glass card animate-fade" style={{ animationDelay: '0.2s' }}>
+                  <h3>Status da Frota</h3>
                   <div className="progress-box">
-                    <p>Motos Alugadas ({stats?.motos_ativas || 0})</p>
+                    <p>
+                      Alugadas: {stats?.motos_ativas ?? 0} de {totalMotos} motos ({fleetPct}%)
+                    </p>
                     <div className="progress-bar">
-                      <div 
-                        className="fill" 
-                        style={{ width: `${Math.min((stats?.motos_ativas || 0) * 10, 100)}%` }}
-                      ></div>
+                      <div className="fill" style={{ width: `${fleetPct}%` }} />
                     </div>
                   </div>
+                  <p className="text-muted" style={{ fontSize: '0.8rem', marginTop: 12 }}>
+                    Pendentes: {stats?.cobrancas_pendentes ?? 0} · Despesas:{' '}
+                    {loading ? '...' : formatBrl(stats?.despesa_total ?? 0)}
+                  </p>
+                </div>
+
+                <div className="glass card animate-fade" style={{ animationDelay: '0.25s' }}>
+                  <div className="card-title-row">
+                    <h3>
+                      <AlertTriangle size={18} color="var(--danger)" /> Inadimplência
+                    </h3>
+                    {inadimplentes.length > 0 && (
+                      <button
+                        type="button"
+                        className="link-btn"
+                        onClick={() => navigateToContracts('inadimplentes')}
+                      >
+                        Ver todos
+                      </button>
+                    )}
+                  </div>
+                  {loading ? (
+                    <p className="text-muted">Carregando...</p>
+                  ) : inadimplentes.length === 0 ? (
+                    <p className="text-muted">Nenhum contrato inadimplente.</p>
+                  ) : (
+                    <div className="inad-list">
+                      {inadimplentes.slice(0, 5).map((ct) => {
+                        const cl = clienteMap[ct.cliente_id];
+                        const cob = cobrancaByContrato[ct.id];
+                        return (
+                          <div key={ct.id} className="inad-item">
+                            <div>
+                              <strong>{cl?.nome ?? `Cliente #${ct.cliente_id}`}</strong>
+                              <span className="text-muted">
+                                {ct.dias_atraso_acumulado} dia(s) · venc.{' '}
+                                {formatDate(ct.proximo_vencimento)}
+                              </span>
+                            </div>
+                            {cob?.pix_copia_cola && (
+                              <button
+                                type="button"
+                                className="mini-pix-btn"
+                                onClick={() => void copyPix(ct.id, cob.pix_copia_cola!)}
+                              >
+                                {copiedContratoId === ct.id ? (
+                                  <Check size={12} />
+                                ) : (
+                                  <Copy size={12} />
+                                )}
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
           </>
         );
-      case 'motos': return <FleetView />;
-      case 'clientes': return <ClientsView />;
-      case 'financeiro': return <FinanceView />;
-      case 'metricas': return <MetricsView />;
-      case 'cobrancas': return <ChargesView />;
-      case 'ajustes': return <SettingsView />;
+      case 'motos':
+        return <FleetView />;
+      case 'clientes':
+        return <ClientsView />;
+      case 'contratos':
+        return <ContractsView />;
+      case 'financeiro':
+        return <FinanceView />;
+      case 'metricas':
+        return <MetricsView />;
+      case 'cobrancas':
+        return <ChargesView />;
+      case 'ajustes':
+        return <SettingsView />;
       default:
-        return (
-          <div className="glass card animate-fade" style={{ padding: '100px', textAlign: 'center' }}>
-            <h2 className="brand-font">Módulo em Desenvolvimento</h2>
-            <p className="text-muted">A tela de {activeTab} será implementada em breve.</p>
-          </div>
-        );
+        return null;
     }
   };
 
   return (
     <div className="dashboard-layout">
-      <aside className="sidebar glass">
+      {sidebarOpen && (
+        <button
+          type="button"
+          className="sidebar-backdrop"
+          aria-label="Fechar menu"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+      <aside className={`sidebar glass ${sidebarOpen ? 'open' : ''}`}>
         <div className="sidebar-header">
           <Shield size={24} color="#6366f1" />
-          <span className="brand-font">MotoPay Admin</span>
+          <span className="brand-font sidebar-brand">{brandTitle}</span>
+          <button
+            type="button"
+            className="sidebar-close mobile-only"
+            onClick={() => setSidebarOpen(false)}
+          >
+            <X size={20} />
+          </button>
         </div>
-        
+
         <nav className="nav-menu">
-          <NavItem 
-            icon={<LayoutDashboard size={20} />} 
-            label="Visão Geral" 
-            active={activeTab === 'dashboard'} 
-            onClick={() => setActiveTab('dashboard')}
+          <NavItem
+            icon={<LayoutDashboard size={20} />}
+            label="Visão Geral"
+            active={activeTab === 'dashboard'}
+            onClick={() => goToTab('dashboard')}
           />
-          <NavItem 
-            icon={<Bike size={20} />} 
-            label="Gestão de Frota" 
-            active={activeTab === 'motos'} 
-            onClick={() => setActiveTab('motos')}
+          <NavItem
+            icon={<Bike size={20} />}
+            label="Gestão de Frota"
+            active={activeTab === 'motos'}
+            onClick={() => goToTab('motos')}
           />
-          <NavItem 
-            icon={<Users size={20} />} 
-            label="Clientes" 
-            active={activeTab === 'clientes'} 
-            onClick={() => setActiveTab('clientes')}
+          <NavItem
+            icon={<Users size={20} />}
+            label="Clientes"
+            active={activeTab === 'clientes'}
+            onClick={() => goToTab('clientes')}
           />
-          <NavItem 
-            icon={<Receipt size={20} />} 
-            label="Financeiro" 
-            active={activeTab === 'financeiro'} 
-            onClick={() => setActiveTab('financeiro')}
+          <NavItem
+            icon={<FileText size={20} />}
+            label="Contratos"
+            active={activeTab === 'contratos'}
+            onClick={() => goToTab('contratos')}
           />
-          <NavItem 
-            icon={<BarChart3 size={20} />} 
-            label="Métricas" 
-            active={activeTab === 'metricas'} 
-            onClick={() => setActiveTab('metricas')}
+          <NavItem
+            icon={<Receipt size={20} />}
+            label="Financeiro"
+            active={activeTab === 'financeiro'}
+            onClick={() => goToTab('financeiro')}
           />
-          <NavItem 
-            icon={<Receipt size={20} />} 
-            label="Cobranças" 
-            active={activeTab === 'cobrancas'} 
-            onClick={() => setActiveTab('cobrancas')}
+          <NavItem
+            icon={<BarChart3 size={20} />}
+            label="Métricas"
+            active={activeTab === 'metricas'}
+            onClick={() => goToTab('metricas')}
           />
-          <NavItem 
-            icon={<Settings size={20} />} 
-            label="Ajustes" 
-            active={activeTab === 'ajustes'} 
-            onClick={() => setActiveTab('ajustes')}
+          <NavItem
+            icon={<Receipt size={20} />}
+            label="Cobranças"
+            active={activeTab === 'cobrancas'}
+            onClick={() => goToTab('cobrancas')}
+          />
+          <NavItem
+            icon={<Settings size={20} />}
+            label="Ajustes"
+            active={activeTab === 'ajustes'}
+            onClick={() => goToTab('ajustes')}
           />
         </nav>
 
@@ -202,10 +381,10 @@ const Dashboard = () => {
             <div className="avatar">{user?.email?.[0].toUpperCase()}</div>
             <div className="details">
               <p className="email">{user?.email}</p>
-              <p className="role">{user?.tipo}</p>
+              <p className="role">{roleDisplay}</p>
             </div>
           </div>
-          <button className="logout-btn" onClick={logout}>
+          <button type="button" className="logout-btn" onClick={logout}>
             <LogOut size={18} /> Sair
           </button>
         </div>
@@ -213,20 +392,29 @@ const Dashboard = () => {
 
       <main className="content">
         <header className="content-header animate-fade">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16 }}>
-            <div>
-              <h1>{activeTab === 'dashboard' ? 'Dashboard Principal' : activeTab.charAt(0).toUpperCase() + activeTab.slice(1)}</h1>
-              <p className="text-muted">Bem-vindo de volta, {user?.email.split('@')[0]}</p>
+          <div className="header-row">
+            <div className="header-left">
+              <button
+                type="button"
+                className="menu-btn mobile-only"
+                onClick={() => setSidebarOpen(true)}
+                aria-label="Abrir menu"
+              >
+                <Menu size={22} />
+              </button>
+              <div>
+                <h1>{TAB_LABELS[activeTab]}</h1>
+                <p className="text-muted">
+                  Bem-vindo, {user?.email.split('@')[0]}
+                </p>
+              </div>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-              {user?.tipo === 'admin' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  <label className="input-label" style={{ marginBottom: 0, fontSize: '0.75rem' }}>
-                    Operação (escopo)
-                  </label>
+            <div className="header-actions">
+              {isAdmin && (
+                <div className="scope-select">
+                  <label className="input-label scope-label">Operação (escopo)</label>
                   <select
                     className="input-field"
-                    style={{ minWidth: 220, padding: '8px 12px' }}
                     value={operacaoScopeId ?? ''}
                     onChange={(e) => {
                       const v = e.target.value;
@@ -243,8 +431,13 @@ const Dashboard = () => {
                 </div>
               )}
               {activeTab === 'dashboard' && (
-                <button className="btn-primary" onClick={() => void fetchStats()} disabled={loading}>
-                  {loading ? '...' : 'Atualizar Dados'}
+                <button
+                  type="button"
+                  className="btn-primary"
+                  onClick={() => void fetchStats()}
+                  disabled={loading}
+                >
+                  {loading ? '...' : 'Atualizar'}
                 </button>
               )}
             </div>
@@ -259,54 +452,117 @@ const Dashboard = () => {
           display: flex;
           min-height: 100vh;
         }
+        .sidebar-backdrop {
+          display: none;
+        }
         .sidebar {
           width: var(--sidebar-width);
           height: 100vh;
+          height: 100dvh;
+          max-height: 100dvh;
           position: fixed;
           left: 0;
           top: 0;
+          padding-bottom: env(safe-area-inset-bottom, 0px);
           border-radius: 0 24px 24px 0;
           display: flex;
           flex-direction: column;
-          z-index: 100;
+          z-index: 200;
         }
         .sidebar-header {
-          padding: 30px;
+          padding: 18px 20px;
+          padding-top: calc(12px + env(safe-area-inset-top, 0px));
           display: flex;
           align-items: center;
           gap: 12px;
-          font-size: 1.2rem;
+          font-size: 1rem;
           font-weight: 700;
+          flex-shrink: 0;
+        }
+        .sidebar-brand {
+          flex: 1;
+          line-height: 1.2;
+          font-size: 0.95rem;
+        }
+        .sidebar-close,
+        .menu-btn {
+          background: none;
+          border: none;
+          color: var(--text-muted);
+          cursor: pointer;
+          padding: 10px;
+          min-width: 44px;
+          min-height: 44px;
+          align-items: center;
+          justify-content: center;
+          -webkit-tap-highlight-color: transparent;
+          touch-action: manipulation;
+          border-radius: 10px;
+        }
+        .mobile-only {
+          display: none;
         }
         .nav-menu {
-          padding: 20px;
+          padding: 12px 16px;
           flex: 1;
+          overflow-y: auto;
         }
         .content {
           margin-left: var(--sidebar-width);
           flex: 1;
-          padding: 40px;
+          padding: 24px 32px calc(40px + env(safe-area-inset-bottom, 0px));
+          padding-left: max(32px, env(safe-area-inset-left, 0px));
+          padding-right: max(32px, env(safe-area-inset-right, 0px));
+          width: calc(100% - var(--sidebar-width));
+          min-height: 0;
         }
         .content-header {
-          margin-bottom: 40px;
+          margin-bottom: 32px;
+        }
+        .header-row {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-start;
+          flex-wrap: wrap;
+          gap: 16px;
+        }
+        .header-left {
+          display: flex;
+          align-items: flex-start;
+          gap: 12px;
+        }
+        .header-actions {
+          display: flex;
+          align-items: flex-end;
+          gap: 12px;
+          flex-wrap: wrap;
+        }
+        .scope-select {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+        .scope-label {
+          margin-bottom: 0;
+          font-size: 0.75rem;
         }
         .stats-grid {
           display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-          gap: 24px;
-          margin-bottom: 40px;
+          grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+          gap: 20px;
+          margin-bottom: 32px;
         }
         .stat-card {
           padding: 24px;
         }
         .stat-value {
-          font-size: 1.8rem;
+          font-size: 1.6rem;
           font-weight: 700;
           margin: 8px 0;
-          font-family: 'Outfit';
+          font-family: 'Outfit', sans-serif;
         }
         .trend {
-          font-size: 0.85rem;
+          font-size: 0.8rem;
           font-weight: 600;
           padding: 4px 8px;
           border-radius: 6px;
@@ -322,18 +578,69 @@ const Dashboard = () => {
           grid-template-columns: 2fr 1fr;
           gap: 24px;
         }
+        .side-stack {
+          display: flex;
+          flex-direction: column;
+          gap: 24px;
+        }
         .card {
           padding: 24px;
         }
+        .card-title-row {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 12px;
+        }
+        .card-title-row h3 {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          font-size: 1rem;
+        }
+        .link-btn {
+          background: none;
+          border: none;
+          color: var(--primary);
+          cursor: pointer;
+          font-size: 0.8rem;
+        }
+        .inad-list {
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+        }
+        .inad-item {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 8px;
+          padding-bottom: 10px;
+          border-bottom: 1px solid var(--glass-border);
+          font-size: 0.85rem;
+        }
+        .inad-item span {
+          display: block;
+          font-size: 0.75rem;
+        }
+        .mini-pix-btn {
+          background: var(--primary-glow);
+          border: 1px solid var(--primary);
+          color: var(--primary);
+          border-radius: 6px;
+          padding: 6px;
+          cursor: pointer;
+          flex-shrink: 0;
+        }
         .sidebar-footer {
-          padding: 20px;
+          padding: 16px;
           border-top: 1px solid var(--glass-border);
         }
         .user-info {
           display: flex;
           align-items: center;
           gap: 12px;
-          margin-bottom: 20px;
+          margin-bottom: 16px;
         }
         .avatar {
           width: 40px;
@@ -344,10 +651,12 @@ const Dashboard = () => {
           align-items: center;
           justify-content: center;
           font-weight: 700;
+          flex-shrink: 0;
         }
         .details .email {
           font-size: 0.85rem;
           font-weight: 600;
+          word-break: break-all;
         }
         .details .role {
           font-size: 0.75rem;
@@ -365,10 +674,14 @@ const Dashboard = () => {
           justify-content: center;
           gap: 8px;
           cursor: pointer;
-          transition: var(--transition);
+          -webkit-tap-highlight-color: transparent;
+          touch-action: manipulation;
+          min-height: 44px;
         }
-        .logout-btn:hover { background: var(--danger); color: white; }
-        
+        .logout-btn:hover {
+          background: var(--danger);
+          color: white;
+        }
         .list-item {
           display: flex;
           gap: 12px;
@@ -376,15 +689,88 @@ const Dashboard = () => {
           padding-bottom: 16px;
           border-bottom: 1px solid var(--glass-border);
         }
-        .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--primary); margin-top: 6px; }
-        .item-text p { font-size: 0.9rem; }
-        .item-text span { font-size: 0.75rem; color: var(--text-muted); }
-        
-        .progress-box { margin-top: 20px; }
-        .progress-box p { font-size: 0.85rem; margin-bottom: 8px; color: var(--text-muted); }
-        .progress-bar { height: 8px; background: var(--secondary); border-radius: 4px; overflow: hidden; }
-        .fill { height: 100%; background: var(--primary); }
-        .fill.warning { background: var(--warning); }
+        .dot {
+          width: 8px;
+          height: 8px;
+          border-radius: 50%;
+          background: var(--primary);
+          margin-top: 6px;
+          flex-shrink: 0;
+        }
+        .dot.success {
+          background: var(--accent);
+        }
+        .dot.danger {
+          background: var(--danger);
+        }
+        .item-text p {
+          font-size: 0.9rem;
+        }
+        .item-text span {
+          font-size: 0.75rem;
+          color: var(--text-muted);
+        }
+        .progress-box {
+          margin-top: 12px;
+        }
+        .progress-box p {
+          font-size: 0.85rem;
+          margin-bottom: 8px;
+          color: var(--text-muted);
+        }
+        .progress-bar {
+          height: 8px;
+          background: var(--secondary);
+          border-radius: 4px;
+          overflow: hidden;
+        }
+        .fill {
+          height: 100%;
+          background: var(--primary);
+        }
+        @media (max-width: 1024px) {
+          .main-grid {
+            grid-template-columns: 1fr;
+          }
+        }
+        @media (max-width: 768px) {
+          .mobile-only {
+            display: flex;
+          }
+          .sidebar {
+            transform: translateX(-100%);
+            transition: transform 0.25s ease;
+          }
+          .sidebar.open {
+            transform: translateX(0);
+          }
+          .sidebar-backdrop {
+            display: block;
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 150;
+            border: none;
+            cursor: pointer;
+          }
+          .content {
+            margin-left: 0;
+            width: 100%;
+            padding: 16px;
+            padding-top: calc(12px + env(safe-area-inset-top, 0px));
+            padding-bottom: calc(28px + env(safe-area-inset-bottom, 0px));
+            padding-left: max(16px, env(safe-area-inset-left, 0px));
+            padding-right: max(16px, env(safe-area-inset-right, 0px));
+          }
+        }
+        @media (max-width: 480px) {
+          .stats-grid {
+            grid-template-columns: 1fr;
+          }
+          .sidebar-header .sidebar-brand {
+            font-size: 0.88rem;
+          }
+        }
       `}</style>
     </div>
   );
@@ -401,7 +787,7 @@ const NavItem = ({
   active: boolean;
   onClick: () => void;
 }) => (
-  <div className={`nav-item ${active ? 'active' : ''}`} onClick={onClick}>
+  <div className={`nav-item ${active ? 'active' : ''}`} onClick={onClick} role="button" tabIndex={0}>
     {icon}
     <span>{label}</span>
     <style jsx>{`
@@ -409,12 +795,15 @@ const NavItem = ({
         display: flex;
         align-items: center;
         gap: 12px;
-        padding: 12px 16px;
+        padding: 14px 16px;
+        min-height: 48px;
         border-radius: 12px;
         color: var(--text-muted);
         cursor: pointer;
         transition: var(--transition);
         margin-bottom: 4px;
+        -webkit-tap-highlight-color: transparent;
+        touch-action: manipulation;
       }
       .nav-item:hover {
         background: rgba(255, 255, 255, 0.05);
@@ -442,9 +831,31 @@ const StatCard = ({
   negative?: boolean;
 }) => (
   <div className="glass stat-card animate-fade">
-    <p className="text-muted" style={{ fontSize: '0.9rem' }}>{title}</p>
+    <p className="text-muted" style={{ fontSize: '0.9rem' }}>
+      {title}
+    </p>
     <div className="stat-value">{value}</div>
     <span className={`trend ${negative ? 'negative' : ''}`}>{trend}</span>
+    <style jsx>{`
+      .stat-value {
+        font-size: 1.6rem;
+        font-weight: 700;
+        margin: 8px 0;
+        font-family: 'Outfit', sans-serif;
+      }
+      .trend {
+        font-size: 0.8rem;
+        font-weight: 600;
+        padding: 4px 8px;
+        border-radius: 6px;
+        background: rgba(16, 185, 129, 0.1);
+        color: var(--accent);
+      }
+      .trend.negative {
+        background: rgba(239, 68, 68, 0.1);
+        color: var(--danger);
+      }
+    `}</style>
   </div>
 );
 
@@ -456,7 +867,10 @@ const MainApp = () => {
 function App() {
   return (
     <AuthProvider>
-      <MainApp />
+      <>
+        <ReloadPrompt />
+        <MainApp />
+      </>
     </AuthProvider>
   );
 }

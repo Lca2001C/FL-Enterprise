@@ -6,7 +6,12 @@ from sqlalchemy.orm import Session, sessionmaker
 from motopay.config import get_settings
 
 _settings = get_settings()
-engine = create_engine(_settings.database_url, pool_pre_ping=True)
+engine = create_engine(
+    _settings.database_url,
+    pool_pre_ping=True,
+    pool_size=_settings.database_pool_size,
+    max_overflow=_settings.database_max_overflow,
+)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine, class_=Session)
 
 

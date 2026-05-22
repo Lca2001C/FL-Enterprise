@@ -85,3 +85,13 @@ class AsaasClient:
         )
         r.raise_for_status()
         return r.json()
+
+    def cancel_payment(self, payment_id: str) -> None:
+        r = httpx.delete(
+            f"{self._base}/payments/{payment_id}",
+            headers=self._headers(),
+            timeout=30.0,
+        )
+        if r.status_code == 404:
+            return
+        r.raise_for_status()

@@ -1,48 +1,101 @@
-import { useState, useEffect, type FormEvent } from 'react';
-import { Plus, Search, Star, Phone, CreditCard, Trash2, Bike } from 'lucide-react';
+import { useState, useEffect, useMemo, type FormEvent } from 'react';
+import { Plus, Search, Star, Phone, Trash2, Bike, FileText } from 'lucide-react';
 import { useAuth } from './AuthContext';
 import type { ClienteOut } from './apiTypes';
+import { parseApiError } from './utils/apiError';
+import EmptyState from './components/EmptyState';
+import ErrorBanner from './components/ErrorBanner';
 
 const ClientsView = () => {
-  const { api } = useAuth();
+  const { api, navigateToContracts } = useAuth();
   const [clientes, setClientes] = useState<ClienteOut[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [search, setSearch] = useState('');
   const [showModal, setShowModal] = useState(false);
-  const [formData, setFormData] = useState({ nome: '', cpf: '', telefone: '', telegram_id: '' });
+  const [editCliente, setEditCliente] = useState<ClienteOut | null>(null);
+  const [formData, setFormData] = useState({
+    nome: '',
+    cpf: '',
+    telefone: '',
+    telegram_id: '',
+  });
 
   const fetchClientes = async () => {
     setLoading(true);
+    setError('');
     try {
       const r = await api.get<ClienteOut[]>('/api/v1/clientes');
       setClientes(r.data);
     } catch (e) {
-      console.error(e);
+      setError(parseApiError(e, 'Erro ao carregar clientes'));
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => { fetchClientes(); }, []);
+  useEffect(() => {
+    void fetchClientes();
+  }, [api]);
 
-  const handleCreate = async (e: FormEvent) => {
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return clientes;
+    return clientes.filter(
+      (c) => c.nome.toLowerCase().includes(q) || c.cpf.includes(q)
+    );
+  }, [clientes, search]);
+
+  const openCreate = () => {
+    setEditCliente(null);
+    setFormData({ nome: '', cpf: '', telefone: '', telegram_id: '' });
+    setShowModal(true);
+  };
+
+  const openEdit = (c: ClienteOut) => {
+    setEditCliente(c);
+    setFormData({
+      nome: c.nome,
+      cpf: c.cpf,
+      telefone: c.telefone,
+      telegram_id: c.telegram_id ?? '',
+    });
+    setShowModal(true);
+  };
+
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
+    setError('');
     try {
-      await api.post('/api/v1/clientes', formData);
+      if (editCliente) {
+        await api.patch(`/api/v1/clientes/${editCliente.id}`, {
+          nome: formData.nome,
+          telefone: formData.telefone,
+          telegram_id: formData.telegram_id || null,
+        });
+      } else {
+        await api.post('/api/v1/clientes', {
+          nome: formData.nome,
+          cpf: formData.cpf,
+          telefone: formData.telefone,
+          telegram_id: formData.telegram_id || null,
+        });
+      }
       setShowModal(false);
-      setFormData({ nome: '', cpf: '', telefone: '', telegram_id: '' });
-      fetchClientes();
-    } catch (e) {
-      alert("Erro ao cadastrar cliente");
+      await fetchClientes();
+    } catch (err) {
+      setError(parseApiError(err, 'Erro ao salvar cliente'));
     }
   };
 
   const handleDelete = async (id: number) => {
-    if (!confirm("Deseja realmente excluir este cliente?")) return;
+    if (!confirm('Deseja realmente excluir este cliente?')) return;
+    setError('');
     try {
       await api.delete(`/api/v1/clientes/${id}`);
-      fetchClientes();
-    } catch (e) {
-      alert("Erro ao excluir cliente. Verifique se há contratos ativos.");
+      await fetchClientes();
+    } catch (err) {
+      setError(parseApiError(err, 'Erro ao excluir cliente'));
     }
   };
 
@@ -53,101 +106,176 @@ const ClientsView = () => {
           <h2>Base de Clientes</h2>
           <p className="text-muted">{clientes.length} motoristas parceiros</p>
         </div>
-        <button className="btn-primary" onClick={() => setShowModal(true)}>
+        <button className="btn-primary" onClick={openCreate}>
           <Plus size={20} /> Novo Cliente
         </button>
       </div>
 
+      {error && <ErrorBanner message={error} onDismiss={() => setError('')} />}
+
       <div className="table-actions glass">
         <div className="search-box">
           <Search size={18} />
-          <input type="text" placeholder="Buscar por nome ou CPF..." />
+          <input
+            type="text"
+            placeholder="Buscar por nome ou CPF..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
         </div>
       </div>
 
       <div className="glass table-container">
-        <table className="custom-table">
-          <thead>
-            <tr>
-              <th>Nome</th>
-              <th>CPF</th>
-              <th>Telefone</th>
-              <th>Score</th>
-              <th style={{ textAlign: 'right' }}>Ações</th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
-              <tr><td colSpan={5} style={{ textAlign: 'center', padding: '40px' }}>Carregando clientes...</td></tr>
-            ) : clientes.map(c => (
-              <tr key={c.id}>
-                <td>
-                  <div style={{ fontWeight: 600 }}>{c.nome}</div>
-                  {c.moto_placa && (
-                    <div style={{ fontSize: '0.75rem', color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: 4 }}>
-                      <Bike size={12} /> {c.moto_placa} - {c.moto_modelo}
-                    </div>
-                  )}
-                </td>
-                <td className="text-muted">{c.cpf}</td>
-                <td>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <Phone size={14} color="#94a3b8" /> {c.telefone}
-                  </div>
-                </td>
-                <td>
-                  <div className="score-badge">
-                    <Star size={12} fill={c.score > 80 ? "#10b981" : "#f59e0b"} stroke="none" />
-                    {c.score} pts
-                  </div>
-                </td>
-                <td style={{ textAlign: 'right' }}>
-                  <button className="icon-btn"><CreditCard size={16} /></button>
-                  <button className="icon-btn danger" onClick={() => handleDelete(c.id)}><Trash2 size={16} /></button>
-                </td>
+        {loading ? (
+          <p style={{ padding: 40, textAlign: 'center' }}>Carregando clientes...</p>
+        ) : filtered.length === 0 ? (
+          <EmptyState
+            title={search ? 'Nenhum resultado' : 'Nenhum cliente cadastrado'}
+            description={
+              search
+                ? 'Tente outro termo de busca.'
+                : 'Cadastre clientes com Telegram ID para receber cobranças automáticas.'
+            }
+            action={
+              !search ? (
+                <button className="btn-primary" onClick={openCreate}>
+                  <Plus size={18} /> Novo Cliente
+                </button>
+              ) : undefined
+            }
+          />
+        ) : (
+          <table className="custom-table">
+            <thead>
+              <tr>
+                <th>Nome</th>
+                <th>CPF</th>
+                <th>Telefone</th>
+                <th>Telegram</th>
+                <th>Score</th>
+                <th style={{ textAlign: 'right' }}>Ações</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {filtered.map((c) => (
+                <tr key={c.id}>
+                  <td>
+                    <div style={{ fontWeight: 600 }}>{c.nome}</div>
+                    {c.moto_placa && (
+                      <div
+                        style={{
+                          fontSize: '0.75rem',
+                          color: 'var(--primary)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 4,
+                        }}
+                      >
+                        <Bike size={12} /> {c.moto_placa} - {c.moto_modelo}
+                      </div>
+                    )}
+                  </td>
+                  <td className="text-muted">{c.cpf}</td>
+                  <td>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <Phone size={14} color="#94a3b8" /> {c.telefone}
+                    </div>
+                  </td>
+                  <td className={c.telegram_id ? '' : 'text-muted'}>
+                    {c.telegram_id || '—'}
+                  </td>
+                  <td>
+                    <div className="score-badge">
+                      <Star
+                        size={12}
+                        fill={c.score > 80 ? '#10b981' : '#f59e0b'}
+                        stroke="none"
+                      />
+                      {c.score} pts
+                    </div>
+                  </td>
+                  <td style={{ textAlign: 'right' }}>
+                    <button
+                      type="button"
+                      className="icon-btn"
+                      title="Ver contratos"
+                      onClick={() => navigateToContracts('todos')}
+                    >
+                      <FileText size={16} />
+                    </button>
+                    <button type="button" className="icon-btn" onClick={() => openEdit(c)}>
+                      Editar
+                    </button>
+                    <button
+                      type="button"
+                      className="icon-btn danger"
+                      onClick={() => void handleDelete(c.id)}
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </div>
 
       {showModal && (
         <div className="modal-overlay">
           <div className="glass modal-content animate-fade">
-            <h3>Cadastrar Novo Cliente</h3>
-            <form onSubmit={handleCreate}>
+            <h3>{editCliente ? 'Editar Cliente' : 'Cadastrar Novo Cliente'}</h3>
+            <form onSubmit={(e) => void handleSubmit(e)}>
               <div className="input-group">
                 <label className="input-label">Nome Completo</label>
-                <input 
-                  className="input-field" 
+                <input
+                  className="input-field"
                   value={formData.nome}
-                  onChange={e => setFormData({...formData, nome: e.target.value})}
+                  onChange={(e) => setFormData({ ...formData, nome: e.target.value })}
                   required
                 />
               </div>
-              <div className="input-group">
-                <label className="input-label">CPF</label>
-                <input 
-                  className="input-field" 
-                  value={formData.cpf}
-                  onChange={e => setFormData({...formData, cpf: e.target.value})}
-                  placeholder="000.000.000-00"
-                  required
-                />
-              </div>
+              {!editCliente && (
+                <div className="input-group">
+                  <label className="input-label">CPF</label>
+                  <input
+                    className="input-field"
+                    value={formData.cpf}
+                    onChange={(e) => setFormData({ ...formData, cpf: e.target.value })}
+                    placeholder="000.000.000-00"
+                    required
+                  />
+                </div>
+              )}
               <div className="input-group">
                 <label className="input-label">Telefone (WhatsApp)</label>
-                <input 
-                  className="input-field" 
+                <input
+                  className="input-field"
                   value={formData.telefone}
-                  onChange={e => setFormData({...formData, telefone: e.target.value})}
+                  onChange={(e) => setFormData({ ...formData, telefone: e.target.value })}
                   placeholder="(00) 00000-0000"
                   required
                 />
               </div>
+              <div className="input-group">
+                <label className="input-label">Telegram ID</label>
+                <input
+                  className="input-field"
+                  value={formData.telegram_id}
+                  onChange={(e) => setFormData({ ...formData, telegram_id: e.target.value })}
+                  placeholder="ID numérico do chat (obrigatório para bot)"
+                />
+                <small className="text-muted">
+                  Necessário para lembretes, Pix em atraso e confirmação de pagamento.
+                </small>
+              </div>
               <div className="modal-actions">
-                <button type="button" className="btn-secondary" onClick={() => setShowModal(false)}>Cancelar</button>
-                <button type="submit" className="btn-primary">Salvar Cliente</button>
+                <button type="button" className="btn-secondary" onClick={() => setShowModal(false)}>
+                  Cancelar
+                </button>
+                <button type="submit" className="btn-primary">
+                  Salvar
+                </button>
               </div>
             </form>
           </div>
@@ -155,20 +283,113 @@ const ClientsView = () => {
       )}
 
       <style jsx>{`
-        .view-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; }
-        .table-actions { padding: 15px; display: flex; gap: 15px; margin-bottom: 20px; border-radius: 12px; }
-        .search-box { flex: 1; display: flex; align-items: center; gap: 10px; background: rgba(0,0,0,0.2); padding: 0 15px; border-radius: 8px; border: 1px solid var(--glass-border); }
-        .search-box input { background: none; border: none; color: white; width: 100%; padding: 10px 0; outline: none; }
-        .custom-table { width: 100%; border-collapse: collapse; }
-        .custom-table th { text-align: left; padding: 15px 20px; color: var(--text-muted); font-size: 0.85rem; border-bottom: 1px solid var(--glass-border); }
-        .custom-table td { padding: 15px 20px; border-bottom: 1px solid var(--glass-border); font-size: 0.9rem; }
-        .score-badge { display: flex; alignItems: center; gap: 6px; background: rgba(255,255,255,0.05); padding: 4px 10px; border-radius: 20px; width: fit-content; font-size: 0.8rem; font-weight: 600; }
-        .icon-btn { background: none; border: none; color: var(--text-muted); cursor: pointer; padding: 5px; transition: 0.2s; }
-        .icon-btn:hover { color: var(--primary); }
-        .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); display: flex; align-items: center; justify-content: center; z-index: 1000; backdrop-filter: blur(4px); }
-        .modal-content { width: 100%; max-width: 450px; padding: 30px; }
-        .modal-actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 20px; }
-        .btn-secondary { background: var(--secondary); color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-family: 'Outfit'; }
+        .view-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 20px;
+          flex-wrap: wrap;
+          gap: 16px;
+        }
+        .table-actions {
+          padding: 15px;
+          display: flex;
+          gap: 15px;
+          margin-bottom: 20px;
+          border-radius: 12px;
+        }
+        .search-box {
+          flex: 1;
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          background: rgba(0, 0, 0, 0.2);
+          padding: 0 15px;
+          border-radius: 8px;
+          border: 1px solid var(--glass-border);
+        }
+        .search-box input {
+          background: none;
+          border: none;
+          color: white;
+          width: 100%;
+          padding: 10px 0;
+          outline: none;
+        }
+        .table-container {
+          overflow-x: auto;
+        }
+        .custom-table {
+          width: 100%;
+          border-collapse: collapse;
+          min-width: 700px;
+        }
+        .custom-table th {
+          text-align: left;
+          padding: 15px 20px;
+          color: var(--text-muted);
+          font-size: 0.85rem;
+          border-bottom: 1px solid var(--glass-border);
+        }
+        .custom-table td {
+          padding: 15px 20px;
+          border-bottom: 1px solid var(--glass-border);
+          font-size: 0.9rem;
+        }
+        .score-badge {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          background: rgba(255, 255, 255, 0.05);
+          padding: 4px 10px;
+          border-radius: 20px;
+          width: fit-content;
+          font-size: 0.8rem;
+          font-weight: 600;
+        }
+        .icon-btn {
+          background: none;
+          border: none;
+          color: var(--text-muted);
+          cursor: pointer;
+          padding: 5px;
+          font-size: 0.8rem;
+        }
+        .icon-btn:hover {
+          color: var(--primary);
+        }
+        .icon-btn.danger:hover {
+          color: var(--danger);
+        }
+        .modal-overlay {
+          position: fixed;
+          inset: 0;
+          background: rgba(0, 0, 0, 0.8);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 1000;
+          padding: 16px;
+        }
+        .modal-content {
+          width: 100%;
+          max-width: 450px;
+          padding: 30px;
+        }
+        .modal-actions {
+          display: flex;
+          justify-content: flex-end;
+          gap: 12px;
+          margin-top: 20px;
+        }
+        .btn-secondary {
+          background: var(--secondary);
+          color: white;
+          border: none;
+          padding: 10px 20px;
+          border-radius: 8px;
+          cursor: pointer;
+        }
       `}</style>
     </div>
   );

@@ -6,17 +6,9 @@ import redis
 from fastapi import HTTPException
 
 from motopay.config import get_settings
+from motopay.infrastructure.redis_client import get_redis_connection
 
 logger = logging.getLogger(__name__)
-
-_redis_client: redis.Redis | None = None
-
-
-def _redis() -> redis.Redis:
-    global _redis_client
-    if _redis_client is None:
-        _redis_client = redis.from_url(get_settings().redis_url, decode_responses=True)
-    return _redis_client
 
 
 def _assert_not_blocked(*, key: str, max_attempts: int, detail: str) -> None:
@@ -24,7 +16,7 @@ def _assert_not_blocked(*, key: str, max_attempts: int, detail: str) -> None:
     if not settings.login_rate_limit_enabled:
         return
     try:
-        raw = _redis().get(key)
+        raw = get_redis_connection().get(key)
     except redis.RedisError as e:
         logger.warning("rate_limit_check_failed key=%s: %s", key, e)
         return
@@ -37,9 +29,10 @@ def _record_failure(*, key: str, window_seconds: int) -> None:
     if not settings.login_rate_limit_enabled:
         return
     try:
-        count = _redis().incr(key)
+        r = get_redis_connection()
+        count = r.incr(key)
         if count == 1:
-            _redis().expire(key, window_seconds)
+            r.expire(key, window_seconds)
     except redis.RedisError as e:
         logger.warning("rate_limit_record_failed key=%s: %s", key, e)
 
@@ -48,7 +41,7 @@ def _clear(*, key: str) -> None:
     if not get_settings().login_rate_limit_enabled:
         return
     try:
-        _redis().delete(key)
+        get_redis_connection().delete(key)
     except redis.RedisError as e:
         logger.warning("rate_limit_clear_failed key=%s: %s", key, e)
 

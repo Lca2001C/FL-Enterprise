@@ -20,4 +20,5 @@ RUN pip install --no-cache-dir "pip>=24.0,<25" "setuptools>=68" "wheel" \
 
 ENV PYTHONPATH=/app
 
-CMD ["uvicorn", "motopay.interfaces.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Railway injeta PORT; desenvolvimento local sem PORT mantém 8000.
+CMD ["sh", "-c", "exec uvicorn motopay.interfaces.api.main:app --host 0.0.0.0 --port ${PORT:-8000}"]

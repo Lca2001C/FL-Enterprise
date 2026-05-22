@@ -1,48 +1,95 @@
-import { useState, useEffect, type FormEvent } from 'react';
-import { Plus, Search, Filter, Trash2, Edit2 } from 'lucide-react';
+import { useState, useEffect, useMemo, type FormEvent } from 'react';
+import { Plus, Search, Trash2, Edit2 } from 'lucide-react';
 import { useAuth } from './AuthContext';
 import type { MotoOut } from './apiTypes';
+import { parseApiError } from './utils/apiError';
+import EmptyState from './components/EmptyState';
+import ErrorBanner from './components/ErrorBanner';
+
+const STATUS_OPTIONS = ['disponivel', 'alugada', 'manutencao', 'inativa'] as const;
 
 const FleetView = () => {
   const { api } = useAuth();
   const [motos, setMotos] = useState<MotoOut[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<string>('todos');
   const [showModal, setShowModal] = useState(false);
+  const [editMoto, setEditMoto] = useState<MotoOut | null>(null);
   const [formData, setFormData] = useState({ placa: '', modelo: '', status: 'disponivel' });
 
   const fetchMotos = async () => {
     setLoading(true);
+    setError('');
     try {
       const r = await api.get<MotoOut[]>('/api/v1/motos');
       setMotos(r.data);
     } catch (e) {
-      console.error(e);
+      setError(parseApiError(e, 'Erro ao carregar frota'));
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => { fetchMotos(); }, []);
+  useEffect(() => {
+    void fetchMotos();
+  }, [api]);
 
-  const handleCreate = async (e: FormEvent) => {
+  const filtered = useMemo(() => {
+    let list = motos;
+    if (statusFilter !== 'todos') {
+      list = list.filter((m) => m.status === statusFilter);
+    }
+    const q = search.trim().toLowerCase();
+    if (q) {
+      list = list.filter(
+        (m) => m.placa.toLowerCase().includes(q) || m.modelo.toLowerCase().includes(q)
+      );
+    }
+    return list;
+  }, [motos, search, statusFilter]);
+
+  const openCreate = () => {
+    setEditMoto(null);
+    setFormData({ placa: '', modelo: '', status: 'disponivel' });
+    setShowModal(true);
+  };
+
+  const openEdit = (moto: MotoOut) => {
+    setEditMoto(moto);
+    setFormData({ placa: moto.placa, modelo: moto.modelo, status: moto.status });
+    setShowModal(true);
+  };
+
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
+    setError('');
     try {
-      await api.post('/api/v1/motos', formData);
+      if (editMoto) {
+        await api.patch(`/api/v1/motos/${editMoto.id}`, {
+          placa: formData.placa,
+          modelo: formData.modelo,
+          status: formData.status,
+        });
+      } else {
+        await api.post('/api/v1/motos', formData);
+      }
       setShowModal(false);
-      setFormData({ placa: '', modelo: '', status: 'disponivel' });
-      fetchMotos();
-    } catch (e) {
-      alert("Erro ao cadastrar moto");
+      await fetchMotos();
+    } catch (err) {
+      setError(parseApiError(err, 'Erro ao salvar moto'));
     }
   };
 
   const handleDelete = async (id: number) => {
-    if (!confirm("Deseja realmente excluir esta moto?")) return;
+    if (!confirm('Deseja realmente excluir esta moto?')) return;
+    setError('');
     try {
       await api.delete(`/api/v1/motos/${id}`);
-      fetchMotos();
-    } catch (e) {
-      alert("Erro ao excluir moto. Verifique se há contratos ativos.");
+      await fetchMotos();
+    } catch (err) {
+      setError(parseApiError(err, 'Erro ao excluir moto'));
     }
   };
 
@@ -53,95 +100,146 @@ const FleetView = () => {
           <h2>Gestão de Frota</h2>
           <p className="text-muted">Total de {motos.length} veículos cadastrados</p>
         </div>
-        <button className="btn-primary" onClick={() => setShowModal(true)}>
+        <button className="btn-primary" onClick={openCreate}>
           <Plus size={20} /> Nova Moto
         </button>
       </div>
 
+      {error && <ErrorBanner message={error} onDismiss={() => setError('')} />}
+
       <div className="table-actions glass">
         <div className="search-box">
           <Search size={18} />
-          <input type="text" placeholder="Buscar por placa ou modelo..." />
+          <input
+            type="text"
+            placeholder="Buscar por placa ou modelo..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
         </div>
-        <button className="btn-secondary"><Filter size={18} /> Filtros</button>
+        <select
+          className="input-field filter-select"
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+        >
+          <option value="todos">Todos os status</option>
+          {STATUS_OPTIONS.map((s) => (
+            <option key={s} value={s}>
+              {s.charAt(0).toUpperCase() + s.slice(1)}
+            </option>
+          ))}
+        </select>
       </div>
 
       <div className="glass table-container">
-        <table className="custom-table">
-          <thead>
-            <tr>
-              <th>Placa</th>
-              <th>Modelo</th>
-              <th>Status</th>
-              <th>Motorista</th>
-              <th style={{ textAlign: 'right' }}>Ações</th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
-              <tr><td colSpan={5} style={{ textAlign: 'center', padding: '40px' }}>Carregando frota...</td></tr>
-            ) : motos.map(moto => (
-              <tr key={moto.id}>
-                <td className="font-mono">{moto.placa}</td>
-                <td>{moto.modelo}</td>
-                <td>
-                  <span className={`status-badge ${moto.status}`}>
-                    {moto.status.toUpperCase()}
-                  </span>
-                </td>
-                <td className={moto.cliente_nome ? "text-primary" : "text-muted"}>
-                  {moto.cliente_nome || "—"}
-                </td>
-                <td style={{ textAlign: 'right' }}>
-                  <button className="icon-btn"><Edit2 size={16} /></button>
-                  <button className="icon-btn danger" onClick={() => handleDelete(moto.id)}><Trash2 size={16} /></button>
-                </td>
+        {loading ? (
+          <p style={{ padding: 40, textAlign: 'center' }}>Carregando frota...</p>
+        ) : filtered.length === 0 ? (
+          <EmptyState
+            title="Nenhuma moto encontrada"
+            description="Cadastre veículos para iniciar locações."
+            action={
+              <button className="btn-primary" onClick={openCreate}>
+                <Plus size={18} /> Nova Moto
+              </button>
+            }
+          />
+        ) : (
+          <table className="custom-table">
+            <thead>
+              <tr>
+                <th>Placa</th>
+                <th>Modelo</th>
+                <th>Status</th>
+                <th>Motorista</th>
+                <th style={{ textAlign: 'right' }}>Ações</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {filtered.map((moto) => (
+                <tr key={moto.id}>
+                  <td className="font-mono">{moto.placa}</td>
+                  <td>{moto.modelo}</td>
+                  <td>
+                    <span className={`status-badge ${moto.status}`}>
+                      {moto.status.toUpperCase()}
+                    </span>
+                  </td>
+                  <td className={moto.cliente_nome ? 'text-primary' : 'text-muted'}>
+                    {moto.cliente_nome || '—'}
+                  </td>
+                  <td style={{ textAlign: 'right' }}>
+                    <button type="button" className="icon-btn" onClick={() => openEdit(moto)}>
+                      <Edit2 size={16} />
+                    </button>
+                    <button
+                      type="button"
+                      className="icon-btn danger"
+                      onClick={() => void handleDelete(moto.id)}
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </div>
 
       {showModal && (
         <div className="modal-overlay">
           <div className="glass modal-content animate-fade">
-            <h3>Cadastrar Nova Moto</h3>
-            <form onSubmit={handleCreate}>
+            <h3>{editMoto ? 'Editar Moto' : 'Cadastrar Nova Moto'}</h3>
+            <form onSubmit={(e) => void handleSubmit(e)}>
               <div className="input-group">
                 <label className="input-label">Placa</label>
-                <input 
-                  className="input-field" 
+                <input
+                  className="input-field"
                   value={formData.placa}
-                  onChange={e => setFormData({...formData, placa: e.target.value.toUpperCase()})}
+                  onChange={(e) =>
+                    setFormData({ ...formData, placa: e.target.value.toUpperCase() })
+                  }
                   placeholder="ABC-1234"
                   required
                 />
               </div>
               <div className="input-group">
                 <label className="input-label">Modelo</label>
-                <input 
-                  className="input-field" 
+                <input
+                  className="input-field"
                   value={formData.modelo}
-                  onChange={e => setFormData({...formData, modelo: e.target.value})}
+                  onChange={(e) => setFormData({ ...formData, modelo: e.target.value })}
                   placeholder="Honda CG 160"
                   required
                 />
               </div>
               <div className="input-group">
-                <label className="input-label">Status Inicial</label>
-                <select 
-                  className="input-field" 
+                <label className="input-label">Status</label>
+                <select
+                  className="input-field"
                   value={formData.status}
-                  onChange={e => setFormData({...formData, status: e.target.value})}
+                  onChange={(e) => setFormData({ ...formData, status: e.target.value })}
                 >
-                  <option value="disponivel">Disponível</option>
-                  <option value="manutencao">Manutenção</option>
-                  <option value="inativa">Inativa</option>
+                  {STATUS_OPTIONS.map((s) => (
+                    <option key={s} value={s}>
+                      {s.charAt(0).toUpperCase() + s.slice(1)}
+                    </option>
+                  ))}
                 </select>
+                {formData.status === 'manutencao' && (
+                  <small className="text-muted">
+                    Ao salvar, o locatário ativo será notificado via Telegram.
+                  </small>
+                )}
               </div>
               <div className="modal-actions">
-                <button type="button" className="btn-secondary" onClick={() => setShowModal(false)}>Cancelar</button>
-                <button type="submit" className="btn-primary">Salvar Moto</button>
+                <button type="button" className="btn-secondary" onClick={() => setShowModal(false)}>
+                  Cancelar
+                </button>
+                <button type="submit" className="btn-primary">
+                  Salvar
+                </button>
               </div>
             </form>
           </div>
@@ -149,27 +247,134 @@ const FleetView = () => {
       )}
 
       <style jsx>{`
-        .view-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; }
-        .table-actions { padding: 15px; display: flex; gap: 15px; margin-bottom: 20px; border-radius: 12px; }
-        .search-box { flex: 1; display: flex; align-items: center; gap: 10px; background: rgba(0,0,0,0.2); padding: 0 15px; border-radius: 8px; border: 1px solid var(--glass-border); }
-        .search-box input { background: none; border: none; color: white; width: 100%; padding: 10px 0; outline: none; }
-        .table-container { overflow: hidden; }
-        .custom-table { width: 100%; border-collapse: collapse; }
-        .custom-table th { text-align: left; padding: 15px 20px; color: var(--text-muted); font-size: 0.85rem; border-bottom: 1px solid var(--glass-border); }
-        .custom-table td { padding: 15px 20px; border-bottom: 1px solid var(--glass-border); font-size: 0.9rem; }
-        .font-mono { font-family: monospace; font-weight: 600; letter-spacing: 1px; }
-        .status-badge { padding: 4px 10px; border-radius: 6px; font-size: 0.7rem; font-weight: 700; }
-        .status-badge.disponivel { background: rgba(16, 185, 129, 0.1); color: var(--accent); }
-        .status-badge.alugada { background: rgba(99, 102, 241, 0.1); color: var(--primary); }
-        .status-badge.manutencao { background: rgba(245, 158, 11, 0.1); color: var(--warning); }
-        .status-badge.inativa { background: rgba(239, 68, 68, 0.1); color: var(--danger); }
-        .icon-btn { background: none; border: none; color: var(--text-muted); cursor: pointer; padding: 5px; transition: 0.2s; }
-        .icon-btn:hover { color: var(--primary); }
-        .icon-btn.danger:hover { color: var(--danger); }
-        .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); display: flex; align-items: center; justify-content: center; z-index: 1000; backdrop-filter: blur(4px); }
-        .modal-content { width: 100%; max-width: 450px; padding: 30px; }
-        .modal-actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 20px; }
-        .btn-secondary { background: var(--secondary); color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-family: 'Outfit'; }
+        .view-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 20px;
+          flex-wrap: wrap;
+          gap: 16px;
+        }
+        .table-actions {
+          padding: 15px;
+          display: flex;
+          gap: 15px;
+          margin-bottom: 20px;
+          border-radius: 12px;
+          flex-wrap: wrap;
+        }
+        .search-box {
+          flex: 1;
+          min-width: 200px;
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          background: rgba(0, 0, 0, 0.2);
+          padding: 0 15px;
+          border-radius: 8px;
+          border: 1px solid var(--glass-border);
+        }
+        .search-box input {
+          background: none;
+          border: none;
+          color: white;
+          width: 100%;
+          padding: 10px 0;
+          outline: none;
+        }
+        .filter-select {
+          min-width: 160px;
+          padding: 8px 12px;
+        }
+        .table-container {
+          overflow-x: auto;
+        }
+        .custom-table {
+          width: 100%;
+          border-collapse: collapse;
+          min-width: 600px;
+        }
+        .custom-table th {
+          text-align: left;
+          padding: 15px 20px;
+          color: var(--text-muted);
+          font-size: 0.85rem;
+          border-bottom: 1px solid var(--glass-border);
+        }
+        .custom-table td {
+          padding: 15px 20px;
+          border-bottom: 1px solid var(--glass-border);
+          font-size: 0.9rem;
+        }
+        .font-mono {
+          font-family: monospace;
+          font-weight: 600;
+          letter-spacing: 1px;
+        }
+        .status-badge {
+          padding: 4px 10px;
+          border-radius: 6px;
+          font-size: 0.7rem;
+          font-weight: 700;
+        }
+        .status-badge.disponivel {
+          background: rgba(16, 185, 129, 0.1);
+          color: var(--accent);
+        }
+        .status-badge.alugada {
+          background: rgba(99, 102, 241, 0.1);
+          color: var(--primary);
+        }
+        .status-badge.manutencao {
+          background: rgba(245, 158, 11, 0.1);
+          color: var(--warning);
+        }
+        .status-badge.inativa {
+          background: rgba(239, 68, 68, 0.1);
+          color: var(--danger);
+        }
+        .icon-btn {
+          background: none;
+          border: none;
+          color: var(--text-muted);
+          cursor: pointer;
+          padding: 5px;
+        }
+        .icon-btn:hover {
+          color: var(--primary);
+        }
+        .icon-btn.danger:hover {
+          color: var(--danger);
+        }
+        .modal-overlay {
+          position: fixed;
+          inset: 0;
+          background: rgba(0, 0, 0, 0.8);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 1000;
+          padding: 16px;
+        }
+        .modal-content {
+          width: 100%;
+          max-width: 450px;
+          padding: 30px;
+        }
+        .modal-actions {
+          display: flex;
+          justify-content: flex-end;
+          gap: 12px;
+          margin-top: 20px;
+        }
+        .btn-secondary {
+          background: var(--secondary);
+          color: white;
+          border: none;
+          padding: 10px 20px;
+          border-radius: 8px;
+          cursor: pointer;
+        }
       `}</style>
     </div>
   );

@@ -184,7 +184,18 @@ Reações automáticas:
 
 ## 📲 Experiência do Usuário (UX)
 
-* **Admin web:** React (Vite) com chamadas HTTP à API
+* **Painel web (React/Vite):** [`apps/motopay-frontend`](apps/motopay-frontend) — usado por **admin** e **dono** da operação.
+* **Dono:** vê apenas dados da sua operação (`operacao_id` no token). Telas principais:
+  * **Contratos** — nova locação (cliente + moto + valor), encerrar, gerar Pix/assinatura Asaas.
+  * **Clientes** — cadastro com **Telegram ID** (obrigatório para bot: lembretes, Pix em atraso, confirmação).
+  * **Cobranças** — listagem com multa/juros, copiar Pix em `pendente` ou `atrasado`.
+  * **Dashboard** — inadimplência resumida com atalho para contratos e copiar Pix.
+  * **Ajustes** — multa fixa e juros diários (`/operacoes/me`).
+* **Admin:** mesmo painel + seletor de operação no topo; branding "MotoPay Admin".
+* Sessão renovada automaticamente via refresh token (`POST /auth/refresh`).
+* **PWA (instalável no celular):** após deploy em **HTTPS**, o mesmo painel pode ser adicionado à tela inicial (Chrome/Android: menu “Instalar app”; Safari/iOS: Compartilhar → “Adicionar à Tela de Início”).  
+  Ícones em [`public/icons`](apps/motopay-frontend/public/icons); manifest e service worker são gerados no `npm run build` por [`vite-plugin-pwa`](apps/motopay-frontend/vite.config.ts).  
+  Para **testar o SW no desenvolvimento local**: `cd apps/motopay-frontend && VITE_PWA_DEV=true npm run dev` (uso opcional).
 
 ---
 
@@ -247,6 +258,7 @@ Reações automáticas:
 * D-1 envio
 * D-0 verificação
 * Confirmação automática
+* **Após o vencimento:** o job diário (Celery Beat) recalcula multa e juros (% configurados por operação), **cancela o Pix anterior na Asaas**, gera um **novo Pix** com o total atualizado e envia o código pelo **Telegram** (copia e cola). Enquanto o contrato estiver em atraso, isso se repete **todo dia** (juros diários).
 
 ### 3. Financeiro
 
@@ -336,11 +348,45 @@ Configure na Asaas a URL:
 
 `POST {API_PUBLIC_BASE_URL}/webhooks/asaas?token={ASAAS_WEBHOOK_TOKEN}`
 
+*(Preferível: mesmo segredo via header `X-Webhook-Token` para não ficar apenas na URL — logs e referrers.)*
+
 O corpo JSON esperado segue o padrão Asaas (`event`, `payment`). Eventos `PAYMENT_RECEIVED` / `PAYMENT_CONFIRMED` atualizam `cobrancas`, lançam `financeiro`, recalculam score e enfileiram notificação Telegram.
 
 ### Health check da API
 
 * **GET** `/health` — retorno JSON `{"status":"ok"}`. Usado pelo `docker compose` (serviço `api`) e por balanceadores. Base path raiz (não usa prefixo `/api/v1`).
+
+### Deploy nuvem (Railway · Supabase · Upstash · Vercel)
+
+Referência rápida (detalhes de variáveis: [`.env.example`](.env.example)):
+
+**Supabase (Postgres)**
+
+* Defina `DATABASE_URL` como string `postgresql+psycopg://…` gerada pela Supabase, com `sslmode=require` na query quando indicado pela documentação.
+* Para alta concorrência, use URL do **Transaction pooler** (porta típica `6543`) na API/workers. Se o Alembic falhar com o pooler, defina `DATABASE_MIGRATION_URL` como conexão **direta** ao Postgres da Supabase (host tipo `db.*.supabase.co`, porta `5432`; veja `.env.example`). As migrações usam `DATABASE_MIGRATION_URL` quando estiver definida.
+* Ajuste `DATABASE_POOL_SIZE` / `DATABASE_MAX_OVERFLOW` ao limite da instância.
+
+**Upstash (Redis)**
+
+* Cole `REDIS_URL` no formato **`rediss://…`** (TLS). Celery já ativa TLS automaticamente quando a URL começa com `rediss://`.
+* Timeouts: `REDIS_SOCKET_CONNECT_TIMEOUT_SECONDS`, `REDIS_SOCKET_TIMEOUT_SECONDS`, `REDIS_HEALTH_CHECK_INTERVAL_SECONDS`.
+
+**Railway (API + Celery worker + Celery Beat + opcional Telegram bot)**
+
+* Use o [`Dockerfile`](Dockerfile) da raiz. O **CMD** padrão sobe a API com **`PORT`** definido pela Railway (`${PORT:-8000}` local).
+* Crie **vários serviços** no mesmo projeto (deploy a partir da mesma imagem) e **sobrescreva o comando** onde precisar, por exemplo:
+  * Celery worker: `celery -A motopay.infrastructure.messaging.celery_app worker -l INFO`
+  * Celery Beat: `celery -A motopay.infrastructure.messaging.celery_app beat -l INFO`
+  * Bot Telegram: `python -m motopay.infrastructure.telegram.bot_main`
+* **Release / comando de deploy**: `alembic upgrade head` (com as mesmas variáveis de ambiente da API).
+* Coloque todas as secrets da aplicação no painel Railway (espelho de `.env.example`). `ENVIRONMENT=production`, `JWT_SECRET`, `ASAAS_WEBHOOK_TOKEN`, `ASAAS_API_KEY`, `REDIS_URL`, `DATABASE_URL`, `CORS_ORIGINS` (URLs do admin no Vercel), etc.
+
+**Vercel (admin React)**
+
+* No projeto Vercel, defina **Root Directory** como `apps/motopay-frontend`.
+* Variável de **build**: `VITE_API_BASE_URL` = URL **pública HTTPS** da API no Railway.
+
+`vercel.json` no frontend inclui rewrites SPA (fallback `index.html`) e headers de segurança compatíveis com chamadas HTTPS à API.
 
 ### Docker
 

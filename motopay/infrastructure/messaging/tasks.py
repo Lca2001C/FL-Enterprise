@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import html
 import logging
 from datetime import UTC, date, datetime, timedelta
+from decimal import Decimal
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
@@ -15,8 +17,10 @@ from motopay.infrastructure.messaging.celery_app import celery_app
 from motopay.infrastructure.telegram.notify import (
     TelegramPermanentError,
     TelegramTransientError,
+    send_telegram_html,
     send_telegram_text,
 )
+from motopay.services.billing_service import late_amounts_for_contrato, refresh_overdue_pix
 from motopay.services.scoring_service import recalculate_cliente_score
 
 logger = logging.getLogger(__name__)
@@ -30,6 +34,54 @@ _RETRY_KW = dict(
 )
 
 
+def _format_brl(value: Decimal | float) -> str:
+    return f"R$ {Decimal(value):.2f}".replace(".", ",")
+
+
+def _build_overdue_telegram_message(*, payload: dict, nivel: int) -> str:
+    dias = int(payload.get("dias_atraso", 0))
+    valor_base = Decimal(str(payload.get("valor_base", 0)))
+    multa = Decimal(str(payload.get("multa", 0)))
+    juros = Decimal(str(payload.get("juros", 0)))
+    valor_total = Decimal(str(payload.get("valor_total", 0)))
+    pix = payload.get("pix_copia_cola") or ""
+
+    tone = [
+        "Olá! Identificamos pendência no pagamento. Segue o Pix atualizado:",
+        "⚠️ Atenção: seu pagamento está em atraso. Use o Pix abaixo:",
+        "🔴 Cobrança firme: existe débito em aberto. Pix atualizado abaixo:",
+    ]
+    intro = tone[min(nivel, 2)]
+
+    lines = [
+        html.escape(intro),
+        "",
+        html.escape(f"Pagamento em atraso ({dias} dia(s))"),
+        html.escape(f"Aluguel: {_format_brl(valor_base)}"),
+        html.escape(f"Multa: {_format_brl(multa)}"),
+        html.escape(f"Juros: {_format_brl(juros)}"),
+        html.escape(f"Total a pagar: {_format_brl(valor_total)}"),
+    ]
+    if pix:
+        lines.extend(
+            [
+                "",
+                html.escape("Pix (copia e cola):"),
+                f"<code>{html.escape(str(pix))}</code>",
+                "",
+                html.escape("O Pix anterior foi cancelado; use apenas este código."),
+            ]
+        )
+    else:
+        lines.extend(
+            [
+                "",
+                html.escape("Não foi possível gerar o Pix automaticamente. Fale com o operador."),
+            ]
+        )
+    return "\n".join(lines)
+
+
 @celery_app.task(bind=True, name="motopay.infrastructure.messaging.tasks.handle_domain_event", **_RETRY_KW)
 def handle_domain_event(self, event_id: int) -> None:
     db = SessionLocal()
@@ -40,6 +92,7 @@ def handle_domain_event(self, event_id: int) -> None:
 
         chat_id: str | None = None
         message: str | None = None
+        use_html = False
 
         if ev.tipo == DomainEventType.PAGAMENTO_CONFIRMADO.value:
             cid = ev.payload.get("cliente_id")
@@ -55,12 +108,8 @@ def handle_domain_event(self, event_id: int) -> None:
                 cliente = db.get(Cliente, int(cid))
                 if cliente and cliente.telegram_id:
                     chat_id = cliente.telegram_id
-                    msgs = [
-                        "Olá! Identificamos pendência no pagamento. Por favor regularize quando puder.",
-                        "⚠️ Atenção: seu pagamento está em atraso. Evite juros e bloqueios.",
-                        "🔴 Cobrança firme: existe débito em aberto. Entre em contato para negociar.",
-                    ]
-                    message = msgs[min(nivel, 2)]
+                    message = _build_overdue_telegram_message(payload=ev.payload, nivel=nivel)
+                    use_html = True
         elif ev.tipo == DomainEventType.MOTO_EM_MANUTENCAO.value:
             moto_id = ev.payload.get("moto_id")
             if moto_id:
@@ -83,7 +132,10 @@ def handle_domain_event(self, event_id: int) -> None:
 
         if chat_id and message:
             try:
-                send_telegram_text(chat_id=chat_id, text=message)
+                if use_html:
+                    send_telegram_html(chat_id=chat_id, html=message)
+                else:
+                    send_telegram_text(chat_id=chat_id, text=message)
             except TelegramPermanentError as e:
                 logger.warning(
                     "domain_event_telegram_skipped event_id=%s tipo=%s: %s",
@@ -170,6 +222,10 @@ def _process_delinquency(db: Session, today: date) -> None:
         else:
             ct.nivel_escalonamento_cobranca = max(ct.nivel_escalonamento_cobranca, 0)
         db.add(ct)
+
+        cob = refresh_overdue_pix(db, contrato=ct, today=today)
+        amounts = late_amounts_for_contrato(db, ct, today)
+
         cid = ct.cliente_id
         cliente_max_days_late[cid] = max(cliente_max_days_late.get(cid, 0), days_late)
         ev = EventoDominio(
@@ -180,6 +236,12 @@ def _process_delinquency(db: Session, today: date) -> None:
                 "operacao_id": ct.operacao_id,
                 "nivel_escalonamento": ct.nivel_escalonamento_cobranca,
                 "dias_atraso": days_late,
+                "cobranca_id": cob.id if cob else None,
+                "valor_base": str(ct.valor_recorrente),
+                "multa": str(amounts.multa),
+                "juros": str(amounts.juros),
+                "valor_total": str(amounts.valor_total),
+                "pix_copia_cola": cob.pix_copia_cola if cob else None,
             },
         )
         db.add(ev)

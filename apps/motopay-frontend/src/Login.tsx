@@ -1,12 +1,12 @@
 import { useState, type FormEvent } from 'react';
 import { useAuth } from './AuthContext';
 import { LogIn, ShieldCheck, Mail, Lock, Settings } from 'lucide-react';
-import axios from 'axios';
+import { parseApiError } from './utils/apiError';
 
 const Login = () => {
   const { login, apiBase, setApiBase } = useAuth();
-  const [email, setEmail] = useState('admin@motopay.local');
-  const [password, setPassword] = useState('adminadmin');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -18,12 +18,7 @@ const Login = () => {
     try {
       await login(email, password);
     } catch (err: unknown) {
-      if (axios.isAxiosError(err) && err.response?.data && typeof err.response.data === 'object' && err.response.data !== null && 'detail' in err.response.data) {
-        const d = (err.response.data as { detail?: unknown }).detail;
-        setError(typeof d === 'string' ? d : 'Falha na conexão com o servidor');
-      } else {
-        setError('Falha na conexão com o servidor');
-      }
+      setError(parseApiError(err, 'Falha na conexão com o servidor'));
     } finally {
       setLoading(false);
     }
@@ -32,67 +27,76 @@ const Login = () => {
   return (
     <div className="login-container">
       <div className="bg-gradient"></div>
-      
+
       <div className="glass login-card animate-fade">
         <div className="card-header">
           <div className="logo-box">
             <ShieldCheck size={32} color="#6366f1" />
           </div>
-          <h1 className="brand-font">MotoPay <span className="text-primary">Admin</span></h1>
+          <h1 className="brand-font">
+            MotoPay <span className="text-primary">Painel</span>
+          </h1>
           <p className="text-muted">Acesse o ecossistema de gestão de frotas</p>
         </div>
 
         {error && <div className="error-alert">{error}</div>}
 
-        <form onSubmit={handleSubmit}>
+        <form onSubmit={(e) => void handleSubmit(e)}>
           <div className="input-group">
-            <label className="input-label">E-mail Corporativo</label>
+            <label className="input-label">E-mail</label>
             <div className="input-with-icon">
               <Mail size={18} className="icon" />
-              <input 
-                type="email" 
-                className="input-field" 
-                placeholder="nome@motopay.local"
+              <input
+                type="email"
+                className="input-field"
+                placeholder="seu@email.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
+                autoComplete="email"
               />
             </div>
           </div>
 
           <div className="input-group">
-            <label className="input-label">Chave de Acesso</label>
+            <label className="input-label">Senha</label>
             <div className="input-with-icon">
               <Lock size={18} className="icon" />
-              <input 
-                type="password" 
-                className="input-field" 
+              <input
+                type="password"
+                className="input-field"
                 placeholder="••••••••"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
+                autoComplete="current-password"
               />
             </div>
           </div>
 
           <button type="submit" className="btn-primary w-full" disabled={loading}>
-            {loading ? 'Autenticando...' : <><LogIn size={20} /> Entrar no Sistema</>}
+            {loading ? 'Autenticando...' : (
+              <>
+                <LogIn size={20} /> Entrar
+              </>
+            )}
           </button>
         </form>
 
         <div className="card-footer">
-          <button 
-            className="settings-toggle" 
+          <button
+            type="button"
+            className="settings-toggle"
             onClick={() => setShowSettings(!showSettings)}
           >
             <Settings size={16} /> Configurações de Rede
           </button>
-          
+
           {showSettings && (
             <div className="settings-panel animate-fade">
               <label className="input-label">URL Base da API</label>
-              <input 
-                type="text" 
+              <input
+                type="text"
                 className="input-field sm"
                 value={apiBase}
                 onChange={(e) => setApiBase(e.target.value)}
@@ -104,12 +108,16 @@ const Login = () => {
 
       <style jsx>{`
         .login-container {
-          height: 100vh;
+          min-height: 100vh;
+          min-height: 100dvh;
+          padding: calc(16px + env(safe-area-inset-top, 0px)) max(24px, env(safe-area-inset-right, 0px))
+            calc(16px + env(safe-area-inset-bottom, 0px)) max(24px, env(safe-area-inset-left, 0px));
           display: flex;
           align-items: center;
           justify-content: center;
           position: relative;
-          overflow: hidden;
+          overflow-x: hidden;
+          overflow-y: auto;
         }
         .bg-gradient {
           position: absolute;
@@ -139,8 +147,12 @@ const Login = () => {
           font-size: 2rem;
           margin-bottom: 8px;
         }
-        .text-primary { color: var(--primary); }
-        .w-full { width: 100%; }
+        .text-primary {
+          color: var(--primary);
+        }
+        .w-full {
+          width: 100%;
+        }
         .input-with-icon {
           position: relative;
         }

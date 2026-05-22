@@ -10,11 +10,18 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     database_url: str
+    # Opcional Supabase/deploy: porta 5432 (session/direct) só para migrações; app usa pooling 6543.
+    database_migration_url: str | None = None
+    database_pool_size: int = 5
+    database_max_overflow: int = 10
     jwt_secret: str = "change-me"
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 60
     refresh_token_expire_days: int = 7
     redis_url: str = "redis://localhost:6379/0"
+    redis_socket_connect_timeout_seconds: float = 5.0
+    redis_socket_timeout_seconds: float = 10.0
+    redis_health_check_interval_seconds: int = 30
 
     login_rate_limit_enabled: bool = True
     login_rate_limit_max_attempts: int = 5

@@ -1,12 +1,9 @@
 import { useState, useEffect, type FormEvent } from 'react';
 import { Save, Percent, ShieldCheck } from 'lucide-react';
 import { useAuth } from './AuthContext';
-
-type OperacaoConfig = {
-  nome: string;
-  multa_fixa_percentual: number;
-  juros_diario_percentual: number;
-};
+import type { OperacaoConfig } from './apiTypes';
+import { parseApiError } from './utils/apiError';
+import ErrorBanner from './components/ErrorBanner';
 
 const SettingsView = () => {
   const { api, user, operacaoScopeId } = useAuth();
@@ -17,6 +14,7 @@ const SettingsView = () => {
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
 
   const isAdmin = user?.tipo === 'admin';
   const adminTargetId = isAdmin && operacaoScopeId != null && operacaoScopeId > 0 ? operacaoScopeId : null;
@@ -41,7 +39,7 @@ const SettingsView = () => {
         setConfig(r.data);
       }
     } catch (e) {
-      console.error(e);
+      setError(parseApiError(e, 'Erro ao carregar configurações'));
     } finally {
       setLoading(false);
     }
@@ -66,7 +64,7 @@ const SettingsView = () => {
       }
       alert('Configurações salvas com sucesso!');
     } catch (e) {
-      alert('Erro ao salvar configurações.');
+      setError(parseApiError(e, 'Erro ao salvar configurações'));
     } finally {
       setSaving(false);
     }
@@ -95,6 +93,8 @@ const SettingsView = () => {
           <p className="text-muted">Configure as regras de negócio e cobrança</p>
         </div>
       </div>
+
+      {error && <ErrorBanner message={error} onDismiss={() => setError('')} />}
 
       <div className="glass card" style={{ maxWidth: '600px' }}>
         <form onSubmit={handleSave}>
