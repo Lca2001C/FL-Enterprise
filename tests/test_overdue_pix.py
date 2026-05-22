@@ -160,9 +160,12 @@ def test_refresh_cancels_and_creates_new_pix(
     mock_client.create_customer.return_value = "cust_test_123"
     mock_client.create_pix_payment.return_value = new_pay
 
-    with patch("motopay.services.billing_service._asaas_configured", return_value=True):
-        with patch("motopay.services.billing_service.AsaasClient", return_value=mock_client):
-            cob = refresh_overdue_pix(db_session, contrato=contrato_atrasado, today=today)
+    with patch("motopay.services.billing_service._asaas_configured", return_value=True), patch(
+        "motopay.services.payment_gateway._asaas_configured", return_value=True
+    ), patch("motopay.services.payment_gateway.AsaasClient", return_value=mock_client), patch(
+        "motopay.services.billing_service.AsaasClient", return_value=mock_client
+    ):
+        cob = refresh_overdue_pix(db_session, contrato=contrato_atrasado, today=today)
 
     mock_client.cancel_payment.assert_called_once_with("pay_old_123")
     mock_client.create_pix_payment.assert_called_once()

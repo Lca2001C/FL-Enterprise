@@ -47,7 +47,7 @@ def list_motos(
         term = f"%{q.strip()}%"
         base = base.where(or_(Moto.placa.ilike(term), Moto.modelo.ilike(term)))
     total = db.scalar(select(func.count()).select_from(base.subquery())) or 0
-    motos = list(db.scalars(base.order_by(Moto.id).limit(limit).offset(offset)).all())
+    motos = list(db.scalars(base.order_by(Moto.id).limit(limit).offset(offset)).unique().all())
     for m in motos:
         active_ct = next(
             (ct for ct in m.contratos if ct.status == ContratoStatus.ATIVO.value), None
@@ -160,7 +160,7 @@ def list_clientes(
         term = f"%{q.strip()}%"
         base = base.where(or_(Cliente.nome.ilike(term), Cliente.cpf.ilike(term)))
     total = db.scalar(select(func.count()).select_from(base.subquery())) or 0
-    clientes = list(db.scalars(base.order_by(Cliente.id).limit(limit).offset(offset)).all())
+    clientes = list(db.scalars(base.order_by(Cliente.id).limit(limit).offset(offset)).unique().all())
     for c in clientes:
         active_ct = next(
             (ct for ct in c.contratos if ct.status == ContratoStatus.ATIVO.value), None
