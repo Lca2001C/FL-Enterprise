@@ -157,6 +157,7 @@ def test_refresh_cancels_and_creates_new_pix(
         invoice_url=None,
     )
     mock_client = MagicMock()
+    mock_client.create_customer.return_value = "cust_test_123"
     mock_client.create_pix_payment.return_value = new_pay
 
     with patch("motopay.services.billing_service._asaas_configured", return_value=True):
@@ -185,6 +186,8 @@ def test_process_delinquency_payload_includes_pix(
         pix_copia_cola="PIX-FROM-REFRESH",
         status=CobrancaStatus.ATRASADO.value,
     )
+    db_session.add(fake_cob)
+    db_session.flush()
 
     with patch(
         "motopay.infrastructure.messaging.tasks.refresh_overdue_pix",
