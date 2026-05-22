@@ -16,6 +16,8 @@ from motopay.infrastructure.db.models import Usuario
 # bcrypt para novos hashes; pbkdf2_sha256 mantido para hashes legados do seed/migração.
 pwd_context = CryptContext(schemes=["bcrypt", "pbkdf2_sha256"], deprecated="auto")
 
+_ALLOWED_LOGIN_ROLES = frozenset({UserRole.ADMIN.value, UserRole.DONO.value})
+
 
 def hash_password(plain: str) -> str:
     return pwd_context.hash(plain)
@@ -38,10 +40,10 @@ def authenticate_user(db: Session, email: str, password: str) -> Usuario:
     user = db.scalars(select(Usuario).where(Usuario.email == email)).first()
     if not user or not verify_password(password, user.senha_hash):
         raise UnauthorizedError("Credenciais inválidas")
+    if user.tipo not in _ALLOWED_LOGIN_ROLES:
+        raise UnauthorizedError("Perfil de acesso não permitido")
     if user.tipo == UserRole.DONO.value and user.operacao_id is None:
         raise UnauthorizedError("Usuário dono sem operação associada")
-    if user.tipo == UserRole.CLIENTE.value and user.cliente_id is None:
-        raise UnauthorizedError("Usuário cliente sem cadastro associado")
     return user
 
 
@@ -53,7 +55,6 @@ def create_access_token(*, user: Usuario) -> str:
         "email": user.email,
         "role": user.tipo,
         "operacao_id": user.operacao_id,
-        "cliente_id": user.cliente_id,
         "exp": expire,
     }
     return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)

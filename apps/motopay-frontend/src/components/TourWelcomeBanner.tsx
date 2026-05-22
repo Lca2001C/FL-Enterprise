@@ -1,4 +1,4 @@
-import { BookOpen, X } from 'lucide-react';
+import { ArrowRight, Sparkles, X, Zap } from 'lucide-react';
 
 type TourWelcomeBannerProps = {
   onStart: () => void;
@@ -6,63 +6,47 @@ type TourWelcomeBannerProps = {
 };
 
 const TourWelcomeBanner = ({ onStart, onDismiss }: TourWelcomeBannerProps) => (
-  <div className="glass card tour-welcome animate-fade" data-tour="tour-welcome-banner">
-    <div className="tour-welcome-body">
-      <BookOpen size={22} color="var(--primary)" />
-      <div>
-        <h3>Conheça o sistema em 3 minutos</h3>
-        <p className="text-muted">
-          Tour guiado pelas telas do painel: frota, cobranças automáticas, Telegram e ajustes da operação.
+  <div className="tour-welcome animate-fade" data-tour="tour-welcome-banner">
+    <div className="tour-welcome-orb tour-welcome-orb--a" aria-hidden />
+    <div className="tour-welcome-orb tour-welcome-orb--b" aria-hidden />
+    <div className="tour-welcome-shimmer" aria-hidden />
+
+    <div className="tour-welcome-inner">
+      <div className="tour-welcome-icon" aria-hidden>
+        <Sparkles size={26} strokeWidth={1.75} />
+      </div>
+
+      <div className="tour-welcome-copy">
+        <span className="tour-welcome-badge">
+          <Zap size={12} strokeWidth={2.5} />
+          Tour interativo
+        </span>
+        <h3>Descubra o MotoPay em poucos minutos</h3>
+        <p>
+          Um passeio guiado pelas telas do painel — frota, cobranças Pix, Telegram e ajustes da
+          operação. Leva cerca de 3 minutos.
         </p>
       </div>
+
+      <div className="tour-welcome-actions">
+        <button type="button" className="tour-welcome-cta" onClick={onStart}>
+          Iniciar tour
+          <ArrowRight size={18} strokeWidth={2.25} />
+        </button>
+        <button type="button" className="tour-welcome-skip" onClick={onDismiss}>
+          Agora não
+        </button>
+      </div>
     </div>
-    <div className="tour-welcome-actions">
-      <button type="button" className="btn-primary" onClick={onStart}>
-        Iniciar tour
-      </button>
-      <button type="button" className="btn-secondary" onClick={onDismiss}>
-        Depois
-      </button>
-      <button type="button" className="icon-btn tour-dismiss" onClick={onDismiss} aria-label="Fechar">
-        <X size={16} />
-      </button>
-    </div>
-    <style jsx>{`
-      .tour-welcome {
-        margin-bottom: 24px;
-        padding: 20px 24px;
-        display: flex;
-        flex-wrap: wrap;
-        align-items: center;
-        justify-content: space-between;
-        gap: 16px;
-        border: 1px solid rgba(99, 102, 241, 0.25);
-      }
-      .tour-welcome-body {
-        display: flex;
-        align-items: flex-start;
-        gap: 14px;
-        flex: 1;
-        min-width: 220px;
-      }
-      .tour-welcome h3 {
-        margin: 0 0 6px;
-        font-size: 1rem;
-      }
-      .tour-welcome p {
-        margin: 0;
-        font-size: 0.85rem;
-      }
-      .tour-welcome-actions {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        flex-wrap: wrap;
-      }
-      .tour-dismiss {
-        margin-left: 4px;
-      }
-    `}</style>
+
+    <button
+      type="button"
+      className="tour-welcome-close"
+      onClick={onDismiss}
+      aria-label="Fechar convite do tour"
+    >
+      <X size={16} />
+    </button>
   </div>
 );
 

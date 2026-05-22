@@ -9,6 +9,7 @@ import {
   markOwnerTourCompleted,
   type OwnerTourStep,
 } from './ownerTourSteps';
+import { enhanceTourPopover } from './tourPopoverEnhancer';
 
 function waitForElement(selector: string, timeoutMs = 5000): Promise<Element | null> {
   return new Promise((resolve) => {
@@ -103,12 +104,20 @@ export function useOwnerTour({ role, setActiveTab, getActiveTab }: UseOwnerTourO
       steps: driveSteps,
       animate: true,
       allowClose: true,
-      overlayOpacity: 0.65,
+      smoothScroll: true,
+      overlayColor: '#020617',
+      overlayOpacity: 0.78,
+      stagePadding: 14,
+      stageRadius: 16,
+      popoverOffset: 16,
       showProgress: true,
-      nextBtnText: 'Próximo',
-      prevBtnText: 'Anterior',
-      doneBtnText: 'Concluir',
+      nextBtnText: 'Continuar',
+      prevBtnText: 'Voltar',
+      doneBtnText: 'Finalizar tour',
       popoverClass: 'motopay-tour-popover',
+      onPopoverRender: (popover, { state }) => {
+        enhanceTourPopover(popover, state, metaRef.current);
+      },
       onHighlightStarted: (_element, _step, { driver: d, state }) => {
         const idx = state.activeIndex ?? 0;
         const meta = metaRef.current[idx];

@@ -1,20 +1,25 @@
 import { useState, useEffect, useCallback, type FormEvent } from 'react';
 import { Filter, UserPlus, Users } from 'lucide-react';
 import { useAuth } from './AuthContext';
-import type { ClienteOut, OperacaoOut, Paginated, UserAdminOut } from './apiTypes';
+import type { OperacaoOut, Paginated, UserAdminOut } from './apiTypes';
 import { PAGE_SIZE } from './apiTypes';
 import { formatDate, roleLabel } from './utils/format';
 import { parseApiError } from './utils/apiError';
-import { fetchAllPaginated } from './utils/fetchPaginated';
 import ErrorBanner from './components/ErrorBanner';
+import EmptyState from './components/EmptyState';
 
-type UserRole = 'dono' | 'operador' | 'cliente';
-type TipoFilter = 'todos' | 'admin' | 'dono' | 'operador' | 'cliente';
+type TipoFilter = 'todos' | 'admin' | 'dono';
+
+function operacaoLabel(u: UserAdminOut): string {
+  if (u.operacao_nome) return u.operacao_nome;
+  if (u.tipo === 'admin') return 'Plataforma';
+  if (u.operacao_id) return `#${u.operacao_id}`;
+  return '—';
+}
 
 const AdminUsuariosView = () => {
   const { api } = useAuth();
   const [operacoes, setOperacoes] = useState<OperacaoOut[]>([]);
-  const [clientes, setClientes] = useState<ClienteOut[]>([]);
   const [usuarios, setUsuarios] = useState<UserAdminOut[]>([]);
   const [total, setTotal] = useState(0);
   const [offset, setOffset] = useState(0);
@@ -28,9 +33,7 @@ const AdminUsuariosView = () => {
   const [form, setForm] = useState({
     email: '',
     password: '',
-    tipo: 'operador' as UserRole,
     operacao_id: '',
-    cliente_id: '',
   });
 
   const showToast = (msg: string) => {
@@ -39,7 +42,7 @@ const AdminUsuariosView = () => {
   };
 
   const fetchUsuarios = useCallback(
-    async (pageOffset = offset) => {
+    async (pageOffset: number) => {
       setLoadingUsers(true);
       try {
         const params: Record<string, unknown> = {
@@ -58,19 +61,15 @@ const AdminUsuariosView = () => {
         setLoadingUsers(false);
       }
     },
-    [api, offset, operacaoFilter, tipoFilter]
+    [api, operacaoFilter, tipoFilter]
   );
 
   useEffect(() => {
     const loadMeta = async () => {
       setLoadingMeta(true);
       try {
-        const [opsRes, clItems] = await Promise.all([
-          api.get<OperacaoOut[]>('/api/v1/operacoes'),
-          fetchAllPaginated<ClienteOut>(api, '/api/v1/clientes'),
-        ]);
+        const opsRes = await api.get<OperacaoOut[]>('/api/v1/operacoes');
         setOperacoes(opsRes.data);
-        setClientes(clItems);
       } catch (e) {
         setError(parseApiError(e, 'Erro ao carregar dados'));
       } finally {
@@ -82,30 +81,26 @@ const AdminUsuariosView = () => {
 
   useEffect(() => {
     void fetchUsuarios(0);
-  }, [tipoFilter, operacaoFilter, api]);
+  }, [fetchUsuarios]);
 
   const handleCreate = async (e: FormEvent) => {
     e.preventDefault();
     setCreating(true);
     setError('');
     try {
-      if (form.tipo === 'cliente' && !form.operacao_id) {
-        setError('Selecione a operação do cliente.');
+      if (!form.operacao_id) {
+        setError('Selecione a operação do dono.');
         setCreating(false);
         return;
       }
-      const body: Record<string, unknown> = {
+      await api.post('/api/v1/usuarios', {
         email: form.email.trim(),
         password: form.password,
-        tipo: form.tipo,
-      };
-      body.operacao_id = form.operacao_id ? parseInt(form.operacao_id, 10) : null;
-      if (form.tipo === 'cliente') {
-        body.cliente_id = form.cliente_id ? parseInt(form.cliente_id, 10) : null;
-      }
-      await api.post('/api/v1/usuarios', body);
-      setForm({ email: '', password: '', tipo: 'operador', operacao_id: '', cliente_id: '' });
-      showToast('Usuário criado com sucesso.');
+        tipo: 'dono',
+        operacao_id: parseInt(form.operacao_id, 10),
+      });
+      setForm({ email: '', password: '', operacao_id: '' });
+      showToast('Dono criado com sucesso.');
       await fetchUsuarios(0);
     } catch (err) {
       setError(parseApiError(err, 'Erro ao criar usuário'));
@@ -114,17 +109,12 @@ const AdminUsuariosView = () => {
     }
   };
 
-  const clientesFiltrados =
-    form.tipo === 'cliente' && form.operacao_id
-      ? clientes.filter((c) => c.operacao_id === parseInt(form.operacao_id, 10))
-      : [];
-
   return (
     <div className="view-container animate-fade">
       <div className="view-header">
         <div>
           <h2>Usuários</h2>
-          <p className="text-muted">Visualize e crie acessos para donos, operadores e clientes</p>
+          <p className="text-muted">Visualize administradores e donos de operação</p>
         </div>
       </div>
 
@@ -149,8 +139,6 @@ const AdminUsuariosView = () => {
             <option value="todos">Todos os tipos</option>
             <option value="admin">Administrador</option>
             <option value="dono">Dono</option>
-            <option value="operador">Operador</option>
-            <option value="cliente">Cliente</option>
           </select>
           <select
             className="input-field filter-select"
@@ -171,29 +159,31 @@ const AdminUsuariosView = () => {
             Carregando usuários...
           </p>
         ) : usuarios.length === 0 ? (
-          <p style={{ padding: 40, textAlign: 'center' }} className="text-muted">
-            Nenhum usuário encontrado com os filtros atuais.
-          </p>
+          <EmptyState
+            icon={<Users size={40} />}
+            title="Nenhum usuário encontrado"
+            description="Ajuste os filtros ou crie um novo dono abaixo."
+          />
         ) : (
           <table className="custom-table">
             <thead>
               <tr>
+                <th>ID</th>
                 <th>E-mail</th>
                 <th>Tipo</th>
                 <th>Operação</th>
-                <th>Cliente ID</th>
                 <th>Criado em</th>
               </tr>
             </thead>
             <tbody>
               {usuarios.map((u) => (
                 <tr key={u.id}>
+                  <td className="text-muted">#{u.id}</td>
                   <td style={{ fontWeight: 600 }}>{u.email}</td>
                   <td>
                     <span className={`role-badge role-${u.tipo}`}>{roleLabel(u.tipo)}</span>
                   </td>
-                  <td className="text-muted">{u.operacao_nome ?? (u.operacao_id ? `#${u.operacao_id}` : '—')}</td>
-                  <td className="text-muted">{u.cliente_id ?? '—'}</td>
+                  <td className="text-muted">{operacaoLabel(u)}</td>
                   <td className="text-muted">{formatDate(u.created_at)}</td>
                 </tr>
               ))}
@@ -228,7 +218,7 @@ const AdminUsuariosView = () => {
 
       <div className="glass card form-card">
         <h3 style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
-          <UserPlus size={20} color="var(--primary)" /> Novo usuário
+          <UserPlus size={20} color="var(--primary)" /> Novo dono
         </h3>
         {loadingMeta ? (
           <p className="text-muted">Carregando...</p>
@@ -256,25 +246,11 @@ const AdminUsuariosView = () => {
               />
             </div>
             <div className="input-group">
-              <label className="input-label">Tipo</label>
-              <select
-                className="input-field"
-                value={form.tipo}
-                onChange={(e) =>
-                  setForm({ ...form, tipo: e.target.value as UserRole, cliente_id: '' })
-                }
-              >
-                <option value="dono">Dono</option>
-                <option value="operador">Operador</option>
-                <option value="cliente">Cliente</option>
-              </select>
-            </div>
-            <div className="input-group">
               <label className="input-label">Operação</label>
               <select
                 className="input-field"
                 value={form.operacao_id}
-                onChange={(e) => setForm({ ...form, operacao_id: e.target.value, cliente_id: '' })}
+                onChange={(e) => setForm({ ...form, operacao_id: e.target.value })}
                 required
               >
                 <option value="">Selecione...</option>
@@ -285,26 +261,8 @@ const AdminUsuariosView = () => {
                 ))}
               </select>
             </div>
-            {form.tipo === 'cliente' && (
-              <div className="input-group">
-                <label className="input-label">Cliente vinculado</label>
-                <select
-                  className="input-field"
-                  value={form.cliente_id}
-                  onChange={(e) => setForm({ ...form, cliente_id: e.target.value })}
-                  required
-                >
-                  <option value="">Selecione...</option>
-                  {clientesFiltrados.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.nome} — {c.cpf}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
             <button type="submit" className="btn-primary" disabled={creating}>
-              {creating ? 'Criando...' : 'Criar usuário'}
+              {creating ? 'Criando...' : 'Criar dono'}
             </button>
           </form>
         )}
@@ -345,6 +303,26 @@ const AdminUsuariosView = () => {
           width: auto;
           min-width: 180px;
         }
+        .table-container {
+          overflow-x: auto;
+        }
+        .custom-table {
+          width: 100%;
+          border-collapse: collapse;
+          min-width: 640px;
+        }
+        .custom-table th {
+          text-align: left;
+          padding: 15px 20px;
+          color: var(--text-muted);
+          font-size: 0.85rem;
+          border-bottom: 1px solid var(--glass-border);
+        }
+        .custom-table td {
+          padding: 15px 20px;
+          border-bottom: 1px solid var(--glass-border);
+          font-size: 0.9rem;
+        }
         .role-badge {
           display: inline-block;
           padding: 4px 10px;
@@ -376,6 +354,18 @@ const AdminUsuariosView = () => {
           gap: 16px;
           padding: 12px 20px;
           margin-bottom: 20px;
+        }
+        .btn-secondary {
+          background: var(--secondary);
+          color: white;
+          border: none;
+          padding: 10px 20px;
+          border-radius: 8px;
+          cursor: pointer;
+        }
+        .btn-secondary:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
         }
         .toast {
           padding: 12px 16px;

@@ -11,7 +11,6 @@ import SettingsView from './SettingsView';
 import AccountView from './AccountView';
 import AdminOperacoesView from './AdminOperacoesView';
 import AdminUsuariosView from './AdminUsuariosView';
-import ClientPortalView from './ClientPortalView';
 import {
   LayoutDashboard,
   Users,
@@ -66,7 +65,6 @@ const TAB_LABELS: Partial<Record<AppTab, string>> = {
   'admin-operacoes': 'Operações',
   'admin-usuarios': 'Usuários',
   conta: 'Minha Conta',
-  portal: 'Portal',
 };
 
 const Dashboard = () => {
@@ -119,8 +117,7 @@ const Dashboard = () => {
   }, [showOwnerTour, activeTab, loading]);
 
   const isAdmin = user?.tipo === 'admin';
-  const isOperador = user?.tipo === 'operador';
-  const showAjustes = !isOperador;
+  const showAjustes = true;
   const brandTitle = isAdmin ? 'MotoPay Admin' : operacaoNome ? `MotoPay · ${operacaoNome}` : 'MotoPay Painel';
   const roleDisplay =
     user?.tipo === 'dono' && operacaoNome
@@ -808,8 +805,15 @@ const Dashboard = () => {
           background: rgba(255, 255, 255, 0.08);
         }
         .tour-link {
-          border-color: rgba(99, 102, 241, 0.35);
-          color: var(--primary);
+          border: 1px solid rgba(99, 102, 241, 0.35);
+          color: #c7d2fe;
+          background: linear-gradient(135deg, rgba(99, 102, 241, 0.12), rgba(79, 70, 229, 0.08));
+          box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+        }
+        .tour-link:hover {
+          color: white;
+          border-color: rgba(129, 140, 248, 0.55);
+          background: linear-gradient(135deg, rgba(99, 102, 241, 0.28), rgba(79, 70, 229, 0.18));
         }
         .setup-checklist h3 {
           margin-bottom: 8px;
@@ -1084,7 +1088,6 @@ const MainApp = () => {
       </div>
     );
   }
-  if (user.tipo === 'cliente') return <ClientPortalView />;
   return <Dashboard />;
 };
 

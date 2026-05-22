@@ -10,9 +10,8 @@ export type Paginated<T> = {
 export type UserOut = {
   id: number;
   email: string;
-  tipo: 'admin' | 'dono' | 'operador' | 'cliente';
+  tipo: 'admin' | 'dono';
   operacao_id: number | null;
-  cliente_id: number | null;
 };
 
 export type UserAdminOut = UserOut & {
@@ -161,8 +160,7 @@ export type AppTab =
   | 'ajustes'
   | 'admin-operacoes'
   | 'admin-usuarios'
-  | 'conta'
-  | 'portal';
+  | 'conta';
 
 export type ContractsFilter = 'todos' | 'ativos' | 'inadimplentes' | 'com_promessa';
 

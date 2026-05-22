@@ -3,7 +3,7 @@ import type { AppTab } from '../apiTypes';
 export const OWNER_TOUR_DONE_KEY = 'motopay_owner_tour_v1_done';
 export const OWNER_TOUR_BANNER_DISMISSED_KEY = 'motopay_owner_tour_banner_dismissed';
 
-export type OwnerRole = 'admin' | 'dono' | 'operador';
+export type OwnerRole = 'admin' | 'dono';
 
 export type OwnerTourStep = {
   id: string;
@@ -111,7 +111,6 @@ const ALL_STEPS: OwnerTourStep[] = [
     title: 'Ajustes da operação',
     description:
       'Configure multa fixa, juros diários, templates de mensagens do Telegram e o gateway de pagamento (Asaas ou Mercado Pago).',
-    skipRoles: ['operador'],
   },
   {
     id: 'automation',

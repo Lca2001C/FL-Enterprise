@@ -9,7 +9,7 @@ from motopay.infrastructure.db.models import Contrato, Financeiro, Moto
 from motopay.interfaces.api.deps import CurrentUser
 from motopay.interfaces.api.schemas import FinanceiroCreate
 
-_SCOPED_ROLES = frozenset({UserRole.DONO, UserRole.OPERADOR})
+_SCOPED_ROLES = frozenset({UserRole.DONO})
 
 
 def _financeiro_query(user: CurrentUser, operacao_scope: int | None):

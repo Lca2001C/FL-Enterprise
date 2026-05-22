@@ -47,7 +47,6 @@ class UserOut(BaseModel):
     email: str
     tipo: UserRole
     operacao_id: int | None
-    cliente_id: int | None = None
 
 
 class UserAdminOut(UserOut):
@@ -109,7 +108,6 @@ class UsuarioCreate(BaseModel):
     password: str = Field(min_length=8, max_length=128)
     tipo: UserRole
     operacao_id: int | None = None
-    cliente_id: int | None = None
 
 
 class MotoCreate(BaseModel):

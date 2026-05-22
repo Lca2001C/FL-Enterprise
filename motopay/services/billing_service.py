@@ -55,7 +55,7 @@ def add_cycle(d: date, ciclo: str) -> date:
 
 
 def _effective_operacao(user: CurrentUser, operacao_scope: int | None) -> int:
-    if user.role in (UserRole.DONO, UserRole.OPERADOR):
+    if user.role == UserRole.DONO:
         if user.operacao_id is None:
             raise ForbiddenError("Operação não definida")
         return user.operacao_id
@@ -70,7 +70,7 @@ def _asaas_configured() -> bool:
 
 def _cobranca_query(user: CurrentUser, operacao_scope: int | None):
     q = select(Cobranca)
-    if user.role in (UserRole.DONO, UserRole.OPERADOR):
+    if user.role == UserRole.DONO:
         q = q.where(Cobranca.operacao_id == user.operacao_id)
     elif operacao_scope is not None:
         q = q.where(Cobranca.operacao_id == operacao_scope)

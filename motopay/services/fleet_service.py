@@ -16,7 +16,7 @@ from motopay.interfaces.api.schemas import (
     MotoUpdate,
 )
 
-_SCOPED_ROLES = frozenset({UserRole.DONO, UserRole.OPERADOR})
+_SCOPED_ROLES = frozenset({UserRole.DONO})
 
 
 def _moto_query(user: CurrentUser, operacao_scope: int | None) -> Select:

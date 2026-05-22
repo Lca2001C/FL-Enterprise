@@ -187,7 +187,7 @@ Reações automáticas:
 ## 📲 Experiência do Usuário (UX)
 
 * **Painel web (React/Vite):** [`apps/motopay-frontend`](apps/motopay-frontend) — usado por **admin** e **dono** da operação.
-* **Admin — Usuários:** aba **Usuários** lista todos os donos/operadores/clientes do sistema (filtros por tipo e operação) e permite criar novos acessos.
+* **Admin — Usuários:** aba **Usuários** lista administradores e donos de operação (filtros por tipo e operação) e permite criar novos donos.
 * **Dono:** vê apenas dados da sua operação (`operacao_id` no token). Telas principais:
   * **Contratos** — nova locação (cliente + moto + valor), encerrar, gerar Pix/assinatura Asaas.
   * **Clientes** — cadastro com **Telegram ID** (obrigatório para bot: lembretes, Pix em atraso, confirmação).
@@ -299,7 +299,7 @@ python -m pip install -e .
 #   .\Scripts\alembic.exe upgrade head
 # Ou: py -m alembic upgrade head (se não houver pasta local `alembic/` conflitando)
 alembic upgrade head
-# Migrações até 005_product_expansion (payment_provider, MP ids, promessa dedup, cliente_id em usuarios).
+# Migrações até 006_admin_dono_only (somente papéis admin e dono; remove usuarios operador/cliente).
 
 # Postgres local na porta 5434 (se 5432 estiver ocupada):
 # DATABASE_URL=postgresql+psycopg://postgres:postgres@localhost:5434/motopay
@@ -369,10 +369,8 @@ Configure `MERCADOPAGO_ACCESS_TOKEN` e opcionalmente `MERCADOPAGO_WEBHOOK_SECRET
 
 | Papel | Acesso |
 |-------|--------|
-| **admin** | Todas as operações; criar operações e usuários |
-| **dono** | CRUD da própria operação + ajustes |
-| **operador** | CRUD operacional (frota, clientes, contratos, cobranças); sem ajustes/usuários |
-| **cliente** | Portal: contrato ativo, cobranças pendentes (`/api/v1/portal/*`) |
+| **admin** | Todas as operações; criar operações e usuários; escopo multi-operação |
+| **dono** | Painel operacional completo da própria operação (frota, clientes, contratos, cobranças, financeiro, métricas, ajustes); sem menu Admin |
 
 ### Bot Telegram — comandos
 

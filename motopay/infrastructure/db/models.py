@@ -57,15 +57,11 @@ class Usuario(Base):
     operacao_id: Mapped[int | None] = mapped_column(
         BigInteger, ForeignKey("operacoes.id", ondelete="RESTRICT"), nullable=True
     )
-    cliente_id: Mapped[int | None] = mapped_column(
-        BigInteger, ForeignKey("clientes.id", ondelete="SET NULL"), nullable=True
-    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
     operacao: Mapped[Operacao | None] = relationship(back_populates="usuarios")
-    cliente: Mapped[Cliente | None] = relationship(foreign_keys=[cliente_id])
 
 
 class Moto(Base):

@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from motopay.domain.enums import PaymentProvider, UserRole
 from motopay.domain.exceptions import ConflictError, ForbiddenError
-from motopay.infrastructure.db.models import Cliente, Operacao, Usuario
+from motopay.infrastructure.db.models import Operacao, Usuario
 from motopay.infrastructure.telegram.templates import (
     list_template_meta,
     merge_template_overrides,
@@ -47,31 +47,21 @@ def create_operacao(db: Session, body: OperacaoCreate) -> OperacaoOut:
 def create_usuario_admin(db: Session, body: UsuarioCreate) -> Usuario:
     if db.scalars(select(Usuario).where(Usuario.email == str(body.email))).first():
         raise ConflictError("E-mail já cadastrado")
+    if body.tipo not in (UserRole.ADMIN, UserRole.DONO):
+        raise ConflictError("Tipo de usuário inválido")
     if body.tipo == UserRole.DONO and body.operacao_id is None:
         raise ConflictError("Dono exige operacao_id")
-    if body.tipo == UserRole.OPERADOR and body.operacao_id is None:
-        raise ConflictError("Operador exige operacao_id")
-    if body.tipo == UserRole.CLIENTE:
-        if body.cliente_id is None:
-            raise ConflictError("Cliente exige cliente_id")
-        if body.operacao_id is not None:
-            raise ConflictError("Usuário cliente não deve ter operacao_id")
     if body.tipo == UserRole.ADMIN and body.operacao_id is not None:
         raise ConflictError("Admin não deve ter operacao_id")
     if body.operacao_id is not None:
         parent = db.get(Operacao, body.operacao_id)
         if not parent:
             raise ConflictError("Operação inexistente")
-    if body.cliente_id is not None:
-        cl = db.get(Cliente, body.cliente_id)
-        if not cl:
-            raise ConflictError("Cliente inexistente")
     user = Usuario(
         email=str(body.email).lower(),
         senha_hash=hash_password(body.password),
         tipo=body.tipo.value,
         operacao_id=body.operacao_id,
-        cliente_id=body.cliente_id,
     )
     db.add(user)
     db.commit()
@@ -85,7 +75,6 @@ def _usuario_to_admin_out(user: Usuario, operacao_nome: str | None = None) -> Us
         email=user.email,
         tipo=UserRole(user.tipo),
         operacao_id=user.operacao_id,
-        cliente_id=user.cliente_id,
         created_at=user.created_at,
         operacao_nome=operacao_nome,
     )

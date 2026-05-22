@@ -17,7 +17,6 @@ export type AuthUser = {
   email: string;
   tipo: string;
   operacao_id: number | null;
-  cliente_id: number | null;
 };
 
 type AuthContextValue = {

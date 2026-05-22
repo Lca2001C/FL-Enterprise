@@ -16,10 +16,6 @@ export function roleLabel(tipo: string | null | undefined): string {
       return 'Administrador';
     case 'dono':
       return 'Dono da operação';
-    case 'operador':
-      return 'Operador';
-    case 'cliente':
-      return 'Cliente';
     default:
       return tipo ?? 'Usuário';
   }

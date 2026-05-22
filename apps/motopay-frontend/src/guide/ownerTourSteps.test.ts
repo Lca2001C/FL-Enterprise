@@ -22,10 +22,9 @@ describe('getOwnerTourSteps', () => {
     expect(donoSteps.some((s) => s.id === 'scope')).toBe(false);
   });
 
-  it('excludes ajustes step for operador', () => {
-    const steps = getOwnerTourSteps('operador');
-    expect(steps.some((s) => s.id === 'settings')).toBe(false);
-    expect(steps.some((s) => s.id === 'fleet')).toBe(true);
+  it('includes ajustes step for admin', () => {
+    const steps = getOwnerTourSteps('admin');
+    expect(steps.some((s) => s.id === 'settings')).toBe(true);
   });
 
   it('defines tour anchors for highlighted steps', () => {
@@ -41,8 +40,7 @@ describe('isOwnerTourEligible', () => {
   it('allows dono and admin only', () => {
     expect(isOwnerTourEligible('dono')).toBe(true);
     expect(isOwnerTourEligible('admin')).toBe(true);
-    expect(isOwnerTourEligible('operador')).toBe(false);
-    expect(isOwnerTourEligible('cliente')).toBe(false);
+    expect(isOwnerTourEligible('')).toBe(false);
   });
 });
 

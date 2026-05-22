@@ -169,12 +169,437 @@ h1, h2, h3, .brand-font {
   box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.1);
 }
 
-.driver-popover.motopay-tour-popover {
-  z-index: 10050;
-  max-width: min(360px, calc(100vw - 32px));
-  color: #0f172a;
+/* ── Tour System ─────────────────────────────────────────────── */
+
+@keyframes tourBannerShimmer {
+  0% { transform: translateX(-120%) skewX(-12deg); opacity: 0; }
+  30% { opacity: 0.6; }
+  100% { transform: translateX(220%) skewX(-12deg); opacity: 0; }
 }
 
+@keyframes tourOrbFloat {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(8px, -10px) scale(1.05); }
+}
+
+@keyframes tourIconPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.45), 0 8px 32px rgba(99, 102, 241, 0.25); }
+  50% { box-shadow: 0 0 0 10px rgba(99, 102, 241, 0), 0 12px 40px rgba(99, 102, 241, 0.35); }
+}
+
+@keyframes tourPopoverIn {
+  from { opacity: 0; transform: translateY(10px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes tourHighlightPulse {
+  0%, 100% {
+    box-shadow:
+      0 0 0 3px rgba(99, 102, 241, 0.55),
+      0 0 24px rgba(99, 102, 241, 0.25),
+      0 0 48px rgba(16, 185, 129, 0.12);
+  }
+  50% {
+    box-shadow:
+      0 0 0 5px rgba(129, 140, 248, 0.65),
+      0 0 36px rgba(99, 102, 241, 0.4),
+      0 0 64px rgba(16, 185, 129, 0.18);
+  }
+}
+
+.tour-welcome {
+  position: relative;
+  margin-bottom: 24px;
+  padding: 0;
+  overflow: hidden;
+  border-radius: 20px;
+  border: 1px solid rgba(99, 102, 241, 0.35);
+  background:
+    radial-gradient(ellipse 80% 60% at 0% 0%, rgba(99, 102, 241, 0.22), transparent 55%),
+    radial-gradient(ellipse 60% 50% at 100% 100%, rgba(16, 185, 129, 0.12), transparent 50%),
+    linear-gradient(135deg, rgba(15, 23, 42, 0.95), rgba(30, 41, 59, 0.88));
+  box-shadow:
+    0 20px 60px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.tour-welcome-orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(40px);
+  pointer-events: none;
+}
+
+.tour-welcome-orb--a {
+  width: 180px;
+  height: 180px;
+  top: -60px;
+  left: -40px;
+  background: rgba(99, 102, 241, 0.35);
+  animation: tourOrbFloat 7s ease-in-out infinite;
+}
+
+.tour-welcome-orb--b {
+  width: 140px;
+  height: 140px;
+  bottom: -50px;
+  right: 10%;
+  background: rgba(16, 185, 129, 0.2);
+  animation: tourOrbFloat 9s ease-in-out infinite reverse;
+}
+
+.tour-welcome-shimmer {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    105deg,
+    transparent 40%,
+    rgba(255, 255, 255, 0.06) 50%,
+    transparent 60%
+  );
+  animation: tourBannerShimmer 4.5s ease-in-out infinite;
+  pointer-events: none;
+}
+
+.tour-welcome-inner {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 20px 28px;
+  padding: 24px 28px;
+}
+
+.tour-welcome-icon {
+  flex-shrink: 0;
+  width: 56px;
+  height: 56px;
+  display: grid;
+  place-items: center;
+  border-radius: 16px;
+  color: #e0e7ff;
+  background: linear-gradient(145deg, rgba(99, 102, 241, 0.9), rgba(79, 70, 229, 0.75));
+  animation: tourIconPulse 2.8s ease-in-out infinite;
+}
+
+.tour-welcome-copy {
+  flex: 1;
+  min-width: 240px;
+}
+
+.tour-welcome-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #c7d2fe;
+  background: rgba(99, 102, 241, 0.18);
+  border: 1px solid rgba(129, 140, 248, 0.35);
+}
+
+.tour-welcome h3 {
+  margin: 0 0 8px;
+  font-family: 'Outfit', sans-serif;
+  font-size: 1.25rem;
+  font-weight: 700;
+  line-height: 1.25;
+  background: linear-gradient(135deg, #f8fafc 0%, #c7d2fe 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.tour-welcome-copy p {
+  margin: 0;
+  max-width: 520px;
+  font-size: 0.9rem;
+  line-height: 1.55;
+  color: var(--text-muted);
+}
+
+.tour-welcome-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.tour-welcome-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 13px 22px;
+  border: none;
+  border-radius: 12px;
+  font-family: 'Outfit', sans-serif;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: white;
+  cursor: pointer;
+  background: linear-gradient(135deg, #6366f1 0%, #4f46e5 50%, #4338ca 100%);
+  box-shadow: 0 8px 28px rgba(99, 102, 241, 0.45);
+  transition: var(--transition);
+}
+
+.tour-welcome-cta:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 36px rgba(99, 102, 241, 0.55);
+  filter: brightness(1.06);
+}
+
+.tour-welcome-cta:active {
+  transform: translateY(0);
+}
+
+.tour-welcome-skip {
+  padding: 12px 18px;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.5);
+  color: var(--text-muted);
+  font-size: 0.88rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.tour-welcome-skip:hover {
+  color: var(--text-main);
+  border-color: rgba(148, 163, 184, 0.45);
+  background: rgba(30, 41, 59, 0.7);
+}
+
+.tour-welcome-close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 2;
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.6);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.tour-welcome-close:hover {
+  color: white;
+  background: rgba(51, 65, 85, 0.8);
+}
+
+@media (max-width: 640px) {
+  .tour-welcome-inner {
+    padding: 20px 20px 20px;
+    padding-right: 48px;
+  }
+
+  .tour-welcome-actions {
+    width: 100%;
+  }
+
+  .tour-welcome-cta,
+  .tour-welcome-skip {
+    flex: 1;
+    justify-content: center;
+  }
+}
+
+/* Driver.js — overlay & highlight */
 .driver-overlay {
   z-index: 10040;
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+}
+
+.driver-active-element {
+  animation: tourHighlightPulse 2.4s ease-in-out infinite;
+}
+
+/* Driver.js — popover */
+.driver-popover.motopay-tour-popover {
+  z-index: 10050;
+  min-width: min(340px, calc(100vw - 32px));
+  max-width: min(420px, calc(100vw - 32px));
+  padding: 0;
+  overflow: hidden;
+  border-radius: 20px;
+  border: 1px solid rgba(129, 140, 248, 0.35);
+  color: var(--text-main);
+  background:
+    radial-gradient(ellipse 100% 80% at 50% -20%, rgba(99, 102, 241, 0.2), transparent 55%),
+    linear-gradient(160deg, rgba(15, 23, 42, 0.98) 0%, rgba(30, 41, 59, 0.96) 100%);
+  box-shadow:
+    0 28px 80px rgba(0, 0, 0, 0.55),
+    0 0 0 1px rgba(255, 255, 255, 0.05),
+    0 0 60px rgba(99, 102, 241, 0.12);
+  animation: tourPopoverIn 0.38s cubic-bezier(0.34, 1.4, 0.64, 1);
+}
+
+.motopay-tour-chrome {
+  padding: 18px 22px 0;
+}
+
+.motopay-tour-progress-track {
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(51, 65, 85, 0.8);
+  overflow: hidden;
+}
+
+.motopay-tour-progress-fill {
+  height: 100%;
+  width: 0;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #6366f1, #818cf8, #10b981);
+  transition: width 0.45s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 0 12px rgba(99, 102, 241, 0.6);
+}
+
+.motopay-tour-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.motopay-tour-step-pill {
+  display: inline-flex;
+  padding: 4px 11px;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #c7d2fe;
+  background: rgba(99, 102, 241, 0.2);
+  border: 1px solid rgba(129, 140, 248, 0.3);
+}
+
+.motopay-tour-step-counter {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.driver-popover.motopay-tour-popover .driver-popover-title {
+  padding: 16px 22px 0;
+  font-family: 'Outfit', sans-serif;
+  font-size: 1.15rem;
+  font-weight: 700;
+  line-height: 1.35;
+  color: #f8fafc;
+}
+
+.driver-popover.motopay-tour-popover .driver-popover-description {
+  padding: 10px 22px 0;
+  font-size: 0.9rem;
+  line-height: 1.6;
+  color: #94a3b8;
+}
+
+.driver-popover.motopay-tour-popover .driver-popover-footer {
+  margin-top: 0;
+  padding: 18px 22px 20px;
+  gap: 12px;
+}
+
+.driver-popover.motopay-tour-popover .driver-popover-progress-text {
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: #64748b;
+  letter-spacing: 0.02em;
+}
+
+.driver-popover.motopay-tour-popover .driver-popover-close-btn {
+  top: 14px;
+  right: 14px;
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  font-size: 16px;
+  color: #64748b;
+  background: rgba(15, 23, 42, 0.5);
+  transition: var(--transition);
+}
+
+.driver-popover.motopay-tour-popover .driver-popover-close-btn:hover,
+.driver-popover.motopay-tour-popover .driver-popover-close-btn:focus {
+  color: #f8fafc;
+  background: rgba(51, 65, 85, 0.85);
+}
+
+.driver-popover.motopay-tour-popover .driver-popover-navigation-btns {
+  gap: 8px;
+}
+
+.driver-popover.motopay-tour-popover .driver-popover-navigation-btns button {
+  padding: 10px 18px;
+  border-radius: 10px;
+  font-family: 'Outfit', sans-serif;
+  font-size: 0.85rem;
+  font-weight: 600;
+  line-height: 1.2;
+  border: none;
+  text-shadow: none;
+  transition: var(--transition);
+}
+
+.driver-popover.motopay-tour-popover .driver-popover-prev-btn {
+  color: #cbd5e1;
+  background: rgba(51, 65, 85, 0.65);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+.driver-popover.motopay-tour-popover .driver-popover-prev-btn:hover,
+.driver-popover.motopay-tour-popover .driver-popover-prev-btn:focus {
+  color: #f8fafc;
+  background: rgba(71, 85, 105, 0.85);
+}
+
+.driver-popover.motopay-tour-popover .driver-popover-next-btn {
+  color: white;
+  background: linear-gradient(135deg, #6366f1, #4f46e5);
+  box-shadow: 0 6px 20px rgba(99, 102, 241, 0.4);
+}
+
+.driver-popover.motopay-tour-popover .driver-popover-next-btn:hover,
+.driver-popover.motopay-tour-popover .driver-popover-next-btn:focus {
+  filter: brightness(1.08);
+  box-shadow: 0 8px 28px rgba(99, 102, 241, 0.5);
+  transform: translateY(-1px);
+}
+
+.driver-popover.motopay-tour-popover .driver-popover-arrow {
+  border-width: 8px;
+}
+
+.driver-popover.motopay-tour-popover .driver-popover-arrow-side-left {
+  border-left-color: rgba(30, 41, 59, 0.98);
+}
+
+.driver-popover.motopay-tour-popover .driver-popover-arrow-side-right {
+  border-right-color: rgba(30, 41, 59, 0.98);
+}
+
+.driver-popover.motopay-tour-popover .driver-popover-arrow-side-top {
+  border-top-color: rgba(30, 41, 59, 0.98);
+}
+
+.driver-popover.motopay-tour-popover .driver-popover-arrow-side-bottom {
+  border-bottom-color: rgba(30, 41, 59, 0.98);
 }

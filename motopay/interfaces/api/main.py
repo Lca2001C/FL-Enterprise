@@ -23,7 +23,6 @@ from motopay.interfaces.api.routers import (
     financeiro,
     motos,
     operacoes,
-    portal,
     usuarios,
     webhooks,
 )
@@ -153,7 +152,6 @@ app.include_router(contratos.router, prefix=api_prefix)
 app.include_router(financeiro.router, prefix=api_prefix)
 app.include_router(cobrancas.router, prefix=api_prefix)
 app.include_router(analytics.router, prefix=api_prefix)
-app.include_router(portal.router, prefix=api_prefix)
 
 
 @app.get("/health")

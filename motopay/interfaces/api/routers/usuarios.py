@@ -44,5 +44,4 @@ def register_user(
         email=u.email,
         tipo=UserRole(u.tipo),
         operacao_id=u.operacao_id,
-        cliente_id=u.cliente_id,
     )

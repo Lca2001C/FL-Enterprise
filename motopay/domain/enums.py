@@ -4,8 +4,6 @@ from enum import Enum
 class UserRole(str, Enum):
     ADMIN = "admin"
     DONO = "dono"
-    OPERADOR = "operador"
-    CLIENTE = "cliente"
 
 
 class MotoStatus(str, Enum):
