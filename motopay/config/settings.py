@@ -2,17 +2,42 @@ from __future__ import annotations
 
 import logging
 from functools import lru_cache
+from urllib.parse import unquote, urlparse
 
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _logger = logging.getLogger(__name__)
 
+_INSECURE_PASSWORDS = frozenset({"", "postgres", "change-me"})
+
+
+def _password_from_url(url: str) -> str | None:
+    parsed = urlparse(url)
+    if parsed.password is None:
+        return None
+    return unquote(parsed.password)
+
+
+def _redis_url_has_password(redis_url: str) -> bool:
+    parsed = urlparse(redis_url)
+    return bool(parsed.password and parsed.password.strip())
+
+
+def _database_password_is_insecure(database_url: str, postgres_password: str) -> bool:
+    from_url = _password_from_url(database_url)
+    password = from_url if from_url is not None else postgres_password.strip()
+    if not password or password.lower() in _INSECURE_PASSWORDS or password.startswith("change-me"):
+        return True
+    return False
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     database_url: str
+    # Credencial Postgres usada pelo docker-compose (validada em produção junto com DATABASE_URL).
+    postgres_password: str = ""
     # Opcional Supabase/deploy: porta 5432 (session/direct) só para migrações; app usa pooling 6543.
     database_migration_url: str | None = None
     database_pool_size: int = 5
@@ -55,6 +80,8 @@ class Settings(BaseSettings):
     allow_production_without_asaas: bool = False
     allow_production_without_telegram: bool = False
     allow_asaas_sandbox_in_production: bool = False
+    # Em produção o validator força False — token Asaas só via header X-Webhook-Token.
+    allow_webhook_token_in_query: bool = True
 
     mercadopago_access_token: str = ""
     mercadopago_webhook_secret: str = ""
@@ -101,6 +128,19 @@ class Settings(BaseSettings):
             raise RuntimeError(
                 "TELEGRAM_BOT_TOKEN é obrigatório em produção (ou ALLOW_PRODUCTION_WITHOUT_TELEGRAM=true apenas em exceção documentada)."
             )
+
+        if _database_password_is_insecure(self.database_url, self.postgres_password):
+            raise RuntimeError(
+                "POSTGRES_PASSWORD / senha em DATABASE_URL não foi configurada para produção "
+                "(use senha forte; valores 'postgres' e 'change-me' são recusados)."
+            )
+
+        if not _redis_url_has_password(self.redis_url):
+            raise RuntimeError(
+                "REDIS_URL em produção exige autenticação (ex.: redis://:SENHA@host:6379/0 ou rediss://:SENHA@host:6380/0)."
+            )
+
+        self.allow_webhook_token_in_query = False
 
         if not self.cors_origins.strip():
             _logger.warning(

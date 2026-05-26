@@ -17,7 +17,11 @@ from motopay.infrastructure.security.rate_limit import (
     clear_webhook_attempts,
     record_webhook_failure,
 )
-from motopay.infrastructure.security.webhook_auth import extract_webhook_token, verify_webhook_token
+from motopay.infrastructure.security.webhook_auth import (
+    extract_webhook_token,
+    verify_webhook_token,
+    webhook_rejects_query_token,
+)
 from motopay.services.billing_service import (
     handle_mercadopago_payment_confirmed,
     handle_payment_confirmed,
@@ -68,9 +72,21 @@ def asaas_webhook(
     ip = get_client_ip(request)
     assert_webhook_not_blocked(ip)
 
-    expected = get_settings().asaas_webhook_token
+    settings = get_settings()
+    expected = settings.asaas_webhook_token
     if not expected.strip():
         raise HTTPException(status_code=503, detail="Webhook não configurado")
+
+    if webhook_rejects_query_token(
+        query_token=token,
+        headers=request.headers,
+        allow_query=settings.allow_webhook_token_in_query,
+    ):
+        record_webhook_failure(ip)
+        raise HTTPException(
+            status_code=403,
+            detail="Em produção use o header X-Webhook-Token (token na URL não é permitido).",
+        )
 
     provided = extract_webhook_token(query_token=token, headers=request.headers)
     if not verify_webhook_token(provided, expected):

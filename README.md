@@ -307,7 +307,7 @@ alembic upgrade head
 PYTHONPATH=. python scripts/seed_admin.py
 ```
 
-Opcional: gere um lock fechado com `pip-tools` (`pip-compile pyproject.toml`) — ver comentários em [`requirements.txt`](requirements.txt).
+Opcional: gere/atualize o lock fechado com `pip-tools` — `pip-compile pyproject.toml -o requirements-lock.txt --strip-extras` (CI valida sincronia). Ver [`requirements.txt`](requirements.txt) e [`requirements-lock.txt`](requirements-lock.txt).
 
 Ferramentas de desenvolvimento: `python -m pip install -e ".[dev]"` (tudo), ou só `".[lint]"` / `".[test]"` para CI separado.
 
@@ -351,11 +351,24 @@ Abra `http://localhost:5173`. Use `VITE_API_BASE_URL` apontando para a API como 
 
 ### Webhook Asaas
 
-Configure na Asaas a URL:
+Configure na Asaas a URL **sem token na query**:
 
-`POST {API_PUBLIC_BASE_URL}/webhooks/asaas?token={ASAAS_WEBHOOK_TOKEN}`
+`POST {API_PUBLIC_BASE_URL}/webhooks/asaas`
 
-*(Preferível: mesmo segredo via header `X-Webhook-Token` para não ficar apenas na URL — logs e referrers.)*
+Envie o segredo no header **`X-Webhook-Token: {ASAAS_WEBHOOK_TOKEN}`**.
+
+Em **`ENVIRONMENT=production`** a API **recusa** token apenas na query string (evita vazamento em access logs e referrers).
+
+**Painel Asaas:** se só permitir token na URL, use um reverse proxy (nginx/Caddy) que copia `$arg_token` para `X-Webhook-Token` e encaminha para a API sem expor o segredo nos logs do app:
+
+```nginx
+location /webhooks/asaas {
+  proxy_set_header X-Webhook-Token $arg_token;
+  proxy_pass http://api:8000/webhooks/asaas;
+}
+```
+
+Em desenvolvimento (`ENVIRONMENT=development`) o token na query ainda funciona para testes locais.
 
 O corpo JSON esperado segue o padrão Asaas (`event`, `payment`). Eventos `PAYMENT_RECEIVED` / `PAYMENT_CONFIRMED` atualizam `cobrancas`, lançam `financeiro`, recalculam score e enfileiram notificação Telegram.
 
@@ -392,8 +405,8 @@ Referência rápida (detalhes de variáveis: [`.env.example`](.env.example)):
 #### Checklist rápido (pré-produção)
 
 1. **`ENVIRONMENT=production`** e **`JWT_SECRET`** forte (sem prefixo `change-me`).
-2. **`ASAAS_API_KEY`**, URL de **Asaas produção** (não `sandbox`), **`ASAAS_WEBHOOK_TOKEN`**, webhook Asaas HTTPS apontando para **`/webhooks/asaas`** na API (token em query ou header; ver seção webhook).
-3. **`TELEGRAM_BOT_TOKEN`**, **`REDIS_URL`** (ex.: Upstash **`rediss://`**), Postgres (`DATABASE_URL` pooler + `DATABASE_MIGRATION_URL` direto para Alembic se precisar).
+2. **`ASAAS_API_KEY`**, URL de **Asaas produção** (não `sandbox`), **`ASAAS_WEBHOOK_TOKEN`**, webhook Asaas HTTPS apontando para **`/webhooks/asaas`** com header **`X-Webhook-Token`** (obrigatório em produção).
+3. **`TELEGRAM_BOT_TOKEN`**, **`REDIS_URL`** com autenticação (ex.: Upstash **`rediss://:TOKEN@…`**), Postgres com senha forte (`DATABASE_URL` / `POSTGRES_PASSWORD` — valores `postgres` recusados em produção).
 4. **`TRUSTED_PROXY_IPS`** se a API ficar atrás de proxy/balanceador; **`CORS_ORIGINS`** com a(s) URL(s) do admin (ex.: Vercel).
 5. Build do admin com **`VITE_API_BASE_URL`** = URL HTTPS pública da API.
 6. **Release/deploy:** `alembic upgrade head` antes de aceitar tráfego; pelo menos um processo **Celery Beat** para agendamentos.
@@ -448,21 +461,36 @@ PYTHONPATH=. python scripts/seed_demo.py
 
 Requer que [`scripts/seed_admin.py`](scripts/seed_admin.py) já tenha sido executado (cria operação e usuários base).
 
-**Manual:**
+**Manual (desenvolvimento):**
 
 ```bash
 docker compose up --build
 ```
 
-O `Dockerfile` inclui a pasta `scripts/` (ex.: `docker compose run --rm api python scripts/seed_admin.py` após o stack subir).
+**Produção / staging hardened (Redis sem porta pública, senhas obrigatórias):**
+
+```bash
+# Defina POSTGRES_PASSWORD e REDIS_PASSWORD fortes no .env antes de subir
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up --build
+```
+
+O overlay [`docker-compose.prod.yml`](docker-compose.prod.yml) remove a exposição `6379:6379`, ativa `requirepass` no Redis, valida `ENVIRONMENT=production` nos serviços app e inclui serviço **`backup`** (pg_dump diário no volume `postgres_backups`).
+
+O `Dockerfile` inclui a pasta `scripts/` (ex.: `docker compose run --rm api python scripts/seed_admin.py` após o stack subir). A imagem roda como usuário **`appuser`** (UID 1000), não root.
 
 Serviços: `db`, `redis`, `api`, `worker`, `beat`, `bot`, `frontend`. Crie o `.env` a partir de `.env.example` antes do primeiro `up`.
 
-Credenciais do Postgres no Compose vêm de `POSTGRES_USER`, `POSTGRES_PASSWORD` e `POSTGRES_DB` (variáveis de ambiente do host / arquivo `.env` na raiz; padrão `postgres` / `postgres` / `motopay`). O `DATABASE_URL` dos serviços de aplicação é montado a partir delas. **Senhas com caracteres especiais** podem exigir URL-encoding se você montar a URL manualmente.
-
-O `Dockerfile` na raiz define `CMD` padrão da API (uvicorn); `worker`, `beat` e `bot` sobrescrevem o comando no Compose. O serviço **frontend** usa o [Dockerfile em `apps/motopay-frontend`](apps/motopay-frontend/Dockerfile) (build Vite + nginx). Healthcheck HTTP só no serviço `api` (a imagem Python é compartilhada).
+Credenciais do Postgres no Compose dev vêm de `POSTGRES_USER`, `POSTGRES_PASSWORD` e `POSTGRES_DB` (padrão `postgres` / `postgres` / `motopay` — **apenas para dev**). Em produção use overlay prod + senhas fortes; a aplicação recusa `postgres/postgres` quando `ENVIRONMENT=production`.
 
 **Celery Beat:** o agendamento é persistido no volume Docker `celery_beat_data` (arquivo `--schedule` em `/data/…`). Se esse volume for apagado, o Beat pode re-disparar tarefas conforme o estado novo do scheduler — trate como risco operacional em produção (backups ou alternativa de scheduler externo, se necessário).
+
+Healthchecks: **`api`** (`GET /health`), **`worker`** (`GET :9808/metrics`), **`bot`** (chave Redis `bot:heartbeat`). O serviço **frontend** usa nginx; beat não expõe HTTP.
+
+### Backup do banco
+
+* **Manual:** `./scripts/backup_postgres.sh` (requer `pg_dump` e `POSTGRES_*` ou `DATABASE_URL`; grava em `./backups/`).
+* **Compose prod:** serviço `backup` executa o script a cada 24h no volume `postgres_backups`.
+* **Postgres gerenciado** (Supabase/Railway): use backups nativos do provedor; o script serve para dumps ad hoc ou self-hosted.
 
 Serviços aguardam `db` e `redis` **saudáveis** antes de subir a API; o worker **não** depende da API estar pronta.
 

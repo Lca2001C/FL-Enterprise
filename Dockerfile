@@ -18,7 +18,13 @@ COPY scripts ./scripts
 RUN pip install --no-cache-dir "pip>=24.0,<25" "setuptools>=68" "wheel" \
     && pip install --no-cache-dir -e .
 
+RUN useradd -m -u 1000 appuser \
+    && mkdir -p /data \
+    && chown -R appuser:appuser /app /data
+
 ENV PYTHONPATH=/app
+
+USER appuser
 
 # Railway injeta PORT; desenvolvimento local sem PORT mantém 8000.
 CMD ["sh", "-c", "exec uvicorn motopay.interfaces.api.main:app --host 0.0.0.0 --port ${PORT:-8000}"]

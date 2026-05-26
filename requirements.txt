@@ -1,9 +1,8 @@
-# Dependências declaradas em pyproject.toml (fonte de verdade).
-# Instalação recomendada: python -m pip install -e .
+# Lock fechado (grafo transitivo). Regenerar após mudar pyproject.toml:
+#   pip install pip-tools
+#   pip-compile pyproject.toml -o requirements-lock.txt --strip-extras
 #
-# Lock fechado (grafo transitivo resolvido no seu ambiente):
-#   python -m pip install pip-tools
-#   pip-compile pyproject.toml -o requirements-lock.txt
+# Instalação reproduzível (sem editable):
+#   pip install -r requirements-lock.txt
 #
-# Ou, após instalar o projeto em um venv limpo:
-#   pip freeze > requirements-lock.txt
+# Fonte de verdade das dependências diretas: pyproject.toml
