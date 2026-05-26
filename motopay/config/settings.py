@@ -64,6 +64,7 @@ class Settings(BaseSettings):
     celery_queue_backlog_threshold: int = 100
     celery_stuck_task_seconds: int = 600
     worker_metrics_port: int = 9808
+    worker_metrics_host: str = "127.0.0.1"
     metrics_token: str = ""
     log_level: str = "INFO"
 

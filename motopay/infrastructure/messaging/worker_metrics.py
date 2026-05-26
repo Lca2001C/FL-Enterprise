@@ -33,9 +33,11 @@ def start_worker_metrics_server() -> None:
     global _server_started
     if _server_started:
         return
-    port = get_settings().worker_metrics_port
-    server = HTTPServer(("0.0.0.0", port), _MetricsHandler)
+    settings = get_settings()
+    host = settings.worker_metrics_host
+    port = settings.worker_metrics_port
+    server = HTTPServer((host, port), _MetricsHandler)
     thread = threading.Thread(target=server.serve_forever, daemon=True, name="worker-metrics")
     thread.start()
     _server_started = True
-    logger.info("Worker metrics server listening on :%s/metrics", port)
+    logger.info("Worker metrics server listening on %s:%s/metrics", host, port)
