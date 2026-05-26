@@ -1,6 +1,7 @@
 # Lock fechado (grafo transitivo). Regenerar após mudar pyproject.toml:
 #   pip install pip-tools
 #   pip-compile pyproject.toml -o requirements-lock.txt --strip-extras
+# Use Python 3.11 (mesma versão do CI) para evitar diff por plataforma/versão.
 #
 # Instalação reproduzível (sem editable):
 #   pip install -r requirements-lock.txt
