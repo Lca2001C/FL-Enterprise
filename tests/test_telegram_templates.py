@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 from motopay.domain.exceptions import ConflictError
+from motopay.infrastructure.db.models import Operacao
 from motopay.infrastructure.telegram.templates import (
     DEFAULT_TELEGRAM_TEMPLATES,
     build_overdue_html,
@@ -12,7 +13,6 @@ from motopay.infrastructure.telegram.templates import (
     should_skip_default_template,
     validate_custom_messages,
 )
-from motopay.infrastructure.db.models import Operacao
 
 
 def test_resolve_templates_uses_defaults_when_no_overrides() -> None:
