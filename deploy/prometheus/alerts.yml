@@ -1,0 +1,26 @@
+groups:
+  - name: motopay
+    rules:
+      - alert: CeleryWorkersDown
+        expr: celery_workers_online == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: No Celery workers online
+
+      - alert: CeleryQueueBacklog
+        expr: celery_queue_length > 500
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Celery queue backlog high
+
+      - alert: TelegramCircuitBreakerOpen
+        expr: telegram_circuit_breaker_state == 1
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: Telegram circuit breaker is open

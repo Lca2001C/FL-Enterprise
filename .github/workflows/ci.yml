@@ -58,6 +58,9 @@ jobs:
       - name: Ruff
         run: ruff check motopay tests scripts
 
+      - name: Bandit
+        run: bandit -r motopay -ll -q
+
       - name: Pytest
         run: pytest -q
 

@@ -22,7 +22,7 @@ const FleetView = () => {
   const [statusFilter, setStatusFilter] = useState<string>('todos');
   const [showModal, setShowModal] = useState(false);
   const [editMoto, setEditMoto] = useState<MotoOut | null>(null);
-  const [formData, setFormData] = useState({ placa: '', modelo: '', status: 'disponivel' });
+  const [formData, setFormData] = useState({ placa: '', modelo: '', status: 'disponivel', km: 0 });
   const [debouncedSearch, setDebouncedSearch] = useState('');
 
   useEffect(() => {
@@ -57,13 +57,13 @@ const FleetView = () => {
 
   const openCreate = () => {
     setEditMoto(null);
-    setFormData({ placa: '', modelo: '', status: 'disponivel' });
+    setFormData({ placa: '', modelo: '', status: 'disponivel', km: 0 });
     setShowModal(true);
   };
 
   const openEdit = (moto: MotoOut) => {
     setEditMoto(moto);
-    setFormData({ placa: moto.placa, modelo: moto.modelo, status: moto.status });
+    setFormData({ placa: moto.placa, modelo: moto.modelo, status: moto.status, km: moto.km });
     setShowModal(true);
   };
 
@@ -76,6 +76,7 @@ const FleetView = () => {
           placa: formData.placa,
           modelo: formData.modelo,
           status: formData.status,
+          km: formData.km,
         });
       } else {
         await api.post('/api/v1/motos', formData);
@@ -157,6 +158,7 @@ const FleetView = () => {
               <tr>
                 <th>Placa</th>
                 <th>Modelo</th>
+                <th>KM</th>
                 <th>Status</th>
                 <th>Motorista</th>
                 <th style={{ textAlign: 'right' }}>Ações</th>
@@ -167,6 +169,7 @@ const FleetView = () => {
                 <tr key={moto.id}>
                   <td className="font-mono">{moto.placa}</td>
                   <td>{moto.modelo}</td>
+                  <td>{moto.km.toLocaleString('pt-BR')}</td>
                   <td>
                     <span className={`status-badge ${moto.status}`}>
                       {moto.status.toUpperCase()}
@@ -242,6 +245,19 @@ const FleetView = () => {
                   value={formData.modelo}
                   onChange={(e) => setFormData({ ...formData, modelo: e.target.value })}
                   placeholder="Honda CG 160"
+                  required
+                />
+              </div>
+              <div className="input-group">
+                <label className="input-label">KM</label>
+                <input
+                  className="input-field"
+                  type="number"
+                  min={0}
+                  step={1}
+                  value={formData.km}
+                  onChange={(e) => setFormData({ ...formData, km: Number(e.target.value) })}
+                  placeholder="0"
                   required
                 />
               </div>

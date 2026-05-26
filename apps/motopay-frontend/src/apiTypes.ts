@@ -35,6 +35,7 @@ export type MotoOut = {
   placa: string;
   modelo: string;
   status: string;
+  km: number;
   cliente_nome?: string | null;
 };
 
@@ -178,8 +179,30 @@ export type AppTab =
   | 'ajustes'
   | 'admin-operacoes'
   | 'admin-usuarios'
+  | 'admin-ops'
   | 'conta';
 
 export type ContractsFilter = 'todos' | 'ativos' | 'inadimplentes' | 'com_promessa';
+
+export type CelerySummary = {
+  workers_online: number;
+  active_tasks: number;
+  queue_backlog: Record<string, number>;
+  queue_active: Record<string, number>;
+  dlq_size: number;
+  stuck_tasks: Array<{
+    worker: string;
+    task_id: string;
+    task_name: string;
+    seconds_running: number;
+  }>;
+  bot_online: boolean;
+  workers: Array<{
+    name: string;
+    pool?: string;
+    concurrency?: number;
+    active_tasks: number;
+  }>;
+};
 
 export const PAGE_SIZE = 50;

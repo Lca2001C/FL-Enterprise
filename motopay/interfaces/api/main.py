@@ -14,6 +14,7 @@ from motopay.domain.exceptions import (
     UnauthorizedError,
 )
 from motopay.infrastructure.security.client_ip import get_client_ip
+from motopay.interfaces.api.middleware import ObservabilityMiddleware
 from motopay.interfaces.api.routers import (
     analytics,
     auth,
@@ -23,15 +24,24 @@ from motopay.interfaces.api.routers import (
     financeiro,
     motos,
     operacoes,
+    ops,
     usuarios,
     webhooks,
 )
+from motopay.interfaces.api.routers import health as health_router
+from motopay.observability import get_logger, setup_logging
+from motopay.observability.metrics import setup_metrics
 from motopay.services.auth_service import decode_token
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 audit_logger = logging.getLogger("motopay.audit")
 
 _settings = get_settings()
+
+# Setup observability
+setup_logging(level=_settings.log_level)
+setup_metrics()
+
 if _settings.sentry_dsn.strip():
     try:
         import sentry_sdk
@@ -49,6 +59,8 @@ if _settings.sentry_dsn.strip():
 
 app = FastAPI(title="MotoPay Admin API", version="0.1.0")
 
+# Add observability middleware (must be added before other middlewares)
+app.add_middleware(ObservabilityMiddleware)
 
 def _cors_allow_origins() -> list[str]:
     """Origens permitidas no CORS. Em produção, lista vazia = nenhuma origem (sem fallback para '*')."""
@@ -152,8 +164,8 @@ app.include_router(contratos.router, prefix=api_prefix)
 app.include_router(financeiro.router, prefix=api_prefix)
 app.include_router(cobrancas.router, prefix=api_prefix)
 app.include_router(analytics.router, prefix=api_prefix)
+app.include_router(ops.router, prefix=api_prefix)
 
-
-@app.get("/health")
-def health() -> dict[str, str]:
-    return {"status": "ok"}
+# Health check and observability routers
+app.include_router(health_router.router)
+app.include_router(health_router.alert_router)

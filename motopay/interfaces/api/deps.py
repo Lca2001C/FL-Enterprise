@@ -6,6 +6,7 @@ from typing import Annotated
 from fastapi import Depends, Header, Query
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
+from motopay.config import get_settings
 from motopay.domain.enums import UserRole
 from motopay.domain.exceptions import ForbiddenError, UnauthorizedError
 from motopay.services.auth_service import decode_token
@@ -121,3 +122,18 @@ def assert_resource_operacao(
         raise ForbiddenError("Informe operacao_id (query ou header) ou restrinja o escopo")
     if resource_operacao_id != scope_operacao_id:
         raise ForbiddenError("Recurso fora do escopo da operação")
+
+
+def require_metrics_or_admin(
+    credentials: HTTPAuthorizationCredentials | None = Depends(security),
+    x_metrics_token: str | None = Header(default=None, alias="X-Metrics-Token"),
+) -> CurrentUser | None:
+    settings = get_settings()
+    if settings.metrics_token.strip() and x_metrics_token == settings.metrics_token.strip():
+        return None
+    if credentials is None or credentials.scheme.lower() != "bearer":
+        raise UnauthorizedError("Autenticação necessária")
+    user = get_current_user(credentials)
+    if user.role != UserRole.ADMIN:
+        raise ForbiddenError("Acesso restrito a administradores")
+    return user

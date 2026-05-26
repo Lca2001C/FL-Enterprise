@@ -1,0 +1,51 @@
+{
+  "uid": "motopay-celery",
+  "title": "MotoPay — Celery Queues",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Workers online",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "targets": [{ "expr": "celery_workers_online", "refId": "A" }]
+    },
+    {
+      "type": "stat",
+      "title": "Tasks in progress",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "targets": [{ "expr": "celery_tasks_in_progress", "refId": "A" }]
+    },
+    {
+      "type": "stat",
+      "title": "DLQ size",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "targets": [{ "expr": "celery_dlq_size", "refId": "A" }]
+    },
+    {
+      "type": "graph",
+      "title": "Task rate",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "targets": [
+        {
+          "expr": "sum(rate(celery_tasks_total[5m])) by (status)",
+          "legendFormat": "{{status}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "graph",
+      "title": "Queue backlog",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "targets": [
+        {
+          "expr": "celery_queue_length",
+          "legendFormat": "{{queue_name}}",
+          "refId": "A"
+        }
+      ]
+    }
+  ]
+}

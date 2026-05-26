@@ -75,6 +75,7 @@ class Moto(Base):
     placa: Mapped[str] = mapped_column(String(16), nullable=False)
     modelo: Mapped[str] = mapped_column(String(128), nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    km: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0, server_default="0")
 
     operacao: Mapped[Operacao] = relationship(back_populates="motos")
     contratos: Mapped[list[Contrato]] = relationship(back_populates="moto")

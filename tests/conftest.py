@@ -125,6 +125,7 @@ def moto_operacao_a(db_session: Session, operacao_a: Operacao) -> Moto:
         placa="AAA1A11",
         modelo="CG 160",
         status="disponivel",
+        km=100,
     )
     db_session.add(moto)
     db_session.flush()
@@ -138,6 +139,7 @@ def moto_operacao_b(db_session: Session, operacao_b: Operacao) -> Moto:
         placa="BBB2B22",
         modelo="Fan 160",
         status="disponivel",
+        km=200,
     )
     db_session.add(moto)
     db_session.flush()

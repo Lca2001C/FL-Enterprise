@@ -11,6 +11,12 @@ import SettingsView from './SettingsView';
 import AccountView from './AccountView';
 import AdminOperacoesView from './AdminOperacoesView';
 import AdminUsuariosView from './AdminUsuariosView';
+import OpsDashboardView from './OpsDashboardView';
+import AlertsPanel from './components/AlertsPanel';
+import HealthStatus from './components/HealthStatus';
+import { AlertProvider } from './stores/AlertContext';
+import { useRealtime } from './realtime/useRealtime';
+import { useAlertsPolling } from './hooks/useAlerts';
 import {
   LayoutDashboard,
   Users,
@@ -31,6 +37,7 @@ import {
   UserCog,
   UserCircle,
   HelpCircle,
+  Activity,
 } from 'lucide-react';
 import type {
   AnalyticsSummary,
@@ -62,6 +69,7 @@ const TAB_LABELS: Partial<Record<AppTab, string>> = {
   ajustes: 'Ajustes',
   'admin-operacoes': 'Operações',
   'admin-usuarios': 'Usuários',
+  'admin-ops': 'Filas & Ops',
   conta: 'Minha Conta',
 };
 
@@ -142,6 +150,8 @@ const Dashboard = () => {
 
   const isAdmin = user?.tipo === 'admin';
   const showAjustes = true;
+  useRealtime({ enabled: isAdmin });
+  useAlertsPolling({ pollInterval: 30000, enabled: isAdmin });
   const brandTitle = isAdmin ? 'MotoPay Admin' : operacaoNome ? `MotoPay · ${operacaoNome}` : 'MotoPay Painel';
   const roleDisplay =
     user?.tipo === 'dono' && operacaoNome
@@ -419,6 +429,8 @@ const Dashboard = () => {
         return isAdmin ? <AdminOperacoesView /> : null;
       case 'admin-usuarios':
         return isAdmin ? <AdminUsuariosView /> : null;
+      case 'admin-ops':
+        return isAdmin ? <OpsDashboardView /> : null;
       case 'conta':
         return <AccountView />;
       default:
@@ -526,6 +538,12 @@ const Dashboard = () => {
                 active={activeTab === 'admin-usuarios'}
                 onClick={() => goToTab('admin-usuarios')}
               />
+              <NavItem
+                icon={<Activity size={20} />}
+                label="Filas & Ops"
+                active={activeTab === 'admin-ops'}
+                onClick={() => goToTab('admin-ops')}
+              />
             </>
           )}
         </nav>
@@ -579,6 +597,12 @@ const Dashboard = () => {
               </div>
             </div>
             <div className="header-actions">
+              {isAdmin && (
+                <>
+                  <HealthStatus />
+                  <AlertsPanel />
+                </>
+              )}
               {isAdmin && (
                 <div className="scope-select" data-tour="scope-select">
                   <label className="input-label scope-label">Operação (escopo)</label>
@@ -1181,10 +1205,12 @@ const MainApp = () => {
 function App() {
   return (
     <AuthProvider>
-      <>
-        <ReloadPrompt />
-        <MainApp />
-      </>
+      <AlertProvider>
+        <>
+          <ReloadPrompt />
+          <MainApp />
+        </>
+      </AlertProvider>
     </AuthProvider>
   );
 }

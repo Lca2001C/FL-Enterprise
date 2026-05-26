@@ -141,12 +141,14 @@ class MotoCreate(BaseModel):
     placa: str
     modelo: str
     status: MotoStatus
+    km: int = 0
 
 
 class MotoUpdate(BaseModel):
     placa: str | None = None
     modelo: str | None = None
     status: MotoStatus | None = None
+    km: int | None = None
 
 
 class MotoOut(BaseModel):
@@ -157,6 +159,7 @@ class MotoOut(BaseModel):
     placa: str
     modelo: str
     status: str
+    km: int
     cliente_nome: str | None = None
 
 

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 from datetime import UTC, date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -12,22 +11,19 @@ from motopay.domain.enums import ContratoStatus, DomainEventType
 from motopay.infrastructure.db.models import Cliente, Contrato, EventoDominio, Moto, Operacao
 from motopay.infrastructure.db.session import SessionLocal
 from motopay.infrastructure.messaging.celery_app import celery_app
+from motopay.infrastructure.messaging.celery_observability import DLQTask
 from motopay.infrastructure.telegram.notify import (
     TelegramPermanentError,
     TelegramTransientError,
     send_telegram_html,
     send_telegram_text,
 )
-from motopay.infrastructure.telegram.templates import (
-    build_overdue_html,
-    render_custom_messages_for_trigger,
-    render_template,
-    should_skip_default_template,
-)
+from motopay.infrastructure.telegram.templates import build_overdue_html, render_template
+from motopay.observability.logger import get_logger
 from motopay.services.billing_service import late_amounts_for_contrato, refresh_overdue_pix
 from motopay.services.scoring_service import effective_escalation_level, recalculate_cliente_score
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 _RETRY_KW = dict(
     autoretry_for=(TelegramTransientError,),
@@ -35,6 +31,10 @@ _RETRY_KW = dict(
     retry_backoff_max=600,
     retry_jitter=True,
     max_retries=5,
+    base=DLQTask,
+    queue="telegram",
+    soft_time_limit=120,
+    time_limit=150,
 )
 
 
@@ -237,8 +237,15 @@ def send_d0_reminder(self, contrato_id: int) -> None:
         db.close()
 
 
-@celery_app.task(name="motopay.infrastructure.messaging.tasks.daily_automation_tick")
-def daily_automation_tick() -> None:
+@celery_app.task(
+    bind=True,
+    base=DLQTask,
+    name="motopay.infrastructure.messaging.tasks.daily_automation_tick",
+    queue="default",
+    soft_time_limit=1800,
+    time_limit=2100,
+)
+def daily_automation_tick(self) -> None:
     settings = get_settings()
     tz = ZoneInfo(settings.app_timezone)
     today = datetime.now(tz).date()

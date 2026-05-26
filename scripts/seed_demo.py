@@ -45,8 +45,15 @@ def main():
             ("DS11223", "Yamaha Factor 150", MotoStatus.DISPONIVEL),
         ]
         motos = []
-        for placa, modelo, status in motos_data:
-            m = Moto(operacao_id=op.id, placa=placa, modelo=modelo, status=status.value)
+        moto_kms = [1200, 18500, 5400, 36000, 10200, 14000, 8000, 500]
+        for (placa, modelo, status), km in zip(motos_data, moto_kms, strict=True):
+            m = Moto(
+                operacao_id=op.id,
+                placa=placa,
+                modelo=modelo,
+                status=status.value,
+                km=km,
+            )
             db.add(m)
             motos.append(m)
         db.commit()

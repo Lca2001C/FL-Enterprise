@@ -1,0 +1,33 @@
+{
+  "uid": "motopay-business",
+  "title": "MotoPay — Business",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Tenants active",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "targets": [{ "expr": "tenants_active", "refId": "A" }]
+    },
+    {
+      "type": "stat",
+      "title": "Inadimplentes",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "targets": [{ "expr": "clientes_inadimplentes_total", "refId": "A" }]
+    },
+    {
+      "type": "stat",
+      "title": "Cobranças pendentes",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "targets": [{ "expr": "cobrancas_pendentes_total", "refId": "A" }]
+    },
+    {
+      "type": "stat",
+      "title": "Bot Telegram",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "targets": [{ "expr": "telegram_bot_status{tenant_id=\"global\"}", "refId": "A" }]
+    }
+  ]
+}

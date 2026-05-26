@@ -24,6 +24,7 @@
     "lucide-react": "^1.14.0",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
+    "socket.io-client": "^4.8.1",
     "styled-jsx": "^5.1.7"
   }
 }

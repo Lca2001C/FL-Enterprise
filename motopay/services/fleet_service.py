@@ -88,6 +88,7 @@ def create_moto(
         placa=body.placa.upper().strip(),
         modelo=body.modelo.strip(),
         status=body.status.value,
+        km=body.km,
     )
     db.add(m)
     db.commit()
@@ -114,6 +115,8 @@ def update_moto(
         m.modelo = body.modelo.strip()
     if body.status is not None:
         m.status = body.status.value
+    if body.km is not None:
+        m.km = body.km
     db.add(m)
     db.commit()
     db.refresh(m)

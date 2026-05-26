@@ -96,6 +96,19 @@ export default defineConfig(({ mode }) => {
           target: proxyTarget,
           changeOrigin: true,
         },
+        '/health': {
+          target: proxyTarget,
+          changeOrigin: true,
+        },
+        '/alerts': {
+          target: proxyTarget,
+          changeOrigin: true,
+        },
+        '/socket.io': {
+          target: proxyTarget,
+          changeOrigin: true,
+          ws: true,
+        },
       },
     },
   };

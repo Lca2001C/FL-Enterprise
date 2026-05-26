@@ -27,7 +27,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    command: uvicorn motopay.interfaces.api.main:app --host 0.0.0.0 --port 8000
+    command: uvicorn motopay.interfaces.api.asgi:app --host 0.0.0.0 --port 8000
     ports:
       - "8000:8000"
     env_file: .env
@@ -56,7 +56,9 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    command: celery -A motopay.infrastructure.messaging.celery_app worker -l INFO
+    command: celery -A motopay.infrastructure.messaging.celery_app worker -l INFO -Q default,telegram,billing
+    ports:
+      - "9808:9808"
     env_file: .env
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-motopay}

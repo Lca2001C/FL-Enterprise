@@ -194,6 +194,19 @@ async def cmd_ajuda(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 def main() -> None:
+    import threading
+    import time
+
+    from motopay.infrastructure.redis_client import get_redis_connection
+
+    def _heartbeat_loop() -> None:
+        r = get_redis_connection()
+        while True:
+            r.setex("bot:heartbeat", 60, "1")
+            time.sleep(30)
+
+    threading.Thread(target=_heartbeat_loop, daemon=True, name="bot-heartbeat").start()
+
     token = get_settings().telegram_bot_token
     app = Application.builder().token(token).build()
     app.add_handler(CommandHandler("start", cmd_start))
