@@ -323,7 +323,6 @@ def get_worker_stats() -> dict[str, Any]:
             "active_tasks": 0,
             "registered_tasks": 0,
             "workers": [],
-            "error": str(e),
         }
 
 
