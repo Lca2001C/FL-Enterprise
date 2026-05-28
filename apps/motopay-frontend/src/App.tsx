@@ -54,6 +54,7 @@ import { formatBrl, formatDate, roleLabel } from './utils/format';
 import { parseApiError } from './utils/apiError';
 import ErrorBanner from './components/ErrorBanner';
 import ReloadPrompt from './components/ReloadPrompt';
+import InstallPrompt from './components/InstallPrompt';
 import TourWelcomeBanner from './components/TourWelcomeBanner';
 import { dismissOwnerTourBanner, shouldShowOwnerTourBanner, isOwnerTourEligible } from './guide/ownerTourSteps';
 import { useOwnerTour } from './guide/useOwnerTour';
@@ -1208,6 +1209,7 @@ function App() {
       <AlertProvider>
         <>
           <ReloadPrompt />
+          <InstallPrompt />
           <MainApp />
         </>
       </AlertProvider>

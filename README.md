@@ -195,9 +195,15 @@ Reações automáticas:
   * **Ajustes** — multa fixa, juros diários e **mensagens do Telegram** (notificações e comandos do bot), editáveis por operação em *Ajustes da Operação*; placeholders como `{placa}` e `{valor_total}`; worker e bot leem do banco na próxima mensagem (sem redeploy).
 * **Admin:** mesmo painel + seletor de operação no topo; branding "MotoPay Admin".
 * Sessão renovada automaticamente via refresh token (`POST /auth/refresh`).
-* **PWA (instalável no celular):** após deploy em **HTTPS**, o mesmo painel pode ser adicionado à tela inicial (Chrome/Android: menu “Instalar app”; Safari/iOS: Compartilhar → “Adicionar à Tela de Início”).  
-  Ícones em [`public/icons`](apps/motopay-frontend/public/icons); manifest e service worker são gerados no `npm run build` por [`vite-plugin-pwa`](apps/motopay-frontend/vite.config.ts).  
-  Para **testar o SW no desenvolvimento local**: `cd apps/motopay-frontend && VITE_PWA_DEV=true npm run dev` (uso opcional).
+* **PWA (instalável no celular e desktop):** o painel pode ser adicionado à tela inicial ou barra de apps como app standalone (ícone próprio, splash iOS, service worker com shell offline).
+  * **Produção (HTTPS):** após deploy, Android Chrome exibe banner **Instalar app** (ou menu ⋮ → Instalar app); iOS Safari: **Compartilhar → Adicionar à Tela de Início**; desktop Chrome: ícone na barra de apps ou menu **Instalar MotoPay**.
+  * **Rede local:** `./scripts/start.sh --lan` e abra `http://<IP-da-máquina>:5173` no celular (mesma Wi‑Fi). Em HTTP o navegador pode não mostrar prompt automático — siga as instruções do banner ou o menu do Chrome.
+  * **Regenerar ícones e splash:** `python scripts/generate_pwa_icons.py` (gera `public/icons/`, `favicon.ico`, `public/splash/`, `public/screenshots/`). Manifest e service worker são gerados no `npm run build` ([`vite-plugin-pwa`](apps/motopay-frontend/vite.config.ts)).
+  * **Dev desktop com SW:** `cd apps/motopay-frontend && VITE_PWA_DEV=true npm run dev` (opcional).
+  * **Validar após build:** `cd apps/motopay-frontend && npm run build && npm test` — o teste `pwaManifest.build.test.ts` valida `dist/manifest.webmanifest` (ícones 192/512/maskable, screenshots).
+  * **Lighthouse (Chrome DevTools):** abra o painel em HTTPS → **Application → Manifest** (sem erros) → aba **Lighthouse** → categoria **Progressive Web App** (instalável, ícones, service worker).
+  * **Reinstalar no celular:** remova o ícone antigo da tela inicial → limpe dados do site (Chrome: Configurações → Privacidade → Dados do site) → abra a URL de produção → instale de novo. Isso evita ícone genérico ou manifest em cache.
+  * **Play Store (futuro):** publicação como TWA (Bubblewrap) + `assetlinks.json` — fora do escopo atual; o manifest já inclui screenshots wide/narrow para preparação.
 
 ---
 

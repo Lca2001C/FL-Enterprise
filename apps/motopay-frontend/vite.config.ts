@@ -1,6 +1,7 @@
 import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
+import { PWA_MANIFEST_ICONS, PWA_SCREENSHOTS } from './src/pwa.config';
 
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
@@ -19,7 +20,15 @@ export default defineConfig(({ mode }) => {
         registerType: 'autoUpdate',
         injectRegister: false,
         strategies: 'generateSW',
-        includeAssets: ['favicon.svg', 'icons/*.png'],
+        includeAssets: [
+          'favicon.ico',
+          'favicon.svg',
+          'favicon-16.png',
+          'favicon-32.png',
+          'icons/*.png',
+          'splash/*.png',
+          'screenshots/*.png',
+        ],
         manifestFilename: 'manifest.webmanifest',
         manifest: {
           id: '/',
@@ -37,26 +46,44 @@ export default defineConfig(({ mode }) => {
           theme_color: '#020617',
           orientation: 'portrait-primary',
           categories: ['business', 'utilities'],
-          icons: [
-            {
-              src: 'icons/pwa-192.png',
-              sizes: '192x192',
-              type: 'image/png',
-              purpose: 'any',
-            },
-            {
-              src: 'icons/pwa-512.png',
-              sizes: '512x512',
-              type: 'image/png',
-              purpose: 'any maskable',
-            },
-          ],
+          prefer_related_applications: false,
+          icons: PWA_MANIFEST_ICONS,
+          screenshots: PWA_SCREENSHOTS,
         },
         workbox: {
           globPatterns: ['**/*.{js,css,html,ico,png,svg,webmanifest}'],
           navigateFallback: 'index.html',
           navigateFallbackDenylist: [/^\/api\/?/],
           runtimeCaching: [
+            {
+              urlPattern: /^\/api\/.*/i,
+              handler: 'NetworkFirst',
+              options: {
+                cacheName: 'api-cache',
+                networkTimeoutSeconds: 10,
+                expiration: {
+                  maxEntries: 50,
+                  maxAgeSeconds: 60 * 5,
+                },
+                cacheableResponse: {
+                  statuses: [0, 200],
+                },
+              },
+            },
+            {
+              urlPattern: /^\/api\/motos\/[^/]+\/imagem$/i,
+              handler: 'StaleWhileRevalidate',
+              options: {
+                cacheName: 'moto-images',
+                expiration: {
+                  maxEntries: 64,
+                  maxAgeSeconds: 60 * 60 * 24 * 7,
+                },
+                cacheableResponse: {
+                  statuses: [0, 200],
+                },
+              },
+            },
             {
               urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
               handler: 'CacheFirst',
