@@ -7,7 +7,6 @@ from motopay.interfaces.api.deps import CurrentUser, require_operacional, resolv
 from motopay.interfaces.api.pagination import clamp_limit, clamp_offset
 from motopay.interfaces.api.schemas import CobrancaOut, CreateChargeRequest, Paginated
 from motopay.services.billing_service import (
-    create_asaas_subscription_for_contract,
     create_mercadopago_subscription_for_contract,
     create_pix_charge_for_contract,
     list_cobrancas,
@@ -41,19 +40,8 @@ def create_pix(
     return create_pix_charge_for_contract(db, user, operacao_id, body.contrato_id)
 
 
-@router.post("/assinatura-asaas", response_model=dict)
-def create_subscription(
-    body: CreateChargeRequest,
-    db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_operacional),
-    operacao_id: int | None = Depends(resolve_operacao_id),
-) -> dict:
-    ct = create_asaas_subscription_for_contract(db, user, operacao_id, body.contrato_id)
-    return {"contrato_id": ct.id, "asaas_subscription_id": ct.asaas_subscription_id}
-
-
 @router.post("/assinatura-mercadopago", response_model=dict)
-def create_mp_subscription(
+def create_subscription(
     body: CreateChargeRequest,
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_operacional),

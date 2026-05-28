@@ -38,8 +38,10 @@ class Operacao(Base):
     )
     telegram_templates: Mapped[dict[str, str] | None] = mapped_column(JSONB, nullable=True)
     telegram_custom_messages: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB, nullable=True)
-    payment_provider: Mapped[str] = mapped_column(
-        String(32), nullable=False, server_default="asaas"
+    telegram_bot_menu_buttons: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB, nullable=True)
+    telegram_owner_notify_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    telegram_owner_notify_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="false"
     )
     mercadopago_access_token: Mapped[str | None] = mapped_column(String(512), nullable=True)
 
@@ -76,12 +78,17 @@ class Moto(Base):
     modelo: Mapped[str] = mapped_column(String(128), nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
     km: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0, server_default="0")
+    imagem_path: Mapped[str | None] = mapped_column(String(512), nullable=True)
 
     operacao: Mapped[Operacao] = relationship(back_populates="motos")
     contratos: Mapped[list[Contrato]] = relationship(back_populates="moto")
     lancamentos: Mapped[list[Financeiro]] = relationship(back_populates="moto")
 
     __table_args__ = (UniqueConstraint("operacao_id", "placa", name="uq_motos_operacao_placa"),)
+
+    @property
+    def tem_imagem(self) -> bool:
+        return bool(self.imagem_path)
 
 
 class Cliente(Base):
@@ -96,7 +103,6 @@ class Cliente(Base):
     telefone: Mapped[str] = mapped_column(String(32), nullable=False)
     telegram_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     score: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default="100")
-    asaas_customer_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     operacao: Mapped[Operacao] = relationship(back_populates="clientes")
     contratos: Mapped[list[Contrato]] = relationship(back_populates="cliente")
@@ -126,8 +132,6 @@ class Contrato(Base):
         BigInteger, nullable=False, server_default="0"
     )
     inadimplente: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
-    asaas_customer_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    asaas_subscription_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     promessa_pagamento_em: Mapped[date | None] = mapped_column(Date, nullable=True)
     promessa_notas: Mapped[str | None] = mapped_column(Text, nullable=True)
     ultima_cobranca_telegram_em: Mapped[date | None] = mapped_column(Date, nullable=True)
@@ -178,13 +182,12 @@ class Cobranca(Base):
     contrato_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("contratos.id"), nullable=False)
     valor: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
     vencimento: Mapped[date] = mapped_column(Date, nullable=False)
-    asaas_payment_id: Mapped[str | None] = mapped_column(
-        String(64), unique=True, nullable=True, index=True
-    )
     mercadopago_payment_id: Mapped[str | None] = mapped_column(
         String(64), nullable=True, index=True
     )
-    payment_gateway: Mapped[str] = mapped_column(String(32), nullable=False, server_default="asaas")
+    payment_gateway: Mapped[str] = mapped_column(
+        String(32), nullable=False, server_default="mercadopago"
+    )
     pix_copia_cola: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
     created_at: Mapped[datetime] = mapped_column(

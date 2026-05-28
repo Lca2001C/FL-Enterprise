@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback, type FormEvent } from 'react';
-import { Plus, Search, Trash2, Edit2 } from 'lucide-react';
+import { useState, useEffect, useCallback, useRef, type FormEvent, type ChangeEvent } from 'react';
+import { Plus, Search, Trash2, Edit2, ImagePlus } from 'lucide-react';
 import { useAuth } from './AuthContext';
 import type { MotoOut, Paginated } from './apiTypes';
 import { PAGE_SIZE } from './apiTypes';
@@ -8,8 +8,10 @@ import { offsetAfterDelete } from './utils/fetchPaginated';
 import EmptyState from './components/EmptyState';
 import ErrorBanner from './components/ErrorBanner';
 import AdminScopeBanner from './components/AdminScopeBanner';
+import MotoThumbnail from './components/MotoThumbnail';
 
 const STATUS_OPTIONS = ['disponivel', 'alugada', 'manutencao', 'inativa'] as const;
+const ACCEPTED_IMAGE_TYPES = 'image/jpeg,image/png,image/webp';
 
 const FleetView = () => {
   const { api } = useAuth();
@@ -24,11 +26,22 @@ const FleetView = () => {
   const [editMoto, setEditMoto] = useState<MotoOut | null>(null);
   const [formData, setFormData] = useState({ placa: '', modelo: '', status: 'disponivel', km: 0 });
   const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [removeImage, setRemoveImage] = useState(false);
+  const [imageRefreshKey, setImageRefreshKey] = useState(0);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedSearch(search), 300);
     return () => window.clearTimeout(timer);
   }, [search]);
+
+  useEffect(() => {
+    return () => {
+      if (imagePreview) URL.revokeObjectURL(imagePreview);
+    };
+  }, [imagePreview]);
 
   const fetchMotos = useCallback(
     async (pageOffset = 0) => {
@@ -55,33 +68,82 @@ const FleetView = () => {
     void fetchMotos(0);
   }, [fetchMotos]);
 
+  const resetImageState = () => {
+    setImageFile(null);
+    setRemoveImage(false);
+    if (imagePreview) URL.revokeObjectURL(imagePreview);
+    setImagePreview(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
   const openCreate = () => {
     setEditMoto(null);
     setFormData({ placa: '', modelo: '', status: 'disponivel', km: 0 });
+    resetImageState();
     setShowModal(true);
   };
 
   const openEdit = (moto: MotoOut) => {
     setEditMoto(moto);
     setFormData({ placa: moto.placa, modelo: moto.modelo, status: moto.status, km: moto.km });
+    resetImageState();
     setShowModal(true);
+  };
+
+  const handleImageSelect = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImageFile(file);
+    setRemoveImage(false);
+    if (imagePreview) URL.revokeObjectURL(imagePreview);
+    setImagePreview(URL.createObjectURL(file));
+  };
+
+  const handleRemoveImage = () => {
+    setImageFile(null);
+    setRemoveImage(true);
+    if (imagePreview) URL.revokeObjectURL(imagePreview);
+    setImagePreview(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const uploadImage = async (motoId: number) => {
+    if (!imageFile) return;
+    const data = new FormData();
+    data.append('file', imageFile);
+    await api.post(`/api/v1/motos/${motoId}/imagem`, data, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
   };
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError('');
     try {
+      let motoId: number;
       if (editMoto) {
-        await api.patch(`/api/v1/motos/${editMoto.id}`, {
+        const r = await api.patch(`/api/v1/motos/${editMoto.id}`, {
           placa: formData.placa,
           modelo: formData.modelo,
           status: formData.status,
           km: formData.km,
         });
+        motoId = r.data.id;
+        if (removeImage && editMoto.tem_imagem) {
+          await api.delete(`/api/v1/motos/${motoId}/imagem`);
+        }
       } else {
-        await api.post('/api/v1/motos', formData);
+        const r = await api.post('/api/v1/motos', formData);
+        motoId = r.data.id;
       }
+
+      if (imageFile) {
+        await uploadImage(motoId);
+      }
+
+      setImageRefreshKey((k) => k + 1);
       setShowModal(false);
+      resetImageState();
       await fetchMotos(offset);
     } catch (err) {
       setError(parseApiError(err, 'Erro ao salvar moto'));
@@ -99,6 +161,9 @@ const FleetView = () => {
       setError(parseApiError(err, 'Erro ao excluir moto'));
     }
   };
+
+  const showExistingImage =
+    editMoto?.tem_imagem && !imagePreview && !removeImage && !imageFile;
 
   return (
     <div className="view-container animate-fade">
@@ -156,6 +221,7 @@ const FleetView = () => {
           <table className="custom-table">
             <thead>
               <tr>
+                <th>Foto</th>
                 <th>Placa</th>
                 <th>Modelo</th>
                 <th>KM</th>
@@ -167,9 +233,17 @@ const FleetView = () => {
             <tbody>
               {motos.map((moto) => (
                 <tr key={moto.id}>
+                  <td>
+                    <MotoThumbnail
+                      api={api}
+                      motoId={moto.id}
+                      temImagem={Boolean(moto.tem_imagem)}
+                      refreshKey={imageRefreshKey}
+                    />
+                  </td>
                   <td className="font-mono">{moto.placa}</td>
                   <td>{moto.modelo}</td>
-                  <td>{moto.km.toLocaleString('pt-BR')}</td>
+                  <td>{moto.km.toLocaleString('pt-BR')} km</td>
                   <td>
                     <span className={`status-badge ${moto.status}`}>
                       {moto.status.toUpperCase()}
@@ -223,9 +297,53 @@ const FleetView = () => {
 
       {showModal && (
         <div className="modal-overlay">
-          <div className="glass modal-content animate-fade">
+          <div className="glass modal-content animate-fade fleet-modal">
             <h3>{editMoto ? 'Editar Moto' : 'Cadastrar Nova Moto'}</h3>
             <form onSubmit={(e) => void handleSubmit(e)}>
+              <div className="image-section">
+                <label className="input-label">Identificação visual</label>
+                <div className="image-preview-area">
+                  {imagePreview ? (
+                    <img src={imagePreview} alt="Prévia da moto" className="image-preview" />
+                  ) : showExistingImage && editMoto ? (
+                    <MotoThumbnail
+                      api={api}
+                      motoId={editMoto.id}
+                      temImagem
+                      size={120}
+                      refreshKey={imageRefreshKey}
+                    />
+                  ) : (
+                    <div className="image-preview-empty">
+                      <ImagePlus size={32} />
+                      <span>Nenhuma foto</span>
+                    </div>
+                  )}
+                </div>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept={ACCEPTED_IMAGE_TYPES}
+                  className="hidden-file-input"
+                  onChange={handleImageSelect}
+                />
+                <div className="image-actions">
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    Escolher arquivo
+                  </button>
+                  {(imagePreview || showExistingImage) && (
+                    <button type="button" className="btn-secondary danger-text" onClick={handleRemoveImage}>
+                      Remover
+                    </button>
+                  )}
+                </div>
+                <small className="text-muted">JPEG, PNG ou WebP — máx. 5 MB</small>
+              </div>
+
               <div className="input-group">
                 <label className="input-label">Placa</label>
                 <input
@@ -249,7 +367,7 @@ const FleetView = () => {
                 />
               </div>
               <div className="input-group">
-                <label className="input-label">KM</label>
+                <label className="input-label">Quilometragem atual</label>
                 <input
                   className="input-field"
                   type="number"
@@ -339,7 +457,7 @@ const FleetView = () => {
         .custom-table {
           width: 100%;
           border-collapse: collapse;
-          min-width: 600px;
+          min-width: 720px;
         }
         .custom-table th {
           text-align: left;
@@ -352,6 +470,19 @@ const FleetView = () => {
           padding: 15px 20px;
           border-bottom: 1px solid var(--glass-border);
           font-size: 0.9rem;
+          vertical-align: middle;
+        }
+        .custom-table :global(.moto-thumbnail) {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          border-radius: 8px;
+          object-fit: cover;
+          border: 1px solid var(--glass-border);
+          background: rgba(0, 0, 0, 0.25);
+        }
+        .custom-table :global(.moto-thumbnail-placeholder) {
+          color: var(--text-muted);
         }
         .font-mono {
           font-family: monospace;
@@ -408,6 +539,51 @@ const FleetView = () => {
           padding: 12px 16px;
           margin-top: 16px;
           border-radius: 12px;
+        }
+        .fleet-modal {
+          max-width: 480px;
+        }
+        .image-section {
+          margin-bottom: 20px;
+          padding-bottom: 16px;
+          border-bottom: 1px solid var(--glass-border);
+        }
+        .image-preview-area {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          min-height: 140px;
+          margin: 10px 0;
+          border: 2px dashed var(--glass-border);
+          border-radius: 12px;
+          background: rgba(0, 0, 0, 0.15);
+          overflow: hidden;
+        }
+        .image-preview {
+          width: 120px;
+          height: 120px;
+          object-fit: cover;
+          border-radius: 10px;
+        }
+        .image-preview-empty {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 8px;
+          color: var(--text-muted);
+          font-size: 0.85rem;
+        }
+        .hidden-file-input {
+          display: none;
+        }
+        .image-actions {
+          display: flex;
+          gap: 10px;
+          flex-wrap: wrap;
+          margin-bottom: 6px;
+        }
+        .danger-text {
+          color: var(--danger);
         }
       `}</style>
     </div>

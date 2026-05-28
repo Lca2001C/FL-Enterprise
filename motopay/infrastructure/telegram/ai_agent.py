@@ -10,22 +10,34 @@ from motopay.config import get_settings
 logger = logging.getLogger(__name__)
 
 
-def ai_reply(*, user_message: str, context: dict[str, Any]) -> str | None:
+def ai_reply(
+    *,
+    user_message: str,
+    context: dict[str, Any],
+    history: list[dict[str, str]] | None = None,
+) -> str | None:
     """Resposta opcional via OpenAI. Retorna None se desligado ou falhar."""
     settings = get_settings()
     if not settings.ai_bot_enabled or not settings.openai_api_key.strip():
         return None
     system = (
         "Você é assistente do MotoPay (locação de motos). "
-        "Responda em português, de forma breve e objetiva. "
+        "Responda em português, de forma breve, empática e objetiva (1-3 frases). "
+        "Não repita o menu inteiro nem liste todos os comandos a cada mensagem. "
+        "Se o cliente pedir humano ou tiver dúvida complexa, diga que a equipe entrará em contato em breve. "
+        "Para Pix ou status, sugira os botões do teclado ou /pix e /status. "
         f"Contexto do cliente: {context}"
     )
+    messages: list[dict[str, str]] = [{"role": "system", "content": system}]
+    if history:
+        messages.extend(history)
+    else:
+        messages.append({"role": "user", "content": user_message})
+    if history:
+        messages.append({"role": "user", "content": user_message})
     payload = {
         "model": "gpt-4o-mini",
-        "messages": [
-            {"role": "system", "content": system},
-            {"role": "user", "content": user_message},
-        ],
+        "messages": messages,
         "max_tokens": 300,
     }
     try:

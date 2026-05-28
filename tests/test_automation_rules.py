@@ -8,7 +8,7 @@ import pytest
 from motopay.domain.enums import CobrancaStatus, ContratoStatus
 from motopay.infrastructure.db.models import Cliente, Cobranca, Contrato, Operacao
 from motopay.infrastructure.messaging import tasks as messaging_tasks
-from motopay.services.billing_service import handle_payment_confirmed
+from motopay.services.billing_service import handle_mercadopago_payment_confirmed
 from motopay.services.scoring_service import effective_escalation_level
 
 
@@ -78,13 +78,13 @@ def test_payment_clears_promessa(
         contrato_id=contrato_atrasado.id,
         valor=Decimal("350.00"),
         vencimento=contrato_atrasado.proximo_vencimento,
-        asaas_payment_id="pay_test_123",
+        mercadopago_payment_id="pay_test_123",
         status=CobrancaStatus.PENDENTE.value,
     )
     db_session.add(cob)
     db_session.commit()
 
-    handle_payment_confirmed(db_session, asaas_payment_id="pay_test_123")
+    handle_mercadopago_payment_confirmed(db_session, mercadopago_payment_id="pay_test_123")
     db_session.refresh(contrato_atrasado)
     assert contrato_atrasado.promessa_pagamento_em is None
     assert contrato_atrasado.promessa_notas is None

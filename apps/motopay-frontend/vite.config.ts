@@ -91,6 +91,8 @@ export default defineConfig(({ mode }) => {
       environment: 'node',
     },
     server: {
+      host: true,
+      port: 5173,
       proxy: {
         '/api': {
           target: proxyTarget,

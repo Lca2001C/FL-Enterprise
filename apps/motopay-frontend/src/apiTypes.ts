@@ -26,7 +26,6 @@ export type OperacaoOut = {
   multa_fixa_percentual: number;
   juros_diario_percentual: number;
   telegram_templates: Record<string, string>;
-  payment_provider: 'asaas' | 'mercadopago';
 };
 
 export type MotoOut = {
@@ -36,6 +35,7 @@ export type MotoOut = {
   modelo: string;
   status: string;
   km: number;
+  tem_imagem?: boolean;
   cliente_nome?: string | null;
 };
 
@@ -67,9 +67,26 @@ export type ContratoOut = {
   inadimplente: boolean;
   promessa_pagamento_em: string | null;
   promessa_notas: string | null;
-  asaas_subscription_id: string | null;
   mercadopago_subscription_id: string | null;
 };
+
+export type TelegramBotMenuButton = {
+  label: string;
+  command: string;
+  response?: string | null;
+};
+
+export const BOT_MENU_BUILTIN_COMMANDS = [
+  { value: 'menu', label: 'Menu principal (/menu)' },
+  { value: 'status', label: 'Status' },
+  { value: 'pix', label: 'Pix' },
+  { value: 'ajuda', label: 'Ajuda' },
+  { value: 'promessa', label: 'Promessa (uso)' },
+] as const;
+
+export function isBuiltinBotMenuCommand(command: string): boolean {
+  return BOT_MENU_BUILTIN_COMMANDS.some((opt) => opt.value === command);
+}
 
 export type OperacaoConfig = {
   nome: string;
@@ -77,7 +94,9 @@ export type OperacaoConfig = {
   juros_diario_percentual: number;
   telegram_templates: Record<string, string>;
   telegram_custom_messages: TelegramCustomMessage[];
-  payment_provider: 'asaas' | 'mercadopago';
+  telegram_bot_menu_buttons: TelegramBotMenuButton[];
+  telegram_owner_notify_id: string | null;
+  telegram_owner_notify_enabled: boolean;
   mercadopago_access_token?: string;
 };
 
@@ -127,9 +146,8 @@ export type CobrancaOut = {
   contrato_id: number;
   valor: number;
   vencimento: string;
-  asaas_payment_id: string | null;
   mercadopago_payment_id: string | null;
-  payment_gateway: 'asaas' | 'mercadopago';
+  payment_gateway: 'mercadopago';
   pix_copia_cola: string | null;
   status: string;
   dias_atraso: number;

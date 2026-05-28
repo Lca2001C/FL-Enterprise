@@ -62,14 +62,9 @@ class Settings(BaseSettings):
     # IPs de proxy reverso confiáveis (vírgula). Só então X-Forwarded-For/X-Real-IP são usados.
     trusted_proxy_ips: str = ""
 
-    asaas_api_key: str = ""
-    asaas_api_base_url: str = "https://sandbox.asaas.com/api/v3"
-    asaas_webhook_token: str = ""
-    # Valida status do pagamento na API Asaas antes de confirmar (requer ASAAS_API_KEY).
-    asaas_webhook_verify_with_api: bool = True
-
     telegram_bot_token: str = ""
     api_public_base_url: str = "http://localhost:8000"
+    upload_dir: str = "/data/uploads"
     app_timezone: str = "America/Sao_Paulo"
 
     # production: definir APP_CORS_ORIGINS (URLs separadas por vírgula). API usa Bearer; credenciais CORS desligadas.
@@ -77,10 +72,8 @@ class Settings(BaseSettings):
     cors_origins: str = ""
 
     # Escape hatches só para staging controlado ou exceções documentadas (.env.example + README).
-    allow_production_without_asaas: bool = False
+    allow_production_without_mercadopago: bool = False
     allow_production_without_telegram: bool = False
-    allow_asaas_sandbox_in_production: bool = False
-    # Em produção o validator força False — token Asaas só via header X-Webhook-Token.
     allow_webhook_token_in_query: bool = True
 
     mercadopago_access_token: str = ""
@@ -107,21 +100,10 @@ class Settings(BaseSettings):
             raise RuntimeError(
                 "JWT_SECRET não foi configurado para produção (use um segredo forte; valores que começam com 'change-me' são recusados)."
             )
-        if not self.asaas_webhook_token.strip():
+        if not self.allow_production_without_mercadopago and not self.mercadopago_access_token.strip():
             raise RuntimeError(
-                "ASAAS_WEBHOOK_TOKEN não foi configurado para produção (webhook Asaas exige token não vazio)."
-            )
-
-        url = self.asaas_api_base_url.lower()
-        if "sandbox" in url and not self.allow_asaas_sandbox_in_production:
-            raise RuntimeError(
-                "Em produção a URL da Asaas deve ser a de produção (não sandbox), "
-                "ou defina ALLOW_ASAAS_SANDBOX_IN_PRODUCTION=true só para ambiente controlado."
-            )
-
-        if not self.allow_production_without_asaas and not self.asaas_api_key.strip():
-            raise RuntimeError(
-                "ASAAS_API_KEY é obrigatório em produção (ou ALLOW_PRODUCTION_WITHOUT_ASAAS=true apenas em exceção documentada)."
+                "MERCADOPAGO_ACCESS_TOKEN é obrigatório em produção "
+                "(ou ALLOW_PRODUCTION_WITHOUT_MERCADOPAGO=true apenas em exceção documentada)."
             )
 
         if not self.allow_production_without_telegram and not self.telegram_bot_token.strip():

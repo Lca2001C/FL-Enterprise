@@ -20,7 +20,7 @@ from motopay.infrastructure.db.models import (
     Operacao,
 )
 from motopay.infrastructure.messaging import tasks as messaging_tasks
-from motopay.infrastructure.payments.asaas_client import AsaasPaymentResult
+from motopay.services.payment_gateway import PixPaymentResult
 from motopay.infrastructure.telegram.templates import build_overdue_html
 from motopay.services.billing_service import refresh_overdue_pix
 from motopay.services.late_fee import calculate_late_amounts
@@ -92,7 +92,7 @@ def cobranca_pendente(db_session, operacao_multas, contrato_atrasado):
         contrato_id=contrato_atrasado.id,
         valor=Decimal("350.00"),
         vencimento=contrato_atrasado.proximo_vencimento,
-        asaas_payment_id="pay_old_123",
+        mercadopago_payment_id="pay_old_123",
         pix_copia_cola="PIX-OLD-CODE",
         status=CobrancaStatus.PENDENTE.value,
     )
@@ -133,44 +133,42 @@ def test_refresh_skips_when_total_unchanged(
     )
     cobranca_pendente.valor = amounts.valor_total
     cobranca_pendente.status = CobrancaStatus.ATRASADO.value
-    cobranca_pendente.asaas_payment_id = "pay_current"
+    cobranca_pendente.mercadopago_payment_id = "pay_current"
     cobranca_pendente.pix_copia_cola = "PIX-CURRENT"
     db_session.add(cobranca_pendente)
     db_session.flush()
 
-    with patch("motopay.services.billing_service.AsaasClient") as mock_cls:
+    with patch("motopay.services.payment_gateway.MercadoPagoClient") as mock_cls:
         result = refresh_overdue_pix(db_session, contrato=contrato_atrasado, today=today)
         mock_cls.assert_not_called()
 
     assert result is not None
-    assert result.asaas_payment_id == "pay_current"
+    assert result.mercadopago_payment_id == "pay_current"
 
 
 def test_refresh_cancels_and_creates_new_pix(
     db_session, operacao_multas, contrato_atrasado, cobranca_pendente, cliente_com_telegram
 ):
     today = date.today()
-    new_pay = AsaasPaymentResult(
+    new_pay = PixPaymentResult(
         payment_id="pay_new_456",
         status="PENDING",
         pix_copia_cola="PIX-NEW-CODE",
         invoice_url=None,
     )
     mock_client = MagicMock()
-    mock_client.create_customer.return_value = "cust_test_123"
     mock_client.create_pix_payment.return_value = new_pay
 
-    with patch("motopay.services.billing_service._asaas_configured", return_value=True), patch(
-        "motopay.services.payment_gateway._asaas_configured", return_value=True
-    ), patch("motopay.services.payment_gateway.AsaasClient", return_value=mock_client), patch(
-        "motopay.services.billing_service.AsaasClient", return_value=mock_client
+    with patch(
+        "motopay.services.payment_gateway.mp_configured_for_operacao", return_value=True
+    ), patch(
+        "motopay.services.payment_gateway.MercadoPagoClient", return_value=mock_client
     ):
         cob = refresh_overdue_pix(db_session, contrato=contrato_atrasado, today=today)
 
-    mock_client.cancel_payment.assert_called_once_with("pay_old_123")
     mock_client.create_pix_payment.assert_called_once()
     assert cob is not None
-    assert cob.asaas_payment_id == "pay_new_456"
+    assert cob.mercadopago_payment_id == "pay_new_456"
     assert cob.pix_copia_cola == "PIX-NEW-CODE"
     assert cob.status == CobrancaStatus.ATRASADO.value
     assert cob.valor > Decimal("350.00")
@@ -185,7 +183,7 @@ def test_process_delinquency_payload_includes_pix(
         contrato_id=contrato_atrasado.id,
         valor=Decimal("358.05"),
         vencimento=contrato_atrasado.proximo_vencimento,
-        asaas_payment_id="pay_x",
+        mercadopago_payment_id="pay_x",
         pix_copia_cola="PIX-FROM-REFRESH",
         status=CobrancaStatus.ATRASADO.value,
     )

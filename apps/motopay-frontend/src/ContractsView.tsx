@@ -9,6 +9,7 @@ import {
   Check,
   Filter,
   X,
+  Download,
 } from 'lucide-react';
 import { useAuth } from './AuthContext';
 import type { ClienteOut, CobrancaOut, ContratoOut, MotoOut, Paginated } from './apiTypes';
@@ -287,20 +288,6 @@ const ContractsView = () => {
     }
   };
 
-  const handleAssinaturaAsaas = async (contratoId: number) => {
-    setActionLoading(contratoId);
-    setError('');
-    try {
-      await api.post('/api/v1/cobrancas/assinatura-asaas', { contrato_id: contratoId });
-      await fetchContratos(offset);
-      await fetchMeta();
-    } catch (err) {
-      setError(parseApiError(err, 'Erro ao criar assinatura Asaas'));
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
   const handleAssinaturaMp = async (contratoId: number) => {
     setActionLoading(contratoId);
     setError('');
@@ -319,6 +306,26 @@ const ContractsView = () => {
     await navigator.clipboard.writeText(pix);
     setCopiedId(contratoId);
     setTimeout(() => setCopiedId(null), 2000);
+  };
+
+  const handleDownloadContrato = async (contratoId: number, placa: string) => {
+    setActionLoading(contratoId);
+    setError('');
+    try {
+      const res = await api.get(`/api/v1/contratos/${contratoId}/documento`, {
+        responseType: 'blob',
+      });
+      const url = URL.createObjectURL(res.data);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `contrato-${contratoId}-${placa.replace(/-/g, '')}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setError(parseApiError(err, 'Erro ao baixar contrato'));
+    } finally {
+      setActionLoading(null);
+    }
   };
 
   return (
@@ -452,13 +459,10 @@ const ContractsView = () => {
                     </td>
                     <td>
                       <div className="sub-badges">
-                        {ct.asaas_subscription_id && (
-                          <span className="sub-badge asaas">Asaas</span>
-                        )}
                         {ct.mercadopago_subscription_id && (
                           <span className="sub-badge mp">MP</span>
                         )}
-                        {!ct.asaas_subscription_id && !ct.mercadopago_subscription_id && (
+                        {!ct.mercadopago_subscription_id && (
                           <span className="text-muted">—</span>
                         )}
                       </div>
@@ -468,6 +472,15 @@ const ContractsView = () => {
                     </td>
                     <td style={{ textAlign: 'right' }}>
                       <div className="actions">
+                        <button
+                          type="button"
+                          className="icon-btn"
+                          title="Baixar contrato (PDF)"
+                          disabled={busy}
+                          onClick={() => void handleDownloadContrato(ct.id, mo?.placa ?? 'moto')}
+                        >
+                          <Download size={16} />
+                        </button>
                         {cob?.pix_copia_cola && (
                           <button
                             type="button"
@@ -489,15 +502,6 @@ const ContractsView = () => {
                               onClick={() => void handleGerarPix(ct.id)}
                             >
                               <QrCode size={16} />
-                            </button>
-                            <button
-                              type="button"
-                              className="icon-btn"
-                              title="Criar assinatura recorrente no Asaas"
-                              disabled={busy}
-                              onClick={() => void handleAssinaturaAsaas(ct.id)}
-                            >
-                              <FileText size={16} />
                             </button>
                             <button
                               type="button"
@@ -821,10 +825,6 @@ const ContractsView = () => {
           border-radius: 4px;
           font-size: 0.7rem;
           font-weight: 700;
-        }
-        .sub-badge.asaas {
-          background: rgba(99, 102, 241, 0.1);
-          color: var(--primary);
         }
         .sub-badge.mp {
           background: rgba(245, 158, 11, 0.1);

@@ -19,7 +19,7 @@ RUN pip install --no-cache-dir "pip>=24.0,<25" "setuptools>=68" "wheel" \
     && pip install --no-cache-dir -e .
 
 RUN useradd -m -u 1000 appuser \
-    && mkdir -p /data \
+    && mkdir -p /data/uploads \
     && chown -R appuser:appuser /app /data
 
 ENV PYTHONPATH=/app

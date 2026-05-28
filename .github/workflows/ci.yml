@@ -41,7 +41,7 @@ jobs:
       REDIS_URL: redis://localhost:6379/0
       TEST_REDIS_URL: redis://localhost:6379/0
       JWT_SECRET: ci-test-jwt-secret
-      ASAAS_WEBHOOK_TOKEN: ci-webhook-token
+      MERCADOPAGO_WEBHOOK_SECRET: ci-mp-webhook-secret
       ENVIRONMENT: development
       LOGIN_RATE_LIMIT_ENABLED: "false"
 

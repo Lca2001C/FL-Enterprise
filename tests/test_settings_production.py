@@ -17,17 +17,14 @@ def _base_production(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://user:pw@prod-db.example:5432/motopay")
     monkeypatch.setenv("ENVIRONMENT", "production")
     monkeypatch.setenv("JWT_SECRET", "x" + "a" * 48)
-    monkeypatch.setenv("ASAAS_WEBHOOK_TOKEN", "wh-secret")
-    monkeypatch.setenv("ASAAS_API_KEY", "k")
+    monkeypatch.setenv("MERCADOPAGO_ACCESS_TOKEN", "mp-token")
     monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "t")
-    monkeypatch.setenv("ASAAS_API_BASE_URL", "https://api.asaas.com/api/v3")
     monkeypatch.setenv("REDIS_URL", "rediss://:strong-redis-secret@redis.example:6380/0")
     monkeypatch.setenv(
         "CORS_ORIGINS", "https://admin.example.test"
-    )  # evita `.env` local vazio sobrescrever intenções do caso
-    monkeypatch.delenv("ALLOW_PRODUCTION_WITHOUT_ASAAS", raising=False)
+    )
+    monkeypatch.delenv("ALLOW_PRODUCTION_WITHOUT_MERCADOPAGO", raising=False)
     monkeypatch.delenv("ALLOW_PRODUCTION_WITHOUT_TELEGRAM", raising=False)
-    monkeypatch.delenv("ALLOW_ASAAS_SANDBOX_IN_PRODUCTION", raising=False)
 
 
 def test_production_loads_when_strict_requirements_met(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -36,31 +33,17 @@ def test_production_loads_when_strict_requirements_met(monkeypatch: pytest.Monke
     assert s.environment == "production"
 
 
-def test_production_rejects_sandbox_without_flag(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_production_requires_mercadopago_token(monkeypatch: pytest.MonkeyPatch) -> None:
     _base_production(monkeypatch)
-    monkeypatch.setenv("ASAAS_API_BASE_URL", "https://sandbox.asaas.com/api/v3")
-    with pytest.raises(RuntimeError, match="sandbox"):
+    monkeypatch.setenv("MERCADOPAGO_ACCESS_TOKEN", "")
+    with pytest.raises(RuntimeError, match="MERCADOPAGO_ACCESS_TOKEN"):
         Settings()
 
 
-def test_production_allows_sandbox_with_flag(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_production_optional_mercadopago_with_flag(monkeypatch: pytest.MonkeyPatch) -> None:
     _base_production(monkeypatch)
-    monkeypatch.setenv("ASAAS_API_BASE_URL", "https://sandbox.asaas.com/api/v3")
-    monkeypatch.setenv("ALLOW_ASAAS_SANDBOX_IN_PRODUCTION", "true")
-    Settings()
-
-
-def test_production_requires_asaas_key(monkeypatch: pytest.MonkeyPatch) -> None:
-    _base_production(monkeypatch)
-    monkeypatch.setenv("ASAAS_API_KEY", "")
-    with pytest.raises(RuntimeError, match="ASAAS_API_KEY"):
-        Settings()
-
-
-def test_production_optional_asaas_with_flag(monkeypatch: pytest.MonkeyPatch) -> None:
-    _base_production(monkeypatch)
-    monkeypatch.setenv("ASAAS_API_KEY", "")
-    monkeypatch.setenv("ALLOW_PRODUCTION_WITHOUT_ASAAS", "true")
+    monkeypatch.setenv("MERCADOPAGO_ACCESS_TOKEN", "")
+    monkeypatch.setenv("ALLOW_PRODUCTION_WITHOUT_MERCADOPAGO", "true")
     Settings()
 
 

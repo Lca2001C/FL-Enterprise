@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, File, Query, UploadFile
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from motopay.domain.enums import MotoStatus
@@ -13,6 +14,11 @@ from motopay.services.fleet_service import (
 )
 from motopay.services.fleet_service import (
     list_motos as list_motos_service,
+)
+from motopay.services.moto_media_service import (
+    delete_moto_imagem,
+    get_moto_imagem_file,
+    save_moto_imagem,
 )
 
 router = APIRouter(prefix="/motos", tags=["motos"])
@@ -65,3 +71,35 @@ def patch(
     operacao_id: int | None = Depends(resolve_operacao_id),
 ) -> MotoOut:
     return update_moto(db, user, operacao_id, moto_id, body)
+
+
+@router.post("/{moto_id}/imagem", response_model=MotoOut)
+async def upload_imagem(
+    moto_id: int,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_operacional),
+    operacao_id: int | None = Depends(resolve_operacao_id),
+    file: UploadFile = File(...),
+) -> MotoOut:
+    return await save_moto_imagem(db, user, operacao_id, moto_id, file)
+
+
+@router.get("/{moto_id}/imagem")
+def get_imagem(
+    moto_id: int,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_operacional),
+    operacao_id: int | None = Depends(resolve_operacao_id),
+) -> FileResponse:
+    path, media_type = get_moto_imagem_file(db, user, operacao_id, moto_id)
+    return FileResponse(path, media_type=media_type)
+
+
+@router.delete("/{moto_id}/imagem", response_model=MotoOut)
+def remove_imagem(
+    moto_id: int,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_operacional),
+    operacao_id: int | None = Depends(resolve_operacao_id),
+) -> MotoOut:
+    return delete_moto_imagem(db, user, operacao_id, moto_id)

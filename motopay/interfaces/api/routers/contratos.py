@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, Query
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from motopay.domain.enums import ContratoStatus
@@ -6,6 +7,7 @@ from motopay.infrastructure.db.session import get_db
 from motopay.interfaces.api.deps import CurrentUser, require_operacional, resolve_operacao_id
 from motopay.interfaces.api.pagination import clamp_limit, clamp_offset
 from motopay.interfaces.api.schemas import ContratoCreate, ContratoOut, ContratoUpdate, Paginated
+from motopay.services.contrato_document_service import generate_contrato_pdf
 from motopay.services.fleet_service import (
     create_contrato,
     get_contrato,
@@ -75,3 +77,18 @@ def patch(
     operacao_id: int | None = Depends(resolve_operacao_id),
 ) -> ContratoOut:
     return update_contrato(db, user, operacao_id, contrato_id, body)
+
+
+@router.get("/{contrato_id}/documento")
+def download_documento(
+    contrato_id: int,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_operacional),
+    operacao_id: int | None = Depends(resolve_operacao_id),
+) -> Response:
+    pdf_bytes, filename = generate_contrato_pdf(db, user, operacao_id, contrato_id)
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )

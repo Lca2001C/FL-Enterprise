@@ -62,7 +62,7 @@ const ALL_STEPS: OwnerTourStep[] = [
     tourId: 'fleet-add',
     title: 'Gestão de frota',
     description:
-      'Cadastre motos com placa, modelo e status antes de criar contratos. Motos disponíveis podem ser vinculadas a clientes.',
+      'Cadastre motos com placa, modelo, quilometragem, foto e status antes de criar contratos. Motos disponíveis podem ser vinculadas a clientes.',
   },
   {
     id: 'clients',
@@ -86,7 +86,7 @@ const ALL_STEPS: OwnerTourStep[] = [
     tourId: 'charges-list',
     title: 'Cobranças Pix',
     description:
-      'Veja status pendente, atrasado ou recebido. Cada cobrança mostra gateway (Asaas ou Mercado Pago) e valor atualizado com multa/juros.',
+      'Veja status pendente, atrasado ou recebido. Cada cobrança mostra gateway Mercado Pago e valor atualizado com multa/juros.',
   },
   {
     id: 'finance',

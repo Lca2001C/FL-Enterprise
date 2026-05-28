@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useCallback, type ReactNode } from 'react';
+import { resolveApiBase } from '../utils/apiBase';
 
 export type AlertSeverity = 'critical' | 'warning' | 'info';
 
@@ -47,8 +48,11 @@ export const AlertProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
   const acknowledgeAlert = useCallback(async (id: string) => {
     try {
-      const token = localStorage.getItem('motopay_token');
-      const base = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '') || '';
+      const token = localStorage.getItem('token');
+      const base = resolveApiBase(
+        import.meta.env.VITE_API_BASE_URL as string | undefined,
+        localStorage.getItem('apiBase')
+      );
       await fetch(`${base}/alerts/${id}/acknowledge`, {
         method: 'POST',
         headers: token ? { Authorization: `Bearer ${token}` } : {},

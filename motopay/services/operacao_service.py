@@ -3,7 +3,7 @@ from __future__ import annotations
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from motopay.domain.enums import PaymentProvider, UserRole
+from motopay.domain.enums import UserRole
 from motopay.domain.exceptions import ConflictError, ForbiddenError
 from motopay.infrastructure.db.models import Operacao, Usuario
 from motopay.infrastructure.telegram.templates import (
@@ -12,8 +12,10 @@ from motopay.infrastructure.telegram.templates import (
     merge_template_overrides,
     render_custom_body,
     render_template,
+    resolve_bot_menu_buttons,
     resolve_templates,
     sample_context_for_key,
+    validate_bot_menu_buttons,
     validate_custom_messages,
 )
 from motopay.interfaces.api.deps import CurrentUser
@@ -21,6 +23,7 @@ from motopay.interfaces.api.schemas import (
     OperacaoCreate,
     OperacaoOut,
     OperacaoUpdate,
+    TelegramBotMenuButton,
     TelegramCustomMessage,
     UserAdminOut,
     UsuarioCreate,
@@ -33,6 +36,11 @@ def _custom_messages_out(op: Operacao) -> list[TelegramCustomMessage]:
     return [TelegramCustomMessage.model_validate(m) for m in raw]
 
 
+def _bot_menu_buttons_out(op: Operacao) -> list[TelegramBotMenuButton]:
+    raw = resolve_bot_menu_buttons(op.telegram_bot_menu_buttons)
+    return [TelegramBotMenuButton.model_validate(b) for b in raw]
+
+
 def operacao_to_out(op: Operacao) -> OperacaoOut:
     return OperacaoOut(
         id=op.id,
@@ -42,7 +50,9 @@ def operacao_to_out(op: Operacao) -> OperacaoOut:
         juros_diario_percentual=op.juros_diario_percentual,
         telegram_templates=resolve_templates(op.telegram_templates),
         telegram_custom_messages=_custom_messages_out(op),
-        payment_provider=PaymentProvider(op.payment_provider or PaymentProvider.ASAAS.value),
+        telegram_bot_menu_buttons=_bot_menu_buttons_out(op),
+        telegram_owner_notify_id=op.telegram_owner_notify_id,
+        telegram_owner_notify_enabled=op.telegram_owner_notify_enabled,
     )
 
 
@@ -153,6 +163,9 @@ def _apply_dono_restrictions(body: OperacaoUpdate) -> OperacaoUpdate:
         multa_fixa_percentual=body.multa_fixa_percentual,
         juros_diario_percentual=body.juros_diario_percentual,
         telegram_templates=body.telegram_templates,
+        telegram_bot_menu_buttons=body.telegram_bot_menu_buttons,
+        telegram_owner_notify_id=body.telegram_owner_notify_id,
+        telegram_owner_notify_enabled=body.telegram_owner_notify_enabled,
     )
 
 
@@ -182,8 +195,14 @@ def update_operacao(
             [m.model_dump() for m in body.telegram_custom_messages]
         )
         op.telegram_custom_messages = validated
-    if body.payment_provider is not None:
-        op.payment_provider = body.payment_provider.value
+    if body.telegram_bot_menu_buttons is not None:
+        op.telegram_bot_menu_buttons = validate_bot_menu_buttons(
+            [b.model_dump() for b in body.telegram_bot_menu_buttons]
+        )
+    if body.telegram_owner_notify_id is not None:
+        op.telegram_owner_notify_id = body.telegram_owner_notify_id.strip() or None
+    if body.telegram_owner_notify_enabled is not None:
+        op.telegram_owner_notify_enabled = body.telegram_owner_notify_enabled
     if body.mercadopago_access_token is not None:
         op.mercadopago_access_token = body.mercadopago_access_token.strip() or None
     db.add(op)

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import html
+import re
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
@@ -10,6 +11,26 @@ from motopay.infrastructure.db.models import Operacao
 
 MAX_TEMPLATE_LENGTH = 2000
 MAX_CUSTOM_MESSAGES = 10
+MAX_BOT_MENU_BUTTONS = 6
+MAX_BOT_MENU_LABEL_LENGTH = 32
+
+BOT_MENU_BUILTIN_COMMANDS: frozenset[str] = frozenset({"status", "pix", "ajuda", "promessa", "menu"})
+BOT_MENU_CUSTOM_COMMAND_RE = re.compile(r"^[a-z][a-z0-9_]{0,30}$")
+RESERVED_BOT_COMMANDS: frozenset[str] = frozenset({"start", *BOT_MENU_BUILTIN_COMMANDS})
+MAX_BOT_MENU_RESPONSE_LENGTH = 2000
+
+DEFAULT_BOT_MENU_CONTACT_BUTTON: dict[str, str] = {
+    "label": "Quero falar com alguém",
+    "command": "contato",
+    "response": "Entendido, {cliente}. Nossa equipe entrará em contato em breve.",
+}
+
+DEFAULT_BOT_MENU_BUTTONS: list[dict[str, str]] = [
+    {"label": "Status", "command": "status"},
+    {"label": "Pix", "command": "pix"},
+    {"label": "Ajuda", "command": "ajuda"},
+    dict(DEFAULT_BOT_MENU_CONTACT_BUTTON),
+]
 
 DEFAULT_TELEGRAM_TEMPLATES: dict[str, str] = {
     "pagamento_confirmado": "✅ Pagamento confirmado! Obrigado. Sua locação segue em dia.",
@@ -38,7 +59,14 @@ DEFAULT_TELEGRAM_TEMPLATES: dict[str, str] = {
         "Hoje ({proximo_vencimento}) vence o pagamento do contrato #{contrato_id} "
         "no valor de R$ {valor_recorrente}. Realize o pagamento para evitar multa."
     ),
-    "bot_start": "MotoPay: envie /promessa <dias> <motivo> para registrar uma promessa de pagamento.",
+    "bot_start": (
+        "Olá, {cliente}!\n\n"
+        "Próximo vencimento: {proximo_vencimento}\n"
+        "Placa: {placa}\n"
+        "Inadimplente: {inadimplente}\n"
+        "Promessa: {promessa_pagamento_em}\n\n"
+        "Use os botões abaixo, /menu ou /promessa <dias> <motivo>."
+    ),
     "bot_promessa_usage": "Uso: /promessa 3 pagar na próxima sexta-feira",
     "bot_promessa_invalid_days": "Informe um número válido de dias.",
     "bot_promessa_no_user": "Não foi possível identificar seu usuário no Telegram.",
@@ -52,7 +80,28 @@ DEFAULT_TELEGRAM_TEMPLATES: dict[str, str] = {
         "Contrato: vencimento {proximo_vencimento}. Inadimplente: {inadimplente}. "
         "Promessa: {promessa_pagamento_em}."
     ),
-    "bot_ajuda": "Comandos: /pix /status /promessa <dias> <motivo>. Dúvidas? Fale com o operador.",
+    "bot_ajuda": (
+        "Comandos: /menu /pix /status /promessa <dias> <motivo>. "
+        "Dúvidas? Fale com o operador."
+    ),
+    "bot_comando_desconhecido": (
+        "Comando /{comando} não reconhecido. Use /menu para ver as opções."
+    ),
+    "bot_chat_greeting": (
+        "Olá, {cliente}! Tudo bem?\n"
+        "Se precisar de Pix, status ou registrar uma promessa, use os botões abaixo."
+    ),
+    "bot_chat_ack": (
+        "Recebemos sua mensagem, {cliente}. Nossa equipe já foi avisada e entraremos em contato em breve."
+    ),
+    "bot_chat_thanks": "Por nada, {cliente}! Qualquer coisa, estamos à disposição.",
+    "bot_chat_contact": (
+        "Entendido, {cliente}. Já repassamos para a equipe — entraremos em contato em breve."
+    ),
+    "bot_chat_payment": (
+        "Sobre pagamento: toque em Pix ou Status nos botões abaixo, ou envie "
+        "/promessa <dias> <motivo> se precisar combinar uma data."
+    ),
 }
 
 
@@ -69,7 +118,7 @@ TELEGRAM_TEMPLATE_META: dict[str, TelegramTemplateMeta] = {
     "pagamento_confirmado": TelegramTemplateMeta(
         key="pagamento_confirmado",
         label="Pagamento confirmado",
-        description="Enviada quando um pagamento é confirmado via webhook Asaas.",
+        description="Enviada quando um pagamento é confirmado via webhook Mercado Pago.",
         placeholders=(),
         group="notificacoes",
     ),
@@ -164,11 +213,59 @@ TELEGRAM_TEMPLATE_META: dict[str, TelegramTemplateMeta] = {
         placeholders=(),
         group="bot",
     ),
+    "bot_comando_desconhecido": TelegramTemplateMeta(
+        key="bot_comando_desconhecido",
+        label="Bot — comando desconhecido",
+        description="Quando o cliente envia um /comando que não existe.",
+        placeholders=("comando",),
+        group="bot",
+    ),
+    "bot_chat_greeting": TelegramTemplateMeta(
+        key="bot_chat_greeting",
+        label="Bot — saudação",
+        description="Resposta a oi/olá sem reenviar o menu completo.",
+        placeholders=("cliente",),
+        group="bot",
+    ),
+    "bot_chat_ack": TelegramTemplateMeta(
+        key="bot_chat_ack",
+        label="Bot — mensagem geral",
+        description="Resposta padrão a textos livres (não reenvia o menu).",
+        placeholders=("cliente",),
+        group="bot",
+    ),
+    "bot_chat_thanks": TelegramTemplateMeta(
+        key="bot_chat_thanks",
+        label="Bot — agradecimento",
+        description="Resposta quando o cliente agradece.",
+        placeholders=("cliente",),
+        group="bot",
+    ),
+    "bot_chat_contact": TelegramTemplateMeta(
+        key="bot_chat_contact",
+        label="Bot — pedido de contato",
+        description="Quando pedem atendente, ligação ou retorno.",
+        placeholders=("cliente",),
+        group="bot",
+    ),
+    "bot_chat_payment": TelegramTemplateMeta(
+        key="bot_chat_payment",
+        label="Bot — dúvida de pagamento",
+        description="Quando mencionam Pix, pagamento ou atraso.",
+        placeholders=("cliente",),
+        group="bot",
+    ),
     "bot_start": TelegramTemplateMeta(
         key="bot_start",
-        label="Bot — /start",
-        description="Resposta ao comando /start.",
-        placeholders=(),
+        label="Bot — menu principal",
+        description="Texto exibido no /start e ao receber mensagens livres no bot.",
+        placeholders=(
+            "cliente",
+            "proximo_vencimento",
+            "placa",
+            "inadimplente",
+            "promessa_pagamento_em",
+        ),
         group="bot",
     ),
     "bot_promessa_usage": TelegramTemplateMeta(
@@ -382,6 +479,19 @@ def sample_context_for_key(key: str) -> dict[str, Any]:
             "inadimplente": "sim",
             "promessa_pagamento_em": "—",
         },
+        "bot_start": {
+            "cliente": "João Silva",
+            "proximo_vencimento": today.isoformat(),
+            "placa": "ABC1D23",
+            "inadimplente": "não",
+            "promessa_pagamento_em": "—",
+        },
+        "bot_chat_greeting": {"cliente": "João Silva"},
+        "bot_chat_ack": {"cliente": "João Silva"},
+        "bot_chat_thanks": {"cliente": "João Silva"},
+        "bot_chat_contact": {"cliente": "João Silva"},
+        "bot_chat_payment": {"cliente": "João Silva"},
+        "bot_comando_desconhecido": {"comando": "exemplo"},
     }
     meta = TELEGRAM_TEMPLATE_META.get(key)
     ctx = samples.get(key, {})
@@ -404,6 +514,88 @@ def list_custom_message_triggers() -> list[dict[str, Any]]:
             }
         )
     return rows
+
+
+def resolve_bot_menu_buttons(buttons: list[dict[str, Any]] | None) -> list[dict[str, str]]:
+    if not buttons:
+        return [dict(b) for b in DEFAULT_BOT_MENU_BUTTONS]
+    return validate_bot_menu_buttons(buttons)
+
+
+def validate_bot_menu_buttons(buttons: list[dict[str, Any]]) -> list[dict[str, str]]:
+    if len(buttons) > MAX_BOT_MENU_BUTTONS:
+        raise ConflictError(f"Máximo de {MAX_BOT_MENU_BUTTONS} botões no menu")
+    if len(buttons) < 1:
+        raise ConflictError("O menu precisa de pelo menos um botão")
+    seen_labels: set[str] = set()
+    seen_commands: set[str] = set()
+    normalized: list[dict[str, str]] = []
+    menu_ctx = sample_context_for_key("bot_start")
+    for btn in buttons:
+        label = str(btn.get("label", "")).strip()
+        command = str(btn.get("command", "")).strip().lower()
+        response_raw = btn.get("response")
+        response = str(response_raw).strip() if response_raw is not None else ""
+        if not label or len(label) > MAX_BOT_MENU_LABEL_LENGTH:
+            raise ConflictError(
+                f"Label do botão deve ter entre 1 e {MAX_BOT_MENU_LABEL_LENGTH} caracteres"
+            )
+        if label in seen_labels:
+            raise ConflictError(f"Label duplicado no menu: {label}")
+        if command in seen_commands:
+            raise ConflictError(f"Comando duplicado no menu: {command}")
+        if command in BOT_MENU_BUILTIN_COMMANDS:
+            if response:
+                raise ConflictError(
+                    f"Comando integrado '{command}' não aceita texto personalizado"
+                )
+            seen_labels.add(label)
+            seen_commands.add(command)
+            normalized.append({"label": label, "command": command})
+            continue
+        if command in RESERVED_BOT_COMMANDS:
+            raise ConflictError(f"Comando reservado: {command}")
+        if not BOT_MENU_CUSTOM_COMMAND_RE.match(command):
+            raise ConflictError(
+                "Comando personalizado inválido (use letras minúsculas, números e _)"
+            )
+        if not response:
+            raise ConflictError(f"Comando personalizado '{command}' precisa de uma resposta")
+        if len(response) > MAX_BOT_MENU_RESPONSE_LENGTH:
+            raise ConflictError(
+                f"Resposta do comando excede {MAX_BOT_MENU_RESPONSE_LENGTH} caracteres"
+            )
+        try:
+            render_custom_body(response, **menu_ctx)
+        except (KeyError, ValueError) as e:
+            raise ConflictError(f"Resposta inválida para '{command}': {e}") from e
+        seen_labels.add(label)
+        seen_commands.add(command)
+        normalized.append({"label": label, "command": command, "response": response})
+    return normalized
+
+
+def match_button_command(text: str, buttons: list[dict[str, str]]) -> str | None:
+    stripped = text.strip()
+    for btn in buttons:
+        if stripped == btn["label"]:
+            return btn["command"]
+    return None
+
+
+def find_menu_button_by_command(command: str, buttons: list[dict[str, str]]) -> dict[str, str] | None:
+    cmd = command.strip().lower()
+    for btn in buttons:
+        if btn["command"] == cmd:
+            return btn
+    return None
+
+
+def render_menu_button_response(button: dict[str, str], *, menu_ctx: dict[str, str]) -> str:
+    response = button.get("response")
+    if not response:
+        return ""
+    return render_custom_body(response, **menu_ctx)
 
 
 def validate_custom_messages(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:

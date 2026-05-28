@@ -8,7 +8,6 @@ from dateutil.relativedelta import relativedelta
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from motopay.config import get_settings
 from motopay.domain.enums import (
     CicloCobranca,
     CobrancaStatus,
@@ -16,7 +15,6 @@ from motopay.domain.enums import (
     DomainEventType,
     FinanceiroTipo,
     PaymentGateway,
-    PaymentProvider,
     UserRole,
 )
 from motopay.domain.exceptions import ForbiddenError, NotFoundError
@@ -28,7 +26,6 @@ from motopay.infrastructure.db.models import (
     Financeiro,
     Operacao,
 )
-from motopay.infrastructure.payments.asaas_client import AsaasClient
 from motopay.infrastructure.payments.mercadopago_client import (
     MercadoPagoClient,
     mp_configured_for_operacao,
@@ -62,10 +59,6 @@ def _effective_operacao(user: CurrentUser, operacao_scope: int | None) -> int:
     if operacao_scope is None:
         raise ForbiddenError("Informe operacao_id")
     return operacao_scope
-
-
-def _asaas_configured() -> bool:
-    return bool(get_settings().asaas_api_key.strip())
 
 
 def _cobranca_query(user: CurrentUser, operacao_scope: int | None):
@@ -120,9 +113,8 @@ def _cobranca_to_out(
         contrato_id=c.contrato_id,
         valor=base,
         vencimento=c.vencimento,
-        asaas_payment_id=c.asaas_payment_id,
         mercadopago_payment_id=c.mercadopago_payment_id,
-        payment_gateway=c.payment_gateway or PaymentGateway.ASAAS.value,
+        payment_gateway=c.payment_gateway or PaymentGateway.MERCADOPAGO.value,
         pix_copia_cola=c.pix_copia_cola,
         status=display_status,
         dias_atraso=amounts.dias_atraso,
@@ -159,12 +151,7 @@ def _apply_pix_to_cobranca(
     cob.pix_copia_cola = pix
     cob.payment_gateway = gateway
     cob.status = status
-    if gateway == PaymentGateway.MERCADOPAGO.value:
-        cob.mercadopago_payment_id = external_id
-        cob.asaas_payment_id = None
-    else:
-        cob.asaas_payment_id = external_id
-        cob.mercadopago_payment_id = None
+    cob.mercadopago_payment_id = external_id
 
 
 def refresh_overdue_pix(db: Session, *, contrato: Contrato, today: date) -> Cobranca | None:
@@ -195,16 +182,16 @@ def refresh_overdue_pix(db: Session, *, contrato: Contrato, today: date) -> Cobr
         cob is not None
         and cob.status == CobrancaStatus.ATRASADO.value
         and cob.valor == amounts.valor_total
-        and (cob.asaas_payment_id or cob.mercadopago_payment_id)
+        and cob.mercadopago_payment_id
         and cob.pix_copia_cola
     ):
         return cob
 
-    cust_id = ensure_asaas_customer(db, cliente)
-    gateway = cob.payment_gateway if cob else PaymentGateway.ASAAS.value
     if cob is not None:
         cancel_external_payment(
-            gateway=gateway, payment_id=cob.asaas_payment_id or cob.mercadopago_payment_id, op=op
+            gateway=cob.payment_gateway,
+            payment_id=cob.mercadopago_payment_id,
+            op=op,
         )
 
     ext_id, pix, gw = create_pix_for_contrato(
@@ -213,7 +200,6 @@ def refresh_overdue_pix(db: Session, *, contrato: Contrato, today: date) -> Cobr
         contrato_id=contrato.id,
         valor_total=amounts.valor_total,
         due_date=today,
-        asaas_customer_id=cust_id,
     )
 
     if cob is None:
@@ -238,22 +224,6 @@ def refresh_overdue_pix(db: Session, *, contrato: Contrato, today: date) -> Cobr
     return cob
 
 
-def ensure_asaas_customer(db: Session, cliente: Cliente) -> str:
-    if cliente.asaas_customer_id:
-        return cliente.asaas_customer_id
-    if _asaas_configured():
-        client = AsaasClient()
-        cid = client.create_customer(
-            name=cliente.nome, cpf_cnpj=cliente.cpf, phone=cliente.telefone
-        )
-    else:
-        cid = f"demo_cust_{cliente.id}"
-    cliente.asaas_customer_id = cid
-    db.add(cliente)
-    db.flush()
-    return cid
-
-
 def create_pix_charge_for_contract(
     db: Session,
     user: CurrentUser,
@@ -270,14 +240,12 @@ def create_pix_charge_for_contract(
     op = db.get(Operacao, operacao_id)
     if not op:
         raise NotFoundError("Operação não encontrada")
-    cust_id = ensure_asaas_customer(db, cliente)
     ext_id, pix, gw = create_pix_for_contrato(
         op=op,
         cliente=cliente,
         contrato_id=ct.id,
         valor_total=ct.valor_recorrente,
         due_date=ct.proximo_vencimento,
-        asaas_customer_id=cust_id,
     )
     cob = Cobranca(
         operacao_id=operacao_id,
@@ -302,34 +270,6 @@ def create_pix_charge_for_contract(
     return _cobranca_to_out(cob, op, date.today(), valor_base=ct.valor_recorrente)
 
 
-def create_asaas_subscription_for_contract(
-    db: Session,
-    user: CurrentUser,
-    operacao_scope: int | None,
-    contrato_id: int,
-) -> Contrato:
-    operacao_id = _effective_operacao(user, operacao_scope)
-    ct = db.get(Contrato, contrato_id)
-    if not ct or ct.operacao_id != operacao_id:
-        raise NotFoundError("Contrato não encontrado")
-    cliente = db.get(Cliente, ct.cliente_id)
-    if not cliente:
-        raise NotFoundError("Cliente não encontrado")
-    cust_id = ensure_asaas_customer(db, cliente)
-    sub_id = AsaasClient().create_subscription(
-        customer_id=cust_id,
-        value=ct.valor_recorrente,
-        cycle=ct.ciclo,
-        description=f"Contrato #{ct.id}",
-        next_due=ct.proximo_vencimento.isoformat(),
-    )
-    ct.asaas_subscription_id = sub_id
-    db.add(ct)
-    db.commit()
-    db.refresh(ct)
-    return ct
-
-
 def create_mercadopago_subscription_for_contract(
     db: Session,
     user: CurrentUser,
@@ -341,8 +281,8 @@ def create_mercadopago_subscription_for_contract(
     if not ct or ct.operacao_id != operacao_id:
         raise NotFoundError("Contrato não encontrado")
     op = db.get(Operacao, operacao_id)
-    if not op or op.payment_provider != PaymentProvider.MERCADOPAGO.value:
-        raise ForbiddenError("Operação não usa Mercado Pago")
+    if not op:
+        raise NotFoundError("Operação não encontrada")
     if not mp_configured_for_operacao(op):
         raise ForbiddenError("Mercado Pago não configurado")
     cliente = db.get(Cliente, ct.cliente_id)
@@ -476,11 +416,8 @@ def _finalize_payment(
         "contrato_id": ct.id,
         "cliente_id": ct.cliente_id,
         "operacao_id": cob.operacao_id,
+        "mercadopago_payment_id": external_id,
     }
-    if gateway == PaymentGateway.MERCADOPAGO.value:
-        payload["mercadopago_payment_id"] = external_id
-    else:
-        payload["asaas_payment_id"] = external_id
 
     ev = EventoDominio(
         tipo=DomainEventType.PAGAMENTO_CONFIRMADO.value,
@@ -491,24 +428,6 @@ def _finalize_payment(
     ev_id = ev.id
     db.commit()
     return True, ev_id
-
-
-def handle_payment_confirmed(
-    db: Session,
-    *,
-    asaas_payment_id: str,
-    value: Decimal | None = None,
-) -> tuple[bool, int | None]:
-    cob = db.scalars(select(Cobranca).where(Cobranca.asaas_payment_id == asaas_payment_id)).first()
-    if not cob:
-        return False, None
-    return _finalize_payment(
-        db,
-        cob,
-        external_id=asaas_payment_id,
-        gateway=PaymentGateway.ASAAS.value,
-        value=value,
-    )
 
 
 def handle_mercadopago_payment_confirmed(

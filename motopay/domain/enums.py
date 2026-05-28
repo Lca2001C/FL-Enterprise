@@ -43,11 +43,5 @@ class DomainEventType(str, Enum):
     MOTO_EM_MANUTENCAO = "MOTO_EM_MANUTENCAO"
 
 
-class PaymentProvider(str, Enum):
-    ASAAS = "asaas"
-    MERCADOPAGO = "mercadopago"
-
-
 class PaymentGateway(str, Enum):
-    ASAAS = "asaas"
     MERCADOPAGO = "mercadopago"

@@ -166,7 +166,7 @@ def main():
                     status=CobrancaStatus.ATRASADO.value
                     if ct.inadimplente
                     else CobrancaStatus.PENDENTE.value,
-                    pix_copia_cola=f"00020101021226870014br.gov.bcb.pix2565asaas.com/p/v2/DEMO_PIX_{ct.id}_BR5913MOTOPAY",
+                    pix_copia_cola=f"00020101021226870014br.gov.bcb.pix2565demo/p/v2/DEMO_PIX_{ct.id}_BR5913MOTOPAY",
                 )
             )
 

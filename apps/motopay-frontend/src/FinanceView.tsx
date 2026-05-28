@@ -1,24 +1,27 @@
-import { useState, useEffect, type FormEvent } from 'react';
-import { ArrowUpCircle, ArrowDownCircle, Download, Plus } from 'lucide-react';
+import { useState, useEffect, useMemo, type FormEvent } from 'react';
+import { ArrowUpCircle, ArrowDownCircle, FileText, Plus } from 'lucide-react';
 import { useAuth } from './AuthContext';
 import type { FinanceiroOut, MotoOut, Paginated } from './apiTypes';
 import { PAGE_SIZE } from './apiTypes';
-import { exportCsv, formatBrl, formatDate, todayIso } from './utils/format';
+import { formatBrl, formatDate, todayIso } from './utils/format';
 import { parseApiError } from './utils/apiError';
 import { fetchAllPaginated } from './utils/fetchPaginated';
 import EmptyState from './components/EmptyState';
 import ErrorBanner from './components/ErrorBanner';
 import AdminScopeBanner from './components/AdminScopeBanner';
+import FinanceStatementModal, { computeTotals } from './components/FinanceStatementModal';
 
 const FinanceView = () => {
   const { api } = useAuth();
   const [entries, setEntries] = useState<FinanceiroOut[]>([]);
+  const [allEntries, setAllEntries] = useState<FinanceiroOut[]>([]);
   const [motos, setMotos] = useState<MotoOut[]>([]);
   const [total, setTotal] = useState(0);
   const [offset, setOffset] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [showModal, setShowModal] = useState(false);
+  const [showStatement, setShowStatement] = useState(false);
   const [form, setForm] = useState({
     tipo: 'despesa' as 'receita' | 'despesa',
     valor: '',
@@ -27,17 +30,21 @@ const FinanceView = () => {
     moto_id: '',
   });
 
+  const allTotals = useMemo(() => computeTotals(allEntries), [allEntries]);
+
   const fetchFinance = async (pageOffset = offset) => {
     setLoading(true);
     setError('');
     try {
-      const [finRes, motoItems] = await Promise.all([
+      const [finRes, motoItems, allItems] = await Promise.all([
         api.get<Paginated<FinanceiroOut>>('/api/v1/financeiro', {
           params: { limit: PAGE_SIZE, offset: pageOffset },
         }),
         fetchAllPaginated<MotoOut>(api, '/api/v1/motos'),
+        fetchAllPaginated<FinanceiroOut>(api, '/api/v1/financeiro'),
       ]);
       setEntries(finRes.data.items);
+      setAllEntries(allItems);
       setTotal(finRes.data.total);
       setOffset(pageOffset);
       setMotos(motoItems);
@@ -52,15 +59,9 @@ const FinanceView = () => {
     void fetchFinance();
   }, [api]);
 
-  const handleExport = () => {
-    const rows = entries.map((e) => [
-      formatDate(e.data),
-      e.descricao,
-      e.tipo,
-      String(e.valor),
-      e.moto_id ? String(e.moto_id) : '',
-    ]);
-    exportCsv('extrato-motopay.csv', ['Data', 'Descrição', 'Tipo', 'Valor', 'Moto ID'], rows);
+  const openStatement = () => {
+    if (allEntries.length === 0) return;
+    setShowStatement(true);
   };
 
   const handleCreate = async (e: FormEvent) => {
@@ -90,8 +91,13 @@ const FinanceView = () => {
           <p className="text-muted">Histórico de entradas e saídas</p>
         </div>
         <div className="header-actions" data-tour="finance-actions">
-          <button type="button" className="btn-secondary" onClick={handleExport} disabled={entries.length === 0}>
-            <Download size={20} /> Exportar CSV
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={() => void openStatement()}
+            disabled={total === 0}
+          >
+            <FileText size={20} /> Ver extrato
           </button>
           <button type="button" className="btn-primary" onClick={() => setShowModal(true)}>
             <Plus size={20} /> Novo lançamento
@@ -101,6 +107,23 @@ const FinanceView = () => {
 
       {error && <ErrorBanner message={error} onDismiss={() => setError('')} />}
       <AdminScopeBanner />
+
+      {!loading && allEntries.length > 0 && (
+        <div className="summary-grid glass">
+          <div className="summary-card receita">
+            <span>Receitas</span>
+            <strong>{formatBrl(allTotals.receitas)}</strong>
+          </div>
+          <div className="summary-card despesa">
+            <span>Despesas</span>
+            <strong>{formatBrl(allTotals.despesas)}</strong>
+          </div>
+          <div className="summary-card saldo">
+            <span>Saldo</span>
+            <strong>{formatBrl(allTotals.saldo)}</strong>
+          </div>
+        </div>
+      )}
 
       <div className="glass table-container">
         {loading ? (
@@ -179,6 +202,14 @@ const FinanceView = () => {
             Próxima
           </button>
         </div>
+      )}
+
+      {showStatement && (
+        <FinanceStatementModal
+          entries={allEntries}
+          motos={motos}
+          onClose={() => setShowStatement(false)}
+        />
       )}
 
       {showModal && (
@@ -271,6 +302,38 @@ const FinanceView = () => {
           display: flex;
           gap: 10px;
           flex-wrap: wrap;
+        }
+        .summary-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+          gap: 12px;
+          margin-bottom: 16px;
+          padding: 16px;
+          border-radius: 12px;
+        }
+        .summary-card {
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+        }
+        .summary-card span {
+          font-size: 0.75rem;
+          color: var(--text-muted);
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
+        }
+        .summary-card strong {
+          font-size: 1.1rem;
+        }
+        .summary-card.receita strong {
+          color: var(--accent);
+        }
+        .summary-card.despesa strong {
+          color: var(--danger);
+        }
+        .summary-card.saldo strong,
+        .summary-card.total strong {
+          color: var(--primary);
         }
         .table-container {
           overflow-x: auto;

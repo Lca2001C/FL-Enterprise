@@ -145,9 +145,7 @@ const ChargesView = () => {
                   <td>{formatDate(cob.vencimento)}</td>
                   <td style={{ fontWeight: 700 }}>{formatBrl(displayValor(cob))}</td>
                   <td>
-                    <span className={`gateway-badge ${cob.payment_gateway}`}>
-                      {cob.payment_gateway === 'mercadopago' ? 'Mercado Pago' : 'Asaas'}
-                    </span>
+                    <span className="gateway-badge mercadopago">Mercado Pago</span>
                   </td>
                   <td>
                     <span className={`status-badge ${cob.status}`}>
@@ -225,7 +223,7 @@ const ChargesView = () => {
           <div className="glass modal-content animate-fade">
             <h3>Gerar Cobrança Pix</h3>
             <p className="text-muted" style={{ fontSize: '0.8rem', marginBottom: '20px' }}>
-              Cria uma cobrança Pix no Asaas para o contrato selecionado.
+              Cria uma cobrança Pix no Mercado Pago para o contrato selecionado.
             </p>
             <form onSubmit={(e) => void handleCreateCharge(e)}>
               <div className="input-group">
@@ -343,10 +341,6 @@ const ChargesView = () => {
           border-radius: 6px;
           font-size: 0.7rem;
           font-weight: 600;
-        }
-        .gateway-badge.asaas {
-          background: rgba(99, 102, 241, 0.1);
-          color: var(--primary);
         }
         .gateway-badge.mercadopago {
           background: rgba(245, 158, 11, 0.1);

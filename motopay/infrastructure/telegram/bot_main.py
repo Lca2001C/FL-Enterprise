@@ -1,30 +1,48 @@
-"""Telegram bot (polling). Comandos: /start, /promessa, /pix, /status, /ajuda."""
+"""Telegram bot (polling). Comandos: /start, /menu, /promessa, /pix, /status, /ajuda."""
 
 from __future__ import annotations
 
 from sqlalchemy import select
-from telegram import Update
-from telegram.ext import Application, CommandHandler, ContextTypes
+from telegram import KeyboardButton, ReplyKeyboardMarkup, Update
+from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
 
 from motopay.config import get_settings
 from motopay.domain.enums import ContratoStatus
-from motopay.infrastructure.db.models import Cliente, Contrato, Operacao
+from motopay.infrastructure.db.models import Cliente, Contrato, Moto, Operacao
 from motopay.infrastructure.db.session import SessionLocal
 from motopay.infrastructure.telegram.ai_agent import ai_reply
-from motopay.infrastructure.telegram.templates import render_template
+from motopay.infrastructure.telegram.conversation import (
+    ai_context_from_menu,
+    append_history,
+    contextual_reply_text,
+    detect_intent,
+    is_contact_request,
+    is_menu_request,
+)
+from motopay.infrastructure.telegram.owner_notify import notify_owner_contact_request
+from motopay.infrastructure.telegram.templates import (
+    find_menu_button_by_command,
+    match_button_command,
+    render_menu_button_response,
+    render_template,
+    resolve_bot_menu_buttons,
+)
 from motopay.services.billing_service import get_open_cobranca
 from motopay.services.negotiation_service import record_promessa_from_telegram_user
 
 
 def _cliente_for_telegram(
     db, telegram_user_id: str
-) -> tuple[Cliente | None, dict[str, str] | None]:
+) -> tuple[Cliente | None, dict[str, str] | None, list[dict[str, str]]]:
     cliente = db.scalars(select(Cliente).where(Cliente.telegram_id == telegram_user_id)).first()
     overrides: dict[str, str] | None = None
+    buttons = resolve_bot_menu_buttons(None)
     if cliente:
         op = db.get(Operacao, cliente.operacao_id)
-        overrides = op.telegram_templates if op else None
-    return cliente, overrides
+        if op:
+            overrides = op.telegram_templates
+            buttons = resolve_bot_menu_buttons(op.telegram_bot_menu_buttons)
+    return cliente, overrides, buttons
 
 
 def _active_contrato(db, cliente_id: int) -> Contrato | None:
@@ -35,15 +53,175 @@ def _active_contrato(db, cliente_id: int) -> Contrato | None:
     ).first()
 
 
-async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+def _menu_context(db, cliente: Cliente | None, contrato: Contrato | None) -> dict[str, str]:
+    if not cliente:
+        return {
+            "cliente": "visitante",
+            "proximo_vencimento": "—",
+            "placa": "—",
+            "inadimplente": "—",
+            "promessa_pagamento_em": "—",
+        }
+    placa = "—"
+    if contrato:
+        moto = db.get(Moto, contrato.moto_id)
+        if moto:
+            placa = moto.placa
+    promessa = "—"
+    proximo = "—"
+    inadimplente = "—"
+    if contrato:
+        proximo = contrato.proximo_vencimento.isoformat()
+        inadimplente = "sim" if contrato.inadimplente else "não"
+        if contrato.promessa_pagamento_em:
+            promessa = contrato.promessa_pagamento_em.isoformat()
+    return {
+        "cliente": cliente.nome,
+        "proximo_vencimento": proximo,
+        "placa": placa,
+        "inadimplente": inadimplente,
+        "promessa_pagamento_em": promessa,
+    }
+
+
+def _build_reply_keyboard(buttons: list[dict[str, str]]) -> ReplyKeyboardMarkup:
+    row: list[KeyboardButton] = []
+    rows: list[list[KeyboardButton]] = []
+    for btn in buttons:
+        row.append(KeyboardButton(btn["label"]))
+        if len(row) == 2:
+            rows.append(row)
+            row = []
+    if row:
+        rows.append(row)
+    return ReplyKeyboardMarkup(rows, resize_keyboard=True)
+
+
+def _find_menu_button_by_label(text: str, buttons: list[dict[str, str]]) -> dict[str, str] | None:
+    stripped = text.strip()
+    for btn in buttons:
+        if stripped == btn["label"]:
+            return btn
+    return None
+
+
+def _notify_owner_contact(
+    db,
+    *,
+    cliente: Cliente | None,
+    uid: str,
+    user_message: str,
+    menu_ctx: dict[str, str],
+    button: dict[str, str] | None = None,
+) -> None:
+    if not is_contact_request(user_message, button=button):
+        return
+    if not cliente:
+        return
+    operacao = db.get(Operacao, cliente.operacao_id)
+    if not operacao:
+        return
+    notify_owner_contact_request(
+        operacao=operacao,
+        cliente=cliente,
+        telegram_user_id=uid,
+        user_message=user_message,
+        menu_ctx=menu_ctx,
+    )
+
+
+def _resolve_user_state(
+    db, uid: str
+) -> tuple[
+    Cliente | None,
+    dict[str, str] | None,
+    list[dict[str, str]],
+    dict[str, str],
+    dict,
+]:
+    cliente, overrides, buttons = _cliente_for_telegram(db, uid) if uid else (None, None, resolve_bot_menu_buttons(None))
+    if not uid:
+        menu_ctx = _menu_context(None, None, None)
+        return None, None, buttons, menu_ctx, {}
+    contrato = _active_contrato(db, cliente.id) if cliente else None
+    menu_ctx = _menu_context(db, cliente, contrato)
+    ai_ctx: dict = menu_ctx.copy()
+    if cliente:
+        ai_ctx["score"] = cliente.score
+        if contrato:
+            ai_ctx["inadimplente_bool"] = contrato.inadimplente
+    return cliente, overrides, buttons, menu_ctx, ai_ctx
+
+
+async def send_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.effective_message:
         return
     uid = str(update.effective_user.id) if update.effective_user else ""
     overrides: dict[str, str] | None = None
-    if uid:
-        with SessionLocal() as db:
-            _, overrides = _cliente_for_telegram(db, uid)
-    await update.effective_message.reply_text(render_template("bot_start", overrides=overrides))
+    buttons = resolve_bot_menu_buttons(None)
+    menu_ctx = _menu_context(None, None, None)
+    with SessionLocal() as db:
+        if uid:
+            _, overrides, buttons, menu_ctx, _ = _resolve_user_state(db, uid)
+    text = render_template("bot_start", overrides=overrides, **menu_ctx)
+    keyboard = _build_reply_keyboard(buttons)
+    await update.effective_message.reply_text(text, reply_markup=keyboard)
+    if context.user_data is not None:
+        context.user_data["menu_shown"] = True
+
+
+async def send_contextual_reply(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    *,
+    user_message: str,
+) -> None:
+    if not update.effective_message:
+        return
+    uid = str(update.effective_user.id) if update.effective_user else ""
+    overrides: dict[str, str] | None = None
+    menu_ctx = _menu_context(None, None, None)
+    ai_ctx: dict = {}
+    cliente: Cliente | None = None
+    with SessionLocal() as db:
+        cliente, overrides, _, menu_ctx, ai_ctx = _resolve_user_state(db, uid)
+
+    history: list[dict[str, str]] = list(
+        (context.user_data or {}).get("chat_history", [])
+    )
+    intent = detect_intent(user_message)
+    ai_ctx = ai_context_from_menu(menu_ctx, user_message=user_message)
+
+    reply = ai_reply(user_message=user_message, context=ai_ctx, history=history or None)
+    if not reply:
+        reply = contextual_reply_text(
+            user_message=user_message,
+            overrides=overrides,
+            menu_ctx=menu_ctx,
+            intent=intent,
+        )
+
+    await update.effective_message.reply_text(reply)
+    with SessionLocal() as db:
+        if not cliente and uid:
+            cliente, _, _, menu_ctx, _ = _resolve_user_state(db, uid)
+        _notify_owner_contact(
+            db,
+            cliente=cliente,
+            uid=uid,
+            user_message=user_message,
+            menu_ctx=menu_ctx,
+        )
+    if context.user_data is not None:
+        context.user_data["chat_history"] = append_history(
+            append_history(history, "user", user_message),
+            "assistant",
+            reply,
+        )
+
+
+async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await send_menu(update, context)
 
 
 async def cmd_promessa(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -53,7 +231,7 @@ async def cmd_promessa(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     overrides: dict[str, str] | None = None
     if uid:
         with SessionLocal() as db:
-            _, overrides = _cliente_for_telegram(db, uid)
+            _, overrides, _ = _cliente_for_telegram(db, uid)
 
     if not context.args or len(context.args) < 2:
         await update.effective_message.reply_text(
@@ -105,7 +283,7 @@ async def cmd_pix(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not uid:
         return
     with SessionLocal() as db:
-        cliente, overrides = _cliente_for_telegram(db, uid)
+        cliente, overrides, _ = _cliente_for_telegram(db, uid)
         if not cliente:
             await update.effective_message.reply_text(
                 render_template("bot_promessa_not_found", overrides=overrides)
@@ -141,7 +319,7 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     if not uid:
         return
     with SessionLocal() as db:
-        cliente, overrides = _cliente_for_telegram(db, uid)
+        cliente, overrides, _ = _cliente_for_telegram(db, uid)
         if not cliente:
             await update.effective_message.reply_text(
                 render_template("bot_promessa_not_found", overrides=overrides)
@@ -172,25 +350,120 @@ async def cmd_ajuda(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     question = " ".join(context.args) if context.args else "Como usar o bot?"
     ctx: dict = {}
     overrides: dict[str, str] | None = None
+    history: list[dict[str, str]] = list(context.user_data.get("chat_history", [])) if context.user_data else []
     if uid:
         with SessionLocal() as db:
-            cliente, overrides = _cliente_for_telegram(db, uid)
-            if cliente:
-                ct = _active_contrato(db, cliente.id)
-                ctx = {
-                    "cliente": cliente.nome,
-                    "score": cliente.score,
-                    "inadimplente": ct.inadimplente if ct else False,
-                    "proximo_vencimento": str(ct.proximo_vencimento) if ct else None,
-                    "promessa": str(ct.promessa_pagamento_em)
-                    if ct and ct.promessa_pagamento_em
-                    else None,
-                }
-    ai = ai_reply(user_message=question, context=ctx)
+            _, overrides, _, menu_ctx, ctx = _resolve_user_state(db, uid)
+            ctx = ai_context_from_menu(menu_ctx, user_message=question)
+    ai = ai_reply(user_message=question, context=ctx, history=history or None)
     if ai:
         await update.effective_message.reply_text(ai)
+        if context.user_data is not None:
+            context.user_data["chat_history"] = append_history(
+                append_history(history, "user", question),
+                "assistant",
+                ai,
+            )
     else:
         await update.effective_message.reply_text(render_template("bot_ajuda", overrides=overrides))
+
+
+async def cmd_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await send_menu(update, context)
+
+
+async def _dispatch_menu_command(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    command: str,
+) -> bool:
+    """Executa comando integrado ou personalizado do menu. Retorna True se tratou."""
+    if not update.effective_message:
+        return False
+    if command == "menu":
+        await send_menu(update, context)
+        return True
+    handlers = {
+        "promessa": cmd_promessa,
+        "pix": cmd_pix,
+        "status": cmd_status,
+        "ajuda": cmd_ajuda,
+    }
+    handler = handlers.get(command)
+    if handler:
+        await handler(update, context)
+        return True
+    uid = str(update.effective_user.id) if update.effective_user else ""
+    with SessionLocal() as db:
+        cliente, _, buttons, menu_ctx, _ = _resolve_user_state(db, uid)
+    btn = find_menu_button_by_command(command, buttons)
+    if btn and btn.get("response"):
+        text = render_menu_button_response(btn, menu_ctx=menu_ctx)
+        await update.effective_message.reply_text(text)
+        with SessionLocal() as db:
+            if not cliente and uid:
+                cliente, _, _, menu_ctx, _ = _resolve_user_state(db, uid)
+            _notify_owner_contact(
+                db,
+                cliente=cliente,
+                uid=uid,
+                user_message=update.effective_message.text or btn["label"],
+                menu_ctx=menu_ctx,
+                button=btn,
+            )
+        return True
+    return False
+
+
+async def handle_slash_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.effective_message or not update.effective_message.text:
+        return
+    cmd = update.effective_message.text.split()[0][1:].split("@")[0].lower()
+    if await _dispatch_menu_command(update, context, cmd):
+        return
+    uid = str(update.effective_user.id) if update.effective_user else ""
+    overrides: dict[str, str] | None = None
+    if uid:
+        with SessionLocal() as db:
+            _, overrides, _, _, _ = _resolve_user_state(db, uid)
+    await update.effective_message.reply_text(
+        render_template("bot_comando_desconhecido", overrides=overrides, comando=cmd)
+    )
+
+
+async def _dispatch_command(command: str, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await _dispatch_menu_command(update, context, command)
+
+
+async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.effective_message or not update.effective_message.text:
+        return
+    uid = str(update.effective_user.id) if update.effective_user else ""
+    text = update.effective_message.text
+    buttons = resolve_bot_menu_buttons(None)
+    if uid:
+        with SessionLocal() as db:
+            _, _, buttons = _cliente_for_telegram(db, uid)
+    command = match_button_command(text, buttons)
+    if command:
+        button = _find_menu_button_by_label(text, buttons)
+        await _dispatch_command(command, update, context)
+        if button and uid and not button.get("response"):
+            with SessionLocal() as db:
+                cliente, _, _, menu_ctx, _ = _resolve_user_state(db, uid)
+                _notify_owner_contact(
+                    db,
+                    cliente=cliente,
+                    uid=uid,
+                    user_message=text,
+                    menu_ctx=menu_ctx,
+                    button=button,
+                )
+        return
+    if is_menu_request(text):
+        await send_menu(update, context)
+        return
+    await send_contextual_reply(update, context, user_message=text)
 
 
 def main() -> None:
@@ -210,10 +483,13 @@ def main() -> None:
     token = get_settings().telegram_bot_token
     app = Application.builder().token(token).build()
     app.add_handler(CommandHandler("start", cmd_start))
+    app.add_handler(CommandHandler("menu", cmd_menu))
     app.add_handler(CommandHandler("promessa", cmd_promessa))
     app.add_handler(CommandHandler("pix", cmd_pix))
     app.add_handler(CommandHandler("status", cmd_status))
     app.add_handler(CommandHandler("ajuda", cmd_ajuda))
+    app.add_handler(MessageHandler(filters.COMMAND, handle_slash_command))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message))
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 

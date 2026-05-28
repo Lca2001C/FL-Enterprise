@@ -23,7 +23,6 @@ motopay/infrastructure/messaging/celery_observability.py
 motopay/infrastructure/messaging/tasks.py
 motopay/infrastructure/messaging/worker_metrics.py
 motopay/infrastructure/payments/__init__.py
-motopay/infrastructure/payments/asaas_client.py
 motopay/infrastructure/payments/mercadopago_client.py
 motopay/infrastructure/resilience/redis_circuit_breaker.py
 motopay/infrastructure/security/__init__.py
@@ -34,7 +33,9 @@ motopay/infrastructure/security/webhook_auth.py
 motopay/infrastructure/telegram/__init__.py
 motopay/infrastructure/telegram/ai_agent.py
 motopay/infrastructure/telegram/bot_main.py
+motopay/infrastructure/telegram/conversation.py
 motopay/infrastructure/telegram/notify.py
+motopay/infrastructure/telegram/owner_notify.py
 motopay/infrastructure/telegram/templates.py
 motopay/interfaces/__init__.py
 motopay/interfaces/api/__init__.py
@@ -70,9 +71,11 @@ motopay/services/__init__.py
 motopay/services/analytics_service.py
 motopay/services/auth_service.py
 motopay/services/billing_service.py
+motopay/services/contrato_document_service.py
 motopay/services/finance_service.py
 motopay/services/fleet_service.py
 motopay/services/late_fee.py
+motopay/services/moto_media_service.py
 motopay/services/negotiation_service.py
 motopay/services/operacao_service.py
 motopay/services/payment_gateway.py
@@ -86,9 +89,11 @@ tests/test_auth.py
 tests/test_automation_rules.py
 tests/test_billing_webhook_flow.py
 tests/test_celery_observability.py
+tests/test_contrato_documento.py
 tests/test_list_filters.py
 tests/test_mercadopago_webhook.py
 tests/test_metrics_middleware.py
+tests/test_motos_imagem.py
 tests/test_motos_km.py
 tests/test_operacao_settings.py
 tests/test_ops_endpoints.py
@@ -96,7 +101,11 @@ tests/test_overdue_pix.py
 tests/test_realtime.py
 tests/test_scope.py
 tests/test_settings_production.py
+tests/test_telegram_bot_menu.py
 tests/test_telegram_circuit_breaker.py
+tests/test_telegram_conversation.py
+tests/test_telegram_integration.py
+tests/test_telegram_owner_notify.py
 tests/test_telegram_templates.py
 tests/test_usuarios_list.py
 tests/test_webhook.py

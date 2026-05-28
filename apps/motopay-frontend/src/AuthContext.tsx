@@ -10,6 +10,7 @@ import {
 } from 'react';
 import type { AxiosInstance } from 'axios';
 import { createApiClient } from './apiClient';
+import { resolveApiBase } from './utils/apiBase';
 import type { AppTab, ContractsFilter, OperacaoOut } from './apiTypes';
 
 export type AuthUser = {
@@ -55,10 +56,8 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 
 function defaultApiBase(): string {
   const fromEnv = import.meta.env.VITE_API_BASE_URL as string | undefined;
-  if (fromEnv && fromEnv.trim()) return fromEnv.replace(/\/$/, '');
   const stored = localStorage.getItem(LS_API_BASE);
-  if (stored && stored.trim()) return stored.replace(/\/$/, '');
-  return 'http://localhost:8000';
+  return resolveApiBase(fromEnv, stored);
 }
 
 function readScopeFromStorage(): number | null {
@@ -222,6 +221,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     void refreshOperacoes();
   }, [refreshOperacoes]);
+
+  useEffect(() => {
+    const resolved = defaultApiBase();
+    setApiBaseState(resolved);
+    localStorage.setItem(LS_API_BASE, resolved);
+  }, []);
 
   useEffect(() => {
     localStorage.setItem(LS_API_BASE, apiBase);

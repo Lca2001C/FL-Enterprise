@@ -78,9 +78,18 @@ def _cors_allow_origins() -> list[str]:
     return ["*"]
 
 
+def _cors_allow_origin_regex() -> str | None:
+    s = get_settings()
+    if s.environment == "production":
+        return None
+    # Celular/tablet na mesma Wi‑Fi (ex.: http://192.168.0.209:5173)
+    return r"https?://(localhost|127\.0\.0\.1|192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3})(:\d+)?"
+
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_allow_origins(),
+    allow_origin_regex=_cors_allow_origin_regex(),
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],

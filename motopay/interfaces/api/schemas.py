@@ -11,7 +11,6 @@ from motopay.domain.enums import (
     ContratoStatus,
     FinanceiroTipo,
     MotoStatus,
-    PaymentProvider,
     UserRole,
 )
 
@@ -72,6 +71,12 @@ class TelegramCustomMessage(BaseModel):
     replace_default: bool = False
 
 
+class TelegramBotMenuButton(BaseModel):
+    label: str = Field(min_length=1, max_length=32)
+    command: str = Field(min_length=1, max_length=32)
+    response: str | None = Field(default=None, max_length=2000)
+
+
 class CustomMessageTriggerMetaOut(BaseModel):
     trigger: str
     label: str
@@ -89,7 +94,9 @@ class OperacaoOut(BaseModel):
     juros_diario_percentual: Decimal
     telegram_templates: dict[str, str] = Field(default_factory=dict)
     telegram_custom_messages: list[TelegramCustomMessage] = Field(default_factory=list)
-    payment_provider: PaymentProvider = PaymentProvider.ASAAS
+    telegram_bot_menu_buttons: list[TelegramBotMenuButton] = Field(default_factory=list)
+    telegram_owner_notify_id: str | None = None
+    telegram_owner_notify_enabled: bool = False
 
 
 class OperacaoUpdate(BaseModel):
@@ -98,7 +105,9 @@ class OperacaoUpdate(BaseModel):
     juros_diario_percentual: Decimal | None = None
     telegram_templates: dict[str, str | None] | None = None
     telegram_custom_messages: list[TelegramCustomMessage] | None = None
-    payment_provider: PaymentProvider | None = None
+    telegram_bot_menu_buttons: list[TelegramBotMenuButton] | None = None
+    telegram_owner_notify_id: str | None = None
+    telegram_owner_notify_enabled: bool | None = None
     mercadopago_access_token: str | None = None
 
 
@@ -160,6 +169,7 @@ class MotoOut(BaseModel):
     modelo: str
     status: str
     km: int
+    tem_imagem: bool = False
     cliente_nome: str | None = None
 
 
@@ -234,7 +244,6 @@ class ContratoOut(BaseModel):
     inadimplente: bool
     promessa_pagamento_em: date | None
     promessa_notas: str | None
-    asaas_subscription_id: str | None = None
     mercadopago_subscription_id: str | None = None
 
 
@@ -266,9 +275,8 @@ class CobrancaOut(BaseModel):
     contrato_id: int
     valor: Decimal
     vencimento: date
-    asaas_payment_id: str | None
     mercadopago_payment_id: str | None = None
-    payment_gateway: str = "asaas"
+    payment_gateway: str = "mercadopago"
     pix_copia_cola: str | None
     status: str
     dias_atraso: int = 0
@@ -279,7 +287,7 @@ class CobrancaOut(BaseModel):
 
 class CreateChargeRequest(BaseModel):
     contrato_id: int
-    """Cria cobrança avulsa via Asaas quando configurado."""
+    """Cria cobrança Pix via Mercado Pago quando configurado."""
 
 
 class MotoAnalyticsRow(BaseModel):
@@ -291,11 +299,6 @@ class MotoAnalyticsRow(BaseModel):
     lucro_liquido: Decimal
     roi: Decimal | None
     prejuizo: bool
-
-
-class WebhookAsaasPayload(BaseModel):
-    event: str
-    payment: dict[str, Any] | None = None
 
 
 class AnalyticsSummary(BaseModel):

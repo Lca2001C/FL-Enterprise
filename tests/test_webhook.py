@@ -3,30 +3,38 @@ from __future__ import annotations
 from motopay.config import get_settings
 
 
-def test_webhook_rejects_invalid_token(client):
+def test_mercadopago_webhook_rejects_invalid_signature(client, monkeypatch):
+    monkeypatch.setenv("MERCADOPAGO_WEBHOOK_SECRET", "mp-secret")
+    get_settings.cache_clear()
     response = client.post(
-        "/webhooks/asaas?token=wrong",
-        json={"event": "PAYMENT_CONFIRMED", "payment": {"id": "pay_123"}},
+        "/webhooks/mercadopago",
+        headers={"x-signature": "wrong"},
+        json={"type": "payment", "data": {"id": "123"}},
     )
     assert response.status_code == 403
+    get_settings.cache_clear()
 
 
-def test_webhook_accepts_valid_token_in_header(client):
-    token = get_settings().asaas_webhook_token
+def test_mercadopago_webhook_accepts_valid_signature(client, monkeypatch):
+    monkeypatch.setenv("MERCADOPAGO_WEBHOOK_SECRET", "mp-secret")
+    get_settings.cache_clear()
     response = client.post(
-        "/webhooks/asaas",
-        headers={"X-Webhook-Token": token},
-        json={"event": "PAYMENT_CONFIRMED", "payment": {}},
+        "/webhooks/mercadopago",
+        headers={"x-signature": "mp-secret"},
+        json={"type": "payment", "data": {"id": "123"}},
     )
     assert response.status_code == 200
     assert response.json() == {"ok": True}
+    get_settings.cache_clear()
 
 
-def test_webhook_accepts_valid_token_in_query(client):
-    token = get_settings().asaas_webhook_token
+def test_mercadopago_webhook_without_secret(client, monkeypatch):
+    monkeypatch.setenv("MERCADOPAGO_WEBHOOK_SECRET", "")
+    get_settings.cache_clear()
     response = client.post(
-        f"/webhooks/asaas?token={token}",
-        json={"event": "PAYMENT_CONFIRMED", "payment": {}},
+        "/webhooks/mercadopago",
+        json={"type": "payment", "data": {"id": "123"}},
     )
     assert response.status_code == 200
     assert response.json() == {"ok": True}
+    get_settings.cache_clear()

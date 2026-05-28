@@ -108,9 +108,7 @@ const AdminOperacoesView = () => {
                   <td className="text-muted">#{op.id}</td>
                   <td style={{ fontWeight: 600 }}>{op.nome}</td>
                   <td>
-                    <span className={`gateway-badge ${op.payment_provider}`}>
-                      {op.payment_provider === 'mercadopago' ? 'Mercado Pago' : 'Asaas'}
-                    </span>
+                    <span className="gateway-badge mercadopago">Mercado Pago</span>
                   </td>
                   <td>{formatDate(op.created_at)}</td>
                 </tr>
@@ -174,10 +172,6 @@ const AdminOperacoesView = () => {
           border-radius: 6px;
           font-size: 0.75rem;
           font-weight: 600;
-        }
-        .gateway-badge.asaas {
-          background: rgba(99, 102, 241, 0.1);
-          color: var(--primary);
         }
         .gateway-badge.mercadopago {
           background: rgba(245, 158, 11, 0.1);
