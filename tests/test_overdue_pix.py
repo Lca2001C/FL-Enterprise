@@ -20,10 +20,10 @@ from motopay.infrastructure.db.models import (
     Operacao,
 )
 from motopay.infrastructure.messaging import tasks as messaging_tasks
-from motopay.services.payment_gateway import PixPaymentResult
 from motopay.infrastructure.telegram.templates import build_overdue_html
 from motopay.services.billing_service import refresh_overdue_pix
 from motopay.services.late_fee import calculate_late_amounts
+from motopay.services.payment_gateway import PixPaymentResult
 from sqlalchemy import select
 
 

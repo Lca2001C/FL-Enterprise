@@ -3,8 +3,6 @@ from __future__ import annotations
 import pytest
 from motopay.domain.enums import UserRole
 from motopay.domain.exceptions import ConflictError
-from motopay.interfaces.api.schemas import OperacaoUpdate, TelegramBotMenuButton
-from motopay.services.operacao_service import operacao_to_out, update_operacao
 from motopay.infrastructure.telegram.templates import (
     DEFAULT_BOT_MENU_BUTTONS,
     DEFAULT_TELEGRAM_TEMPLATES,
@@ -15,6 +13,8 @@ from motopay.infrastructure.telegram.templates import (
     resolve_bot_menu_buttons,
     validate_bot_menu_buttons,
 )
+from motopay.interfaces.api.schemas import OperacaoUpdate, TelegramBotMenuButton
+from motopay.services.operacao_service import operacao_to_out, update_operacao
 
 
 def test_resolve_bot_menu_buttons_uses_defaults_when_null() -> None:

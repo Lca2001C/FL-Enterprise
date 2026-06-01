@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
-import pytest
-
 from motopay.domain.enums import UserRole
 from motopay.infrastructure.db.models import Cliente
 from motopay.infrastructure.telegram.conversation import is_contact_request

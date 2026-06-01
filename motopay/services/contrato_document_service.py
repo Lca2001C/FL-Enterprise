@@ -12,7 +12,7 @@ from reportlab.lib.units import cm
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 from sqlalchemy.orm import Session
 
-from motopay.infrastructure.db.models import Cliente, Contrato, Moto, Operacao
+from motopay.infrastructure.db.models import Cliente, Moto, Operacao
 from motopay.interfaces.api.deps import CurrentUser
 from motopay.services.fleet_service import get_contrato
 
