@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from unittest.mock import patch
+
 import pytest
 from motopay.config import get_settings
 
@@ -38,11 +40,15 @@ def test_mercadopago_webhook_accepts_signature_in_production(
 ):
     monkeypatch.setenv("MERCADOPAGO_WEBHOOK_SECRET", "prod-mp-secret")
     get_settings.cache_clear()
-    response = client.post(
-        "/webhooks/mercadopago",
-        headers={"x-signature": "prod-mp-secret"},
-        json={"type": "payment", "data": {"id": "123"}},
-    )
+    with patch(
+        "motopay.interfaces.api.routers.webhooks._payment_confirmed_in_mercadopago",
+        return_value=(False, None),
+    ):
+        response = client.post(
+            "/webhooks/mercadopago",
+            headers={"x-signature": "prod-mp-secret"},
+            json={"type": "payment", "data": {"id": "123"}},
+        )
     assert response.status_code == 200
     assert response.json() == {"ok": True}
     get_settings.cache_clear()

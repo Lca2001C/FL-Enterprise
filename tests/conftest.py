@@ -22,12 +22,12 @@ TEST_DATABASE_URL = os.getenv(
 
 
 def _ensure_test_env() -> None:
-    os.environ.setdefault("DATABASE_URL", TEST_DATABASE_URL)
-    os.environ.setdefault("JWT_SECRET", "test-jwt-secret-not-for-production")
-    os.environ.setdefault("REDIS_URL", os.getenv("TEST_REDIS_URL", "redis://localhost:6379/15"))
-    os.environ.setdefault("MERCADOPAGO_WEBHOOK_SECRET", "")
-    os.environ.setdefault("ENVIRONMENT", "development")
-    os.environ.setdefault("LOGIN_RATE_LIMIT_ENABLED", "false")
+    os.environ["DATABASE_URL"] = TEST_DATABASE_URL
+    os.environ["JWT_SECRET"] = "test-jwt-secret-not-for-production"
+    os.environ["REDIS_URL"] = os.getenv("TEST_REDIS_URL", "redis://localhost:6379/15")
+    os.environ["MERCADOPAGO_WEBHOOK_SECRET"] = ""
+    os.environ["ENVIRONMENT"] = "development"
+    os.environ["LOGIN_RATE_LIMIT_ENABLED"] = "false"
     get_settings.cache_clear()
 
 
