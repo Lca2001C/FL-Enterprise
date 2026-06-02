@@ -1,14 +1,16 @@
 import { useState, useEffect, useCallback, type FormEvent } from 'react';
-import { Plus, Copy, CheckCircle, Clock, AlertTriangle, Check, Filter } from 'lucide-react';
+import { Plus, Copy, CheckCircle, Clock, AlertTriangle, Check, Filter, Wallet } from 'lucide-react';
 import { useAuth } from './AuthContext';
-import type { CobrancaOut, ContratoOut, Paginated } from './apiTypes';
+import type { ClienteMpCardOut, ClienteOut, CobrancaOut, ContratoOut, Paginated } from './apiTypes';
 import { PAGE_SIZE } from './apiTypes';
 import { formatBrl, formatDate } from './utils/format';
 import { parseApiError } from './utils/apiError';
 import { fetchAllPaginated } from './utils/fetchPaginated';
+import { paymentMethodLabel } from './utils/paymentMethods';
 import EmptyState from './components/EmptyState';
 import ErrorBanner from './components/ErrorBanner';
 import AdminScopeBanner from './components/AdminScopeBanner';
+import PayCobrancaModal from './components/PayCobrancaModal';
 
 type StatusFilter = 'todos' | 'pendente' | 'atrasado' | 'recebido';
 
@@ -24,6 +26,9 @@ const ChargesView = () => {
   const [contratoId, setContratoId] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('todos');
   const [copiedId, setCopiedId] = useState<number | null>(null);
+  const [payCob, setPayCob] = useState<CobrancaOut | null>(null);
+  const [payCliente, setPayCliente] = useState<ClienteOut | null>(null);
+  const [savedCards, setSavedCards] = useState<ClienteMpCardOut[]>([]);
 
   const contratosAtivos = contratos.filter((c) => c.status === 'ativo');
 
@@ -80,6 +85,34 @@ const ChargesView = () => {
   const canCopyPix = (cob: CobrancaOut) =>
     cob.pix_copia_cola && (cob.status === 'pendente' || cob.status === 'atrasado');
 
+  const canPay = (cob: CobrancaOut) => cob.status === 'pendente' || cob.status === 'atrasado';
+
+  const closePayModal = () => {
+    setPayCob(null);
+    setPayCliente(null);
+    setSavedCards([]);
+  };
+
+  const openPay = async (cob: CobrancaOut) => {
+    setError('');
+    const ct = contratos.find((c) => c.id === cob.contrato_id);
+    if (!ct) {
+      setError('Contrato não encontrado para esta cobrança.');
+      return;
+    }
+    try {
+      const [clienteRes, cardsRes] = await Promise.all([
+        api.get<ClienteOut>(`/api/v1/clientes/${ct.cliente_id}`),
+        api.get<ClienteMpCardOut[]>(`/api/v1/clientes/${ct.cliente_id}/mercadopago/cards`),
+      ]);
+      setPayCob(cob);
+      setPayCliente(clienteRes.data);
+      setSavedCards(cardsRes.data);
+    } catch (e) {
+      setError(parseApiError(e, 'Erro ao carregar dados do pagamento'));
+    }
+  };
+
   return (
     <div className="view-container animate-fade">
       <div className="view-header">
@@ -130,6 +163,7 @@ const ChargesView = () => {
                 <th>Vencimento</th>
                 <th>Valor</th>
                 <th>Gateway</th>
+                <th>Método</th>
                 <th>Status</th>
                 <th>Contrato</th>
                 <th>Atraso / Multa</th>
@@ -146,6 +180,9 @@ const ChargesView = () => {
                   <td style={{ fontWeight: 700 }}>{formatBrl(displayValor(cob))}</td>
                   <td>
                     <span className="gateway-badge mercadopago">Mercado Pago</span>
+                  </td>
+                  <td>
+                    <span className="method-badge">{paymentMethodLabel(cob.payment_method_type)}</span>
                   </td>
                   <td>
                     <span className={`status-badge ${cob.status}`}>
@@ -176,16 +213,27 @@ const ChargesView = () => {
                     )}
                   </td>
                   <td style={{ textAlign: 'right' }}>
-                    {canCopyPix(cob) && (
-                      <button
-                        type="button"
-                        className="action-btn-pix"
-                        onClick={() => void copyPix(cob.id, cob.pix_copia_cola!)}
-                      >
-                        {copiedId === cob.id ? <Check size={14} /> : <Copy size={14} />}
-                        {copiedId === cob.id ? 'Copiado' : 'PIX'}
-                      </button>
-                    )}
+                    <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                      {canPay(cob) && (
+                        <button
+                          type="button"
+                          className="action-btn-pix"
+                          onClick={() => void openPay(cob)}
+                        >
+                          <Wallet size={14} /> Pagar
+                        </button>
+                      )}
+                      {canCopyPix(cob) && (
+                        <button
+                          type="button"
+                          className="action-btn-pix"
+                          onClick={() => void copyPix(cob.id, cob.pix_copia_cola!)}
+                        >
+                          {copiedId === cob.id ? <Check size={14} /> : <Copy size={14} />}
+                          {copiedId === cob.id ? 'Copiado' : 'PIX'}
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -216,6 +264,22 @@ const ChargesView = () => {
             Próxima
           </button>
         </div>
+      )}
+
+      {payCob && payCliente && (
+        <PayCobrancaModal
+          cob={payCob}
+          cliente={payCliente}
+          savedCards={savedCards}
+          api={api}
+          displayValor={displayValor(payCob)}
+          onClose={closePayModal}
+          onPaid={() => {
+            closePayModal();
+            void fetchData(offset);
+          }}
+          onError={setError}
+        />
       )}
 
       {showModal && (
@@ -345,6 +409,10 @@ const ChargesView = () => {
         .gateway-badge.mercadopago {
           background: rgba(245, 158, 11, 0.1);
           color: var(--warning);
+        }
+        .method-badge {
+          font-size: 0.75rem;
+          color: var(--text-muted);
         }
         .pagination {
           display: flex;

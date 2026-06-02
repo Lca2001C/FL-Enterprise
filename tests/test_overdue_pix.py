@@ -23,7 +23,7 @@ from motopay.infrastructure.messaging import tasks as messaging_tasks
 from motopay.infrastructure.telegram.templates import build_overdue_html
 from motopay.services.billing_service import refresh_overdue_pix
 from motopay.services.late_fee import calculate_late_amounts
-from motopay.services.payment_gateway import PixPaymentResult
+from motopay.services.payment_gateway import PixOrderResult
 from sqlalchemy import select
 
 
@@ -92,6 +92,7 @@ def cobranca_pendente(db_session, operacao_multas, contrato_atrasado):
         contrato_id=contrato_atrasado.id,
         valor=Decimal("350.00"),
         vencimento=contrato_atrasado.proximo_vencimento,
+        mercadopago_order_id="ORD_old_123",
         mercadopago_payment_id="pay_old_123",
         pix_copia_cola="PIX-OLD-CODE",
         status=CobrancaStatus.PENDENTE.value,
@@ -133,6 +134,7 @@ def test_refresh_skips_when_total_unchanged(
     )
     cobranca_pendente.valor = amounts.valor_total
     cobranca_pendente.status = CobrancaStatus.ATRASADO.value
+    cobranca_pendente.mercadopago_order_id = "ORD_current"
     cobranca_pendente.mercadopago_payment_id = "pay_current"
     cobranca_pendente.pix_copia_cola = "PIX-CURRENT"
     db_session.add(cobranca_pendente)
@@ -143,21 +145,24 @@ def test_refresh_skips_when_total_unchanged(
         mock_cls.assert_not_called()
 
     assert result is not None
-    assert result.mercadopago_payment_id == "pay_current"
+    assert result.mercadopago_order_id == "ORD_current"
 
 
 def test_refresh_cancels_and_creates_new_pix(
     db_session, operacao_multas, contrato_atrasado, cobranca_pendente, cliente_com_telegram
 ):
     today = date.today()
-    new_pay = PixPaymentResult(
+    new_order = PixOrderResult(
+        order_id="ORD_new_456",
         payment_id="pay_new_456",
-        status="PENDING",
         pix_copia_cola="PIX-NEW-CODE",
-        invoice_url=None,
     )
     mock_client = MagicMock()
-    mock_client.create_pix_payment.return_value = new_pay
+    mock_client.create_online_order.return_value = MagicMock(
+        order_id=new_order.order_id,
+        payment_id=new_order.payment_id,
+        pix_copia_cola=new_order.pix_copia_cola,
+    )
 
     with patch(
         "motopay.services.payment_gateway.mp_configured_for_operacao", return_value=True
@@ -166,8 +171,9 @@ def test_refresh_cancels_and_creates_new_pix(
     ):
         cob = refresh_overdue_pix(db_session, contrato=contrato_atrasado, today=today)
 
-    mock_client.create_pix_payment.assert_called_once()
+    mock_client.create_online_order.assert_called_once()
     assert cob is not None
+    assert cob.mercadopago_order_id == "ORD_new_456"
     assert cob.mercadopago_payment_id == "pay_new_456"
     assert cob.pix_copia_cola == "PIX-NEW-CODE"
     assert cob.status == CobrancaStatus.ATRASADO.value

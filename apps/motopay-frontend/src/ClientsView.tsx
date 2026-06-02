@@ -1,7 +1,9 @@
 import { useState, useEffect, useCallback, type FormEvent } from 'react';
-import { Plus, Search, Star, Phone, Trash2, Bike, FileText } from 'lucide-react';
+import { Plus, Search, Star, Phone, Trash2, Bike, FileText, CreditCard } from 'lucide-react';
+import CardPaymentSaveBrick from './integrations/mercadopago/CardPaymentSaveBrick';
 import { useAuth } from './AuthContext';
-import type { ClienteOut, Paginated } from './apiTypes';
+import type { ClienteMpCardOut, ClienteOut, Paginated, PaymentsConfig } from './apiTypes';
+import { mercadoPagoPayerEmail } from './utils/mercadopagoPayer';
 import { PAGE_SIZE } from './apiTypes';
 import { parseApiError } from './utils/apiError';
 import { offsetAfterDelete } from './utils/fetchPaginated';
@@ -26,6 +28,21 @@ const ClientsView = () => {
     telegram_id: '',
   });
   const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [mpCards, setMpCards] = useState<ClienteMpCardOut[]>([]);
+  const [showAddCard, setShowAddCard] = useState(false);
+  const [cardSaveLoading, setCardSaveLoading] = useState(false);
+  const [mpCredentialsMode, setMpCredentialsMode] = useState<'test' | 'production'>('production');
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const r = await api.get<PaymentsConfig>('/api/v1/config/payments');
+        setMpCredentialsMode(r.data.credentials_mode);
+      } catch {
+        /* mantém production */
+      }
+    })();
+  }, [api]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedSearch(search), 300);
@@ -55,6 +72,24 @@ const ClientsView = () => {
   useEffect(() => {
     void fetchClientes(0);
   }, [fetchClientes]);
+
+  useEffect(() => {
+    if (!editCliente || !showModal) {
+      setMpCards([]);
+      setShowAddCard(false);
+      return;
+    }
+    void (async () => {
+      try {
+        const r = await api.get<ClienteMpCardOut[]>(
+          `/api/v1/clientes/${editCliente.id}/mercadopago/cards`
+        );
+        setMpCards(r.data);
+      } catch {
+        setMpCards([]);
+      }
+    })();
+  }, [editCliente, showModal, api]);
 
   const openCreate = () => {
     setEditCliente(null);
@@ -95,6 +130,38 @@ const ClientsView = () => {
       await fetchClientes(offset);
     } catch (err) {
       setError(parseApiError(err, 'Erro ao salvar cliente'));
+    }
+  };
+
+  const cpfDigits = (cpf: string) => cpf.replace(/\D/g, '');
+
+  const handleSaveCard = async (data: { token?: string }) => {
+    if (!editCliente || !data.token) return;
+    setCardSaveLoading(true);
+    setError('');
+    try {
+      await api.post(`/api/v1/clientes/${editCliente.id}/mercadopago/cards`, {
+        card_token: data.token,
+      });
+      const r = await api.get<ClienteMpCardOut[]>(
+        `/api/v1/clientes/${editCliente.id}/mercadopago/cards`
+      );
+      setMpCards(r.data);
+      setShowAddCard(false);
+    } catch (err) {
+      setError(parseApiError(err, 'Erro ao salvar cartão'));
+    } finally {
+      setCardSaveLoading(false);
+    }
+  };
+
+  const handleDeleteCard = async (cardId: number) => {
+    if (!editCliente || !confirm('Remover este cartão salvo?')) return;
+    try {
+      await api.delete(`/api/v1/clientes/${editCliente.id}/mercadopago/cards/${cardId}`);
+      setMpCards((prev) => prev.filter((c) => c.id !== cardId));
+    } catch (err) {
+      setError(parseApiError(err, 'Erro ao remover cartão'));
     }
   };
 
@@ -305,6 +372,88 @@ const ClientsView = () => {
                   Necessário para lembretes, Pix em atraso e confirmação de pagamento.
                 </small>
               </div>
+              {editCliente && (
+                <div
+                  className="settings-section"
+                  style={{ marginTop: 24, paddingTop: 20, borderTop: '1px solid var(--border)' }}
+                >
+                  <h4 style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                    <CreditCard size={18} /> Cartões salvos (Mercado Pago)
+                  </h4>
+                  <p className="text-muted" style={{ fontSize: '0.8rem', marginBottom: 12 }}>
+                    Dados tokenizados no Mercado Pago — o MotoPay não armazena número completo do
+                    cartão.
+                  </p>
+                  {mpCards.length === 0 && !showAddCard && (
+                    <p className="text-muted" style={{ fontSize: '0.85rem' }}>
+                      Nenhum cartão salvo.
+                    </p>
+                  )}
+                  <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 12px' }}>
+                    {mpCards.map((card) => (
+                      <li
+                        key={card.id}
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          padding: '8px 0',
+                          borderBottom: '1px solid var(--border)',
+                        }}
+                      >
+                        <span>
+                          •••• {card.last_four_digits} — {card.payment_method_id}
+                          {card.is_default && (
+                            <span className="text-muted"> (padrão)</span>
+                          )}
+                        </span>
+                        <button
+                          type="button"
+                          className="icon-btn danger"
+                          onClick={() => void handleDeleteCard(card.id)}
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                  {!showAddCard ? (
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      onClick={() => setShowAddCard(true)}
+                    >
+                      Adicionar cartão
+                    </button>
+                  ) : (
+                    <div style={{ marginTop: 12 }}>
+                      <CardPaymentSaveBrick
+                        payer={{
+                          email: mercadoPagoPayerEmail(editCliente.id, mpCredentialsMode),
+                          identification: {
+                            type: 'CPF',
+                            number: cpfDigits(editCliente.cpf),
+                          },
+                        }}
+                        onSubmit={handleSaveCard}
+                      />
+                      {cardSaveLoading && (
+                        <p className="text-muted" style={{ fontSize: '0.85rem' }}>
+                          Salvando…
+                        </p>
+                      )}
+                      <button
+                        type="button"
+                        className="btn-secondary"
+                        style={{ marginTop: 8 }}
+                        onClick={() => setShowAddCard(false)}
+                      >
+                        Cancelar
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
               <div className="modal-actions">
                 <button type="button" className="btn-secondary" onClick={() => setShowModal(false)}>
                   Cancelar

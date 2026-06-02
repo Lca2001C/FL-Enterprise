@@ -190,7 +190,7 @@ Reações automáticas:
 * **Dono:** vê apenas dados da sua operação (`operacao_id` no token). Telas principais:
   * **Contratos** — nova locação (cliente + moto + valor), encerrar, gerar Pix/assinatura Mercado Pago.
   * **Clientes** — cadastro com **Telegram ID** (obrigatório para bot: lembretes, Pix em atraso, confirmação).
-  * **Cobranças** — listagem com multa/juros, copiar Pix em `pendente` ou `atrasado`.
+  * **Cobranças** — listagem com multa/juros; **Pagar** (Pix, crédito ou débito) ou copiar Pix rápido.
   * **Dashboard** — inadimplência resumida com atalho para contratos e copiar Pix.
   * **Ajustes** — multa fixa, juros diários e **mensagens do Telegram** (notificações e comandos do bot), editáveis por operação em *Ajustes da Operação*; placeholders como `{placa}` e `{valor_total}`; worker e bot leem do banco na próxima mensagem (sem redeploy).
 * **Admin:** mesmo painel + seletor de operação no topo; branding "MotoPay Admin".
@@ -358,7 +358,83 @@ Abra `http://localhost:5173`. Use `VITE_API_BASE_URL` apontando para a API como 
 
 `POST {API_PUBLIC_BASE_URL}/webhooks/mercadopago`
 
-Configure `MERCADOPAGO_ACCESS_TOKEN` e opcionalmente `MERCADOPAGO_WEBHOOK_SECRET` (header `x-signature`). Pagamentos Pix confirmados (`approved`) atualizam `cobrancas`, lançam `financeiro`, recalculam score e enfileiram notificação Telegram.
+Variáveis em [`.env.example`](.env.example):
+
+* **`MERCADOPAGO_ACCESS_TOKEN`** — Access Token de produção ou teste ([Mercado Pago Developers](https://www.mercadopago.com.br/developers)).
+* **`MERCADOPAGO_PUBLIC_KEY`** — Public Key (mesmo ambiente do Access Token; seguro no front). Painel → Credenciais → copiar **Public Key**.
+* **`MERCADOPAGO_WEBHOOK_SECRET`** — secret exibido ao cadastrar o webhook no painel MP (validação HMAC no header `x-signature`: `ts=...,v1=...` + `x-request-id`).
+
+Status no painel: **Ajustes** → seção Mercado Pago (via `GET /api/v1/config/payments`). Docker injeta `VITE_MERCADOPAGO_PUBLIC_KEY` no build do frontend a partir do `.env`.
+
+**SDKs oficiais:**
+
+* **Backend** — pacote Python [`mercadopago`](https://github.com/mercadopago/sdk-python) (`motopay/infrastructure/payments/mercadopago_sdk.py` + `MercadoPagoClient`).
+* **Frontend** — [`@mercadopago/sdk-react`](https://github.com/mercadopago/sdk-js); `initMercadoPago` após login (`MercadoPagoProvider`), com `VITE_MERCADOPAGO_PUBLIC_KEY` ou `mercadopago_public_key` de `/api/v1/config/payments`.
+* O fluxo Pix atual na UI (copiar código) **não muda**; Payment Brick / Wallet Brick podem ser adicionados depois sobre o SDK já inicializado.
+
+**Uma conta MP por operação (recomendado em multi-tenant):**
+
+1. Cada dono da frota cadastra no painel MP da **própria** aplicação: Access Token, Public Key e Webhook Secret.
+2. Em **Ajustes** → Mercado Pago, cole os três campos (deixe em branco para manter o valor salvo).
+3. No painel Mercado Pago, cadastre o webhook com a URL exibida em Ajustes (`{API_PUBLIC_BASE_URL}/webhooks/mercadopago`) e copie o secret gerado.
+4. Pix e assinaturas são criados com o token da operação; o valor cai na conta MP desse dono.
+5. O `.env` global (`MERCADOPAGO_*`) serve de **fallback** quando a operação não tem credenciais próprias (ex.: conta única da plataforma).
+
+Se a operação tiver **qualquer** credencial MP preenchida, os três campos passam a ser obrigatórios (modo estrito — sem misturar token da operação com webhook global).
+
+**Orders API (Checkout Transparente):**
+
+Pix e cartão são criados via `POST /v1/orders` (`processing_mode: automatic`). Cada cobrança guarda `mercadopago_order_id` (ex.: `ORD…`) e `mercadopago_payment_id` (ex.: `PAY…`). Referência externa: `cobranca-{id}`.
+
+**Métodos de pagamento (Cobranças → Pagar):**
+
+* **Pix** — `POST /api/v1/cobrancas/{id}/pix` cria/atualiza order Pix; QR em `pix_copia_cola`.
+* **Cartão de crédito / débito** — Payment Brick + order; cartão salvo exige **CVV** (novo token) no formulário.
+* `payment_method_type` na cobrança: `pix`, `credit_card`, `debit_card`.
+* **Status Screen Brick** usa `payment_id` (PAY…) para 3DS quando `pending_challenge`.
+* **Clientes** → cartões salvos: API Customers/Cards (inalterada); pagamento com salvo usa `payer.customer_id` + token.
+
+**Webhook:** cadastre no painel MP o evento **Order (Mercado Pago)** (não só Pagamentos). URL: `{API_PUBLIC_BASE_URL}/webhooks/mercadopago`. Ao receber `type=order`, a API valida `GET /v1/orders/{id}` e finaliza a cobrança quando `status=processed`. Cobranças antigas sem `mercadopago_order_id` não confirmam automaticamente via webhook.
+
+Assinaturas (`preapproval`) continuam na API legada de recorrência.
+
+**Checklist credenciais (`.env`):**
+
+1. `MERCADOPAGO_CREDENTIALS_MODE` — `test` (dev) ou `production` (deploy; em `ENVIRONMENT=production` o modo teste é ignorado).
+2. **Produção:** `MERCADOPAGO_ACCESS_TOKEN`, `MERCADOPAGO_PUBLIC_KEY`, `MERCADOPAGO_WEBHOOK_SECRET` (painel → Credenciais de produção).
+3. **Teste:** `MERCADOPAGO_ACCESS_TOKEN_TEST`, `MERCADOPAGO_PUBLIC_KEY_TEST`, `MERCADOPAGO_WEBHOOK_SECRET_TEST` (painel → [Credenciais de teste](https://www.mercadopago.com.br/developers/pt/docs/credentials)).
+4. `MERCADOPAGO_VITE_PUBLIC_KEY` — Public Key do modo ativo para build Docker do frontend (em teste, igual a `MERCADOPAGO_PUBLIC_KEY_TEST`).
+
+**Credenciais de teste (passo a passo):**
+
+1. [Painel MP](https://www.mercadopago.com.br/developers/panel/app) → sua aplicação → **Credenciais de teste**.
+2. Copiar **Public Key** e **Access Token** → colar em `MERCADOPAGO_*_TEST` no `.env`.
+3. `MERCADOPAGO_CREDENTIALS_MODE=test` e `MERCADOPAGO_VITE_PUBLIC_KEY` = mesma Public Key de teste.
+4. `docker compose restart api worker` (e `docker compose build frontend` se alterou a Public Key do front).
+5. Pix e assinaturas usam sandbox (sem dinheiro real). **Contas de teste** no painel MP simulam comprador/vendedor em fluxos avançados.
+6. Webhook local: ngrok + secret de teste em `MERCADOPAGO_WEBHOOK_SECRET_TEST` (ou produção se cadastrar na mesma URL).
+
+Não misture Access Token de produção com Public Key de teste — sempre o par da mesma aba do painel.
+
+**Produção (HTTPS):**
+
+1. Defina `API_PUBLIC_BASE_URL=https://sua-api.com`, `MERCADOPAGO_PUBLIC_KEY` e `MERCADOPAGO_WEBHOOK_SECRET`.
+2. No painel MP → Webhooks → URL: `https://sua-api.com/webhooks/mercadopago` → evento **Order (Mercado Pago)** (e assinaturas se usar recorrência).
+3. Copie o **secret** para `MERCADOPAGO_WEBHOOK_SECRET` e reinicie API/worker (`docker compose restart api worker`).
+
+**Local com ngrok (testar confirmação automática):**
+
+1. `docker compose up -d` e `ngrok http 8000`.
+2. No `.env`: `API_PUBLIC_BASE_URL=https://SEU-ID.ngrok-free.app` (URL HTTPS do ngrok).
+3. Cadastre o mesmo URL + `/webhooks/mercadopago` no painel MP; cole o secret no `.env`.
+4. Reinicie: `docker compose restart api worker`.
+5. Gere Pix no painel → pague → verifique logs do ngrok/API → cobrança deve ir para `recebido`.
+
+**Dev sem secret:** com `MERCADOPAGO_WEBHOOK_SECRET` vazio, o webhook aceita POST sem assinatura (apenas desenvolvimento).
+
+**Segurança:** se tokens reais vazaram em chat ou commit, rotacione `MERCADOPAGO_ACCESS_TOKEN` e `TELEGRAM_BOT_TOKEN` nos respectivos painéis.
+
+**Reinstalar / limpar cache:** após trocar credenciais, reinicie containers e limpe dados do site no navegador se testar PWA instalado.
 
 ### Papéis de usuário
 

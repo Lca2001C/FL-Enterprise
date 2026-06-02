@@ -4,6 +4,7 @@ motopay/__init__.py
 motopay/alerts/__init__.py
 motopay/alerts/manager.py
 motopay/config/__init__.py
+motopay/config/mercadopago_credentials.py
 motopay/config/settings.py
 motopay/domain/__init__.py
 motopay/domain/enums.py
@@ -24,6 +25,7 @@ motopay/infrastructure/messaging/tasks.py
 motopay/infrastructure/messaging/worker_metrics.py
 motopay/infrastructure/payments/__init__.py
 motopay/infrastructure/payments/mercadopago_client.py
+motopay/infrastructure/payments/mercadopago_sdk.py
 motopay/infrastructure/resilience/redis_circuit_breaker.py
 motopay/infrastructure/security/__init__.py
 motopay/infrastructure/security/client_ip.py
@@ -50,6 +52,7 @@ motopay/interfaces/api/routers/analytics.py
 motopay/interfaces/api/routers/auth.py
 motopay/interfaces/api/routers/clientes.py
 motopay/interfaces/api/routers/cobrancas.py
+motopay/interfaces/api/routers/config.py
 motopay/interfaces/api/routers/contratos.py
 motopay/interfaces/api/routers/financeiro.py
 motopay/interfaces/api/routers/health.py
@@ -91,6 +94,9 @@ tests/test_billing_webhook_flow.py
 tests/test_celery_observability.py
 tests/test_contrato_documento.py
 tests/test_list_filters.py
+tests/test_mercadopago_client.py
+tests/test_mercadopago_credentials.py
+tests/test_mercadopago_sdk_factory.py
 tests/test_mercadopago_webhook.py
 tests/test_metrics_middleware.py
 tests/test_motos_imagem.py
@@ -98,6 +104,8 @@ tests/test_motos_km.py
 tests/test_operacao_settings.py
 tests/test_ops_endpoints.py
 tests/test_overdue_pix.py
+tests/test_payment_gateway.py
+tests/test_payments_config.py
 tests/test_realtime.py
 tests/test_scope.py
 tests/test_settings_production.py

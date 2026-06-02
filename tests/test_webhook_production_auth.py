@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-from unittest.mock import patch
-
 import pytest
 from motopay.config import get_settings
+from tests.test_mercadopago_client import _signature_headers
 
 
 @pytest.fixture
@@ -28,7 +27,10 @@ def test_mercadopago_webhook_rejects_bad_signature_in_production(
     get_settings.cache_clear()
     response = client.post(
         "/webhooks/mercadopago",
-        headers={"x-signature": "wrong"},
+        headers={
+            "x-signature": "ts=1704908010,v1=bad",
+            "x-request-id": "req-prod",
+        },
         json={"type": "payment", "data": {"id": "123"}},
     )
     assert response.status_code == 403
@@ -40,15 +42,12 @@ def test_mercadopago_webhook_accepts_signature_in_production(
 ):
     monkeypatch.setenv("MERCADOPAGO_WEBHOOK_SECRET", "prod-mp-secret")
     get_settings.cache_clear()
-    with patch(
-        "motopay.interfaces.api.routers.webhooks._payment_confirmed_in_mercadopago",
-        return_value=(False, None),
-    ):
-        response = client.post(
-            "/webhooks/mercadopago",
-            headers={"x-signature": "prod-mp-secret"},
-            json={"type": "payment", "data": {"id": "123"}},
-        )
+    headers = _signature_headers(secret="prod-mp-secret", data_id="123", request_id="req-prod")
+    response = client.post(
+        "/webhooks/mercadopago",
+        headers=headers,
+        json={"type": "payment", "data": {"id": "123"}},
+    )
     assert response.status_code == 200
     assert response.json() == {"ok": True}
     get_settings.cache_clear()

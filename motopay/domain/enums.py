@@ -45,3 +45,9 @@ class DomainEventType(str, Enum):
 
 class PaymentGateway(str, Enum):
     MERCADOPAGO = "mercadopago"
+
+
+class PaymentMethodType(str, Enum):
+    PIX = "pix"
+    CREDIT_CARD = "credit_card"
+    DEBIT_CARD = "debit_card"

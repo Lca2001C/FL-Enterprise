@@ -15,6 +15,7 @@ from motopay.domain.enums import (
     DomainEventType,
     FinanceiroTipo,
     PaymentGateway,
+    PaymentMethodType,
     UserRole,
 )
 from motopay.domain.exceptions import ForbiddenError, NotFoundError
@@ -29,12 +30,15 @@ from motopay.infrastructure.db.models import (
 from motopay.infrastructure.payments.mercadopago_client import (
     MercadoPagoClient,
     mp_configured_for_operacao,
+    mp_credentials_complete,
     mp_token_for_operacao,
+    payer_email_for_mercadopago,
+    uses_operacao_mercadopago_credentials,
 )
 from motopay.interfaces.api.deps import CurrentUser
 from motopay.interfaces.api.schemas import CobrancaOut
 from motopay.services.late_fee import LateAmounts, calculate_late_amounts
-from motopay.services.payment_gateway import cancel_external_payment, create_pix_for_contrato
+from motopay.services.payment_gateway import cancel_external_payment, create_pix_for_cobranca
 from motopay.services.scoring_service import recalculate_cliente_score
 
 logger = logging.getLogger(__name__)
@@ -113,9 +117,11 @@ def _cobranca_to_out(
         contrato_id=c.contrato_id,
         valor=base,
         vencimento=c.vencimento,
+        mercadopago_order_id=c.mercadopago_order_id,
         mercadopago_payment_id=c.mercadopago_payment_id,
         payment_gateway=c.payment_gateway or PaymentGateway.MERCADOPAGO.value,
         pix_copia_cola=c.pix_copia_cola,
+        payment_method_type=c.payment_method_type,
         status=display_status,
         dias_atraso=amounts.dias_atraso,
         multa=amounts.multa,
@@ -141,7 +147,8 @@ def late_amounts_for_contrato(
 def _apply_pix_to_cobranca(
     cob: Cobranca,
     *,
-    external_id: str,
+    order_id: str,
+    payment_id: str,
     pix: str | None,
     gateway: str,
     valor: Decimal,
@@ -151,7 +158,9 @@ def _apply_pix_to_cobranca(
     cob.pix_copia_cola = pix
     cob.payment_gateway = gateway
     cob.status = status
-    cob.mercadopago_payment_id = external_id
+    cob.mercadopago_order_id = order_id
+    cob.mercadopago_payment_id = payment_id
+    cob.payment_method_type = PaymentMethodType.PIX.value
 
 
 def refresh_overdue_pix(db: Session, *, contrato: Contrato, today: date) -> Cobranca | None:
@@ -182,7 +191,7 @@ def refresh_overdue_pix(db: Session, *, contrato: Contrato, today: date) -> Cobr
         cob is not None
         and cob.status == CobrancaStatus.ATRASADO.value
         and cob.valor == amounts.valor_total
-        and cob.mercadopago_payment_id
+        and cob.mercadopago_order_id
         and cob.pix_copia_cola
     ):
         return cob
@@ -190,17 +199,10 @@ def refresh_overdue_pix(db: Session, *, contrato: Contrato, today: date) -> Cobr
     if cob is not None:
         cancel_external_payment(
             gateway=cob.payment_gateway,
-            payment_id=cob.mercadopago_payment_id,
+            order_id=cob.mercadopago_order_id,
             op=op,
         )
-
-    ext_id, pix, gw = create_pix_for_contrato(
-        op=op,
-        cliente=cliente,
-        contrato_id=contrato.id,
-        valor_total=amounts.valor_total,
-        due_date=today,
-    )
+        db.flush()
 
     if cob is None:
         cob = Cobranca(
@@ -211,9 +213,19 @@ def refresh_overdue_pix(db: Session, *, contrato: Contrato, today: date) -> Cobr
             status=CobrancaStatus.ATRASADO.value,
         )
         db.add(cob)
+        db.flush()
+
+    order_id, payment_id, pix, gw = create_pix_for_cobranca(
+        op=op,
+        cliente=cliente,
+        cobranca_id=cob.id,
+        valor_total=amounts.valor_total,
+        due_date=today,
+    )
     _apply_pix_to_cobranca(
         cob,
-        external_id=ext_id,
+        order_id=order_id,
+        payment_id=payment_id,
         pix=pix,
         gateway=gw,
         valor=amounts.valor_total,
@@ -240,34 +252,94 @@ def create_pix_charge_for_contract(
     op = db.get(Operacao, operacao_id)
     if not op:
         raise NotFoundError("Operação não encontrada")
-    ext_id, pix, gw = create_pix_for_contrato(
-        op=op,
-        cliente=cliente,
-        contrato_id=ct.id,
-        valor_total=ct.valor_recorrente,
-        due_date=ct.proximo_vencimento,
-    )
     cob = Cobranca(
         operacao_id=operacao_id,
         contrato_id=ct.id,
         valor=ct.valor_recorrente,
         vencimento=ct.proximo_vencimento,
-        pix_copia_cola=pix,
-        payment_gateway=gw,
+        payment_method_type=PaymentMethodType.PIX.value,
         status=CobrancaStatus.PENDENTE.value,
+    )
+    db.add(cob)
+    db.flush()
+    order_id, payment_id, pix, gw = create_pix_for_cobranca(
+        op=op,
+        cliente=cliente,
+        cobranca_id=cob.id,
+        valor_total=ct.valor_recorrente,
+        due_date=ct.proximo_vencimento,
     )
     _apply_pix_to_cobranca(
         cob,
-        external_id=ext_id,
+        order_id=order_id,
+        payment_id=payment_id,
         pix=pix,
         gateway=gw,
         valor=ct.valor_recorrente,
         status=CobrancaStatus.PENDENTE.value,
     )
-    db.add(cob)
     db.commit()
     db.refresh(cob)
     return _cobranca_to_out(cob, op, date.today(), valor_base=ct.valor_recorrente)
+
+
+def ensure_pix_for_cobranca(
+    db: Session,
+    user: CurrentUser,
+    operacao_scope: int | None,
+    cobranca_id: int,
+) -> CobrancaOut:
+    """Gera ou atualiza código Pix Mercado Pago para cobrança aberta."""
+    operacao_id = _effective_operacao(user, operacao_scope)
+    cob = db.get(Cobranca, cobranca_id)
+    if not cob or cob.operacao_id != operacao_id:
+        raise NotFoundError("Cobrança não encontrada")
+    if cob.status not in _OPEN_COBRANCA_STATUSES:
+        raise ForbiddenError("Cobrança não está aberta para pagamento")
+
+    ct = db.get(Contrato, cob.contrato_id)
+    if not ct:
+        raise NotFoundError("Contrato não encontrado")
+    cliente = db.get(Cliente, ct.cliente_id)
+    if not cliente:
+        raise NotFoundError("Cliente não encontrado")
+    op = db.get(Operacao, operacao_id)
+    if not op:
+        raise NotFoundError("Operação não encontrada")
+
+    amounts = calculate_late_amounts(
+        valor_base=cob.valor,
+        vencimento=cob.vencimento,
+        operacao=op,
+        today=date.today(),
+    )
+    due = max(cob.vencimento, date.today())
+    if cob.mercadopago_order_id:
+        cancel_external_payment(
+            gateway=cob.payment_gateway,
+            order_id=cob.mercadopago_order_id,
+            op=op,
+        )
+    order_id, payment_id, pix, gw = create_pix_for_cobranca(
+        op=op,
+        cliente=cliente,
+        cobranca_id=cob.id,
+        valor_total=amounts.valor_total,
+        due_date=due,
+    )
+    _apply_pix_to_cobranca(
+        cob,
+        order_id=order_id,
+        payment_id=payment_id,
+        pix=pix,
+        gateway=gw,
+        valor=amounts.valor_total,
+        status=cob.status if cob.status in _OPEN_COBRANCA_STATUSES else CobrancaStatus.PENDENTE.value,
+    )
+    db.add(cob)
+    db.commit()
+    db.refresh(cob)
+    return _cobranca_to_out(cob, op, date.today())
 
 
 def create_mercadopago_subscription_for_contract(
@@ -285,6 +357,11 @@ def create_mercadopago_subscription_for_contract(
         raise NotFoundError("Operação não encontrada")
     if not mp_configured_for_operacao(op):
         raise ForbiddenError("Mercado Pago não configurado")
+    if uses_operacao_mercadopago_credentials(op) and not mp_credentials_complete(op):
+        raise ForbiddenError(
+            "Credenciais Mercado Pago incompletas. Configure Access Token, Public Key e "
+            "Webhook Secret em Ajustes."
+        )
     cliente = db.get(Cliente, ct.cliente_id)
     if not cliente:
         raise NotFoundError("Cliente não encontrado")
@@ -292,7 +369,7 @@ def create_mercadopago_subscription_for_contract(
         external_reference=f"contrato-{ct.id}",
         value=ct.valor_recorrente,
         reason=f"Contrato #{ct.id}",
-        payer_email=f"cliente{cliente.id}@motopay.local",
+        payer_email=payer_email_for_mercadopago(cliente.id),
     )
     ct.mercadopago_subscription_id = sub_id
     db.add(ct)
@@ -416,7 +493,8 @@ def _finalize_payment(
         "contrato_id": ct.id,
         "cliente_id": ct.cliente_id,
         "operacao_id": cob.operacao_id,
-        "mercadopago_payment_id": external_id,
+        "mercadopago_order_id": cob.mercadopago_order_id,
+        "mercadopago_payment_id": cob.mercadopago_payment_id or external_id,
     }
 
     ev = EventoDominio(
@@ -430,21 +508,21 @@ def _finalize_payment(
     return True, ev_id
 
 
-def handle_mercadopago_payment_confirmed(
+def handle_mercadopago_order_confirmed(
     db: Session,
     *,
-    mercadopago_payment_id: str,
+    mercadopago_order_id: str,
     value: Decimal | None = None,
 ) -> tuple[bool, int | None]:
     cob = db.scalars(
-        select(Cobranca).where(Cobranca.mercadopago_payment_id == mercadopago_payment_id)
+        select(Cobranca).where(Cobranca.mercadopago_order_id == mercadopago_order_id)
     ).first()
     if not cob:
         return False, None
     return _finalize_payment(
         db,
         cob,
-        external_id=mercadopago_payment_id,
+        external_id=mercadopago_order_id,
         gateway=PaymentGateway.MERCADOPAGO.value,
         value=value,
     )

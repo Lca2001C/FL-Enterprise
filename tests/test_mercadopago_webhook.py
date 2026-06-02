@@ -8,7 +8,7 @@ from motopay.domain.enums import CicloCobranca, CobrancaStatus, ContratoStatus
 from motopay.infrastructure.db.models import Cliente, Cobranca, Contrato, Moto, Operacao
 
 
-def test_mercadopago_webhook_confirms_payment(client, db_session):
+def test_mercadopago_webhook_confirms_order(client, db_session):
     op = Operacao(nome="MP Op")
     db_session.add(op)
     db_session.flush()
@@ -40,7 +40,8 @@ def test_mercadopago_webhook_confirms_payment(client, db_session):
         contrato_id=ct.id,
         valor=Decimal("100"),
         vencimento=date(2025, 2, 1),
-        mercadopago_payment_id="999888",
+        mercadopago_order_id="ORD999888",
+        mercadopago_payment_id="PAY999888",
         payment_gateway="mercadopago",
         status=CobrancaStatus.PENDENTE.value,
     )
@@ -49,13 +50,16 @@ def test_mercadopago_webhook_confirms_payment(client, db_session):
 
     with (
         patch(
-            "motopay.interfaces.api.routers.webhooks._payment_confirmed_in_mercadopago",
+            "motopay.interfaces.api.routers.webhooks._order_confirmed_in_mercadopago",
             return_value=(True, Decimal("100")),
         ),
         patch("motopay.interfaces.api.routers.webhooks.handle_domain_event") as mock_task,
     ):
         mock_task.delay = MagicMock()
-        r = client.post("/webhooks/mercadopago", json={"type": "payment", "data": {"id": "999888"}})
+        r = client.post(
+            "/webhooks/mercadopago",
+            json={"type": "order", "data": {"id": "ORD999888"}},
+        )
         assert r.status_code == 200
         db_session.refresh(cob)
         assert cob.status == CobrancaStatus.RECEBIDO.value

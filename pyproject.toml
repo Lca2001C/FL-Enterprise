@@ -20,6 +20,7 @@ dependencies = [
     "passlib[bcrypt]>=1.7.4",
     "bcrypt>=4.0.1,<4.1.0",
     "httpx>=0.26.0",
+    "mercadopago>=2.2.10",
     "celery[redis]>=5.3.6",
     "redis>=5.0.1",
     "python-telegram-bot>=21.0",

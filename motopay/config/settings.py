@@ -76,8 +76,13 @@ class Settings(BaseSettings):
     allow_production_without_telegram: bool = False
     allow_webhook_token_in_query: bool = True
 
+    mercadopago_credentials_mode: str = "test"
     mercadopago_access_token: str = ""
+    mercadopago_public_key: str = ""
     mercadopago_webhook_secret: str = ""
+    mercadopago_access_token_test: str = ""
+    mercadopago_public_key_test: str = ""
+    mercadopago_webhook_secret_test: str = ""
 
     celery_beat_hour: int = 11
     celery_beat_minute: int = 0

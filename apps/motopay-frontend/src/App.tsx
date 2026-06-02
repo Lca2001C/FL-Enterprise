@@ -1,5 +1,6 @@
 import React from 'react';
 import { AuthProvider, useAuth } from './AuthContext';
+import { MercadoPagoProvider } from './integrations/mercadopago/MercadoPagoProvider';
 import Login from './Login';
 import FleetView from './FleetView';
 import ClientsView from './ClientsView';
@@ -1210,7 +1211,9 @@ function App() {
         <>
           <ReloadPrompt />
           <InstallPrompt />
-          <MainApp />
+          <MercadoPagoProvider>
+            <MainApp />
+          </MercadoPagoProvider>
         </>
       </AlertProvider>
     </AuthProvider>

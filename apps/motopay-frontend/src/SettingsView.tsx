@@ -7,6 +7,7 @@ import {
   type OperacaoConfig,
   type TelegramBotMenuButton,
   type TelegramTemplateMeta,
+  type PaymentsConfig,
   type TelegramTemplatePreviewOut,
 } from './apiTypes';
 import { parseApiError } from './utils/apiError';
@@ -45,6 +46,9 @@ const SettingsView = () => {
     telegram_owner_notify_enabled: false,
   });
   const [mpToken, setMpToken] = useState('');
+  const [mpPublicKey, setMpPublicKey] = useState('');
+  const [mpWebhookSecret, setMpWebhookSecret] = useState('');
+  const [paymentsConfig, setPaymentsConfig] = useState<PaymentsConfig | null>(null);
   const [templateMeta, setTemplateMeta] = useState<TelegramTemplateMeta[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -60,6 +64,21 @@ const SettingsView = () => {
   const showToast = (msg: string) => {
     setToast(msg);
     setTimeout(() => setToast(''), 4000);
+  };
+
+  const fetchPaymentsConfig = async () => {
+    if (isAdmin && adminTargetId == null) {
+      setPaymentsConfig(null);
+      return;
+    }
+    try {
+      const params =
+        isAdmin && adminTargetId != null ? { operacao_id: adminTargetId } : undefined;
+      const r = await api.get<PaymentsConfig>('/api/v1/config/payments', { params });
+      setPaymentsConfig(r.data);
+    } catch {
+      setPaymentsConfig(null);
+    }
   };
 
   const fetchConfig = async () => {
@@ -81,6 +100,7 @@ const SettingsView = () => {
             telegram_owner_notify_enabled: false,
           });
           setMpToken('');
+          setPaymentsConfig(null);
           setLoading(false);
           return;
         }
@@ -107,6 +127,7 @@ const SettingsView = () => {
         });
         setMpToken('');
       }
+      await fetchPaymentsConfig();
     } catch (e) {
       setError(parseApiError(e, 'Erro ao carregar configurações'));
     } finally {
@@ -118,9 +139,15 @@ const SettingsView = () => {
     void fetchConfig();
   }, [user?.tipo, adminTargetId, api]);
 
+  const appendMercadoPagoFields = (body: Record<string, unknown>) => {
+    if (mpToken.trim()) body.mercadopago_access_token = mpToken.trim();
+    if (mpPublicKey.trim()) body.mercadopago_public_key = mpPublicKey.trim();
+    if (mpWebhookSecret.trim()) body.mercadopago_webhook_secret = mpWebhookSecret.trim();
+  };
+
   const buildPatchBody = () => {
     if (isDono) {
-      return {
+      const body: Record<string, unknown> = {
         multa_fixa_percentual: config.multa_fixa_percentual,
         juros_diario_percentual: config.juros_diario_percentual,
         telegram_templates: config.telegram_templates,
@@ -128,6 +155,8 @@ const SettingsView = () => {
         telegram_owner_notify_id: config.telegram_owner_notify_id,
         telegram_owner_notify_enabled: config.telegram_owner_notify_enabled,
       };
+      appendMercadoPagoFields(body);
+      return body;
     }
     const body: Record<string, unknown> = {
       nome: config.nome,
@@ -139,9 +168,7 @@ const SettingsView = () => {
       telegram_owner_notify_id: config.telegram_owner_notify_id,
       telegram_owner_notify_enabled: config.telegram_owner_notify_enabled,
     };
-    if (mpToken.trim()) {
-      body.mercadopago_access_token = mpToken.trim();
-    }
+    appendMercadoPagoFields(body);
     return body;
   };
 
@@ -300,11 +327,52 @@ const SettingsView = () => {
             </div>
           )}
 
-          {isAdmin && (
-            <div className="settings-section" style={{ marginTop: 40 }}>
-              <h3 style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
+          {(isAdmin || isDono) && paymentsConfig && (
+            <div className="settings-section" style={{ marginTop: isAdmin ? 40 : 0 }}>
+              <h3 style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
                 <CreditCard size={20} color="var(--primary)" /> Mercado Pago
               </h3>
+              <ul className="mp-status-list" style={{ margin: '0 0 20px', paddingLeft: 18, fontSize: '0.9rem' }}>
+                <li>
+                  Modo API:{' '}
+                  <strong>
+                    {paymentsConfig.credentials_mode === 'test' ? 'Teste' : 'Produção'}
+                  </strong>
+                </li>
+                <li>
+                  Origem das credenciais:{' '}
+                  <strong>
+                    {paymentsConfig.mercadopago_credentials_source === 'operacao'
+                      ? 'Conta desta operação'
+                      : paymentsConfig.mercadopago_credentials_source === 'global'
+                        ? 'Conta global (.env)'
+                        : 'Não configurado'}
+                  </strong>
+                </li>
+                <li>
+                  Credenciais completas:{' '}
+                  <strong>
+                    {paymentsConfig.mercadopago_credentials_complete ? 'sim' : 'não'}
+                  </strong>
+                </li>
+                <li>
+                  Cobranças ativas:{' '}
+                  <strong>{paymentsConfig.mercadopago_configured ? 'sim' : 'pendente'}</strong>
+                </li>
+                {paymentsConfig.webhook_url && (
+                  <li>
+                    URL do webhook (cadastre no painel MP):{' '}
+                    <code style={{ fontSize: '0.8rem', wordBreak: 'break-all' }}>
+                      {paymentsConfig.webhook_url}
+                    </code>
+                  </li>
+                )}
+              </ul>
+              <p className="text-muted" style={{ fontSize: '0.85rem', marginBottom: 16 }}>
+                Cada operação pode usar sua própria conta Mercado Pago. Preencha os três campos abaixo
+                (Access Token, Public Key e Webhook Secret do painel da sua aplicação MP). Deixe em
+                branco para manter o valor atual.
+              </p>
               <div className="input-group">
                 <label className="input-label">Access Token</label>
                 <input
@@ -312,13 +380,43 @@ const SettingsView = () => {
                   className="input-field"
                   value={mpToken}
                   onChange={(e) => setMpToken(e.target.value)}
-                  placeholder="Deixe em branco para manter o token atual"
+                  placeholder="Deixe em branco para manter"
                   autoComplete="off"
                 />
-                <small className="text-muted">
-                  O token não é exibido após salvar. Informe novamente apenas para alterar.
-                </small>
               </div>
+              <div className="input-group">
+                <label className="input-label">Public Key</label>
+                <input
+                  type="password"
+                  className="input-field"
+                  value={mpPublicKey}
+                  onChange={(e) => setMpPublicKey(e.target.value)}
+                  placeholder={
+                    paymentsConfig.mercadopago_public_key
+                      ? 'Definida — deixe em branco para manter'
+                      : 'Cole a Public Key do painel MP'
+                  }
+                  autoComplete="off"
+                />
+              </div>
+              <div className="input-group">
+                <label className="input-label">Webhook Secret</label>
+                <input
+                  type="password"
+                  className="input-field"
+                  value={mpWebhookSecret}
+                  onChange={(e) => setMpWebhookSecret(e.target.value)}
+                  placeholder="Secret exibido ao cadastrar o webhook no MP"
+                  autoComplete="off"
+                />
+              </div>
+              {!paymentsConfig.mercadopago_credentials_complete && (
+                <p className="text-muted" style={{ fontSize: '0.85rem' }}>
+                  {paymentsConfig.mercadopago_has_operacao_token
+                    ? 'Há credenciais parciais desta operação — complete os três campos para ativar.'
+                    : 'Configure as credenciais desta operação ou MERCADOPAGO_* no .env da API (conta global).'}
+                </p>
+              )}
             </div>
           )}
 

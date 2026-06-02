@@ -44,6 +44,8 @@ class Operacao(Base):
         Boolean, nullable=False, server_default="false"
     )
     mercadopago_access_token: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    mercadopago_public_key: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    mercadopago_webhook_secret: Mapped[str | None] = mapped_column(String(256), nullable=True)
 
     usuarios: Mapped[list[Usuario]] = relationship(back_populates="operacao")
     motos: Mapped[list[Moto]] = relationship(back_populates="operacao")
@@ -103,11 +105,43 @@ class Cliente(Base):
     telefone: Mapped[str] = mapped_column(String(32), nullable=False)
     telegram_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     score: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default="100")
+    mercadopago_customer_id: Mapped[str | None] = mapped_column(
+        String(64), nullable=True, index=True
+    )
 
     operacao: Mapped[Operacao] = relationship(back_populates="clientes")
     contratos: Mapped[list[Contrato]] = relationship(back_populates="cliente")
+    mp_cards: Mapped[list[ClienteMpCard]] = relationship(back_populates="cliente")
 
     __table_args__ = (UniqueConstraint("operacao_id", "cpf", name="uq_clientes_operacao_cpf"),)
+
+
+class ClienteMpCard(Base):
+    __tablename__ = "cliente_mp_cards"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    cliente_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("clientes.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    operacao_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("operacoes.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    mp_card_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    payment_method_id: Mapped[str] = mapped_column(String(32), nullable=False)
+    last_four_digits: Mapped[str] = mapped_column(String(4), nullable=False)
+    cardholder_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    expiration_month: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    expiration_year: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    is_default: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    cliente: Mapped[Cliente] = relationship(back_populates="mp_cards")
+
+    __table_args__ = (
+        UniqueConstraint("cliente_id", "mp_card_id", name="uq_cliente_mp_cards_cliente_mp_card"),
+    )
 
 
 class Contrato(Base):
@@ -182,6 +216,9 @@ class Cobranca(Base):
     contrato_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("contratos.id"), nullable=False)
     valor: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
     vencimento: Mapped[date] = mapped_column(Date, nullable=False)
+    mercadopago_order_id: Mapped[str | None] = mapped_column(
+        String(64), nullable=True, index=True
+    )
     mercadopago_payment_id: Mapped[str | None] = mapped_column(
         String(64), nullable=True, index=True
     )
@@ -189,6 +226,7 @@ class Cobranca(Base):
         String(32), nullable=False, server_default="mercadopago"
     )
     pix_copia_cola: Mapped[str | None] = mapped_column(Text, nullable=True)
+    payment_method_type: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
     status: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

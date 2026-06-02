@@ -12,12 +12,12 @@ from motopay.infrastructure.db.models import (
     Moto,
     Operacao,
 )
-from motopay.services.billing_service import handle_mercadopago_payment_confirmed
+from motopay.services.billing_service import handle_mercadopago_order_confirmed
 from sqlalchemy import func, select
 
 
 def _setup_cobranca(
-    db_session, *, mercadopago_payment_id: str = "pay_idempotent_1"
+    db_session, *, mercadopago_order_id: str = "ORD_idempotent_1"
 ) -> Cobranca:
     op = Operacao(nome="Billing Op")
     db_session.add(op)
@@ -50,7 +50,8 @@ def _setup_cobranca(
         contrato_id=ct.id,
         valor=Decimal("200"),
         vencimento=date(2025, 2, 1),
-        mercadopago_payment_id=mercadopago_payment_id,
+        mercadopago_order_id=mercadopago_order_id,
+        mercadopago_payment_id="PAY_idempotent_1",
         status=CobrancaStatus.PENDENTE.value,
     )
     db_session.add(cob)
@@ -58,10 +59,10 @@ def _setup_cobranca(
     return cob
 
 
-def test_handle_mercadopago_payment_confirmed_marks_cobranca_received(db_session):
+def test_handle_mercadopago_order_confirmed_marks_cobranca_received(db_session):
     cob = _setup_cobranca(db_session)
-    found, ev_id = handle_mercadopago_payment_confirmed(
-        db_session, mercadopago_payment_id=cob.mercadopago_payment_id
+    found, ev_id = handle_mercadopago_order_confirmed(
+        db_session, mercadopago_order_id=cob.mercadopago_order_id
     )
     assert found is True
     assert ev_id is not None
@@ -69,13 +70,13 @@ def test_handle_mercadopago_payment_confirmed_marks_cobranca_received(db_session
     assert cob.status == CobrancaStatus.RECEBIDO.value
 
 
-def test_handle_mercadopago_payment_confirmed_is_idempotent(db_session):
-    cob = _setup_cobranca(db_session, mercadopago_payment_id="pay_idempotent_2")
-    first_found, first_ev_id = handle_mercadopago_payment_confirmed(
-        db_session, mercadopago_payment_id=cob.mercadopago_payment_id
+def test_handle_mercadopago_order_confirmed_is_idempotent(db_session):
+    cob = _setup_cobranca(db_session, mercadopago_order_id="ORD_idempotent_2")
+    first_found, first_ev_id = handle_mercadopago_order_confirmed(
+        db_session, mercadopago_order_id=cob.mercadopago_order_id
     )
-    second_found, second_ev_id = handle_mercadopago_payment_confirmed(
-        db_session, mercadopago_payment_id=cob.mercadopago_payment_id
+    second_found, second_ev_id = handle_mercadopago_order_confirmed(
+        db_session, mercadopago_order_id=cob.mercadopago_order_id
     )
     assert first_found is True
     assert first_ev_id is not None
@@ -89,9 +90,9 @@ def test_handle_mercadopago_payment_confirmed_is_idempotent(db_session):
     assert event_count == 1
 
 
-def test_handle_mercadopago_payment_confirmed_unknown_payment_returns_false(db_session):
-    found, ev_id = handle_mercadopago_payment_confirmed(
-        db_session, mercadopago_payment_id="pay_missing"
+def test_handle_mercadopago_order_confirmed_unknown_order_returns_false(db_session):
+    found, ev_id = handle_mercadopago_order_confirmed(
+        db_session, mercadopago_order_id="ORD_missing"
     )
     assert found is False
     assert ev_id is None

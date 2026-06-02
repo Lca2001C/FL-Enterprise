@@ -109,6 +109,8 @@ class OperacaoUpdate(BaseModel):
     telegram_owner_notify_id: str | None = None
     telegram_owner_notify_enabled: bool | None = None
     mercadopago_access_token: str | None = None
+    mercadopago_public_key: str | None = None
+    mercadopago_webhook_secret: str | None = None
 
 
 class TelegramTemplatePreviewRequest(BaseModel):
@@ -269,15 +271,28 @@ class FinanceiroOut(BaseModel):
     contrato_id: int | None
 
 
+class PaymentsConfigOut(BaseModel):
+    mercadopago_configured: bool
+    mercadopago_public_key: str | None = None
+    webhook_configured: bool
+    credentials_mode: str = "production"
+    mercadopago_credentials_source: str = "none"
+    mercadopago_credentials_complete: bool = False
+    mercadopago_has_operacao_token: bool = False
+    webhook_url: str | None = None
+
+
 class CobrancaOut(BaseModel):
     id: int
     operacao_id: int
     contrato_id: int
     valor: Decimal
     vencimento: date
+    mercadopago_order_id: str | None = None
     mercadopago_payment_id: str | None = None
     payment_gateway: str = "mercadopago"
     pix_copia_cola: str | None
+    payment_method_type: str | None = None
     status: str
     dias_atraso: int = 0
     multa: Decimal = Decimal(0)
@@ -288,6 +303,45 @@ class CobrancaOut(BaseModel):
 class CreateChargeRequest(BaseModel):
     contrato_id: int
     """Cria cobrança Pix via Mercado Pago quando configurado."""
+
+
+class SaveClienteCardRequest(BaseModel):
+    card_token: str
+
+
+class ClienteMpCardOut(BaseModel):
+    id: int
+    mp_card_id: str
+    payment_method_id: str
+    last_four_digits: str
+    cardholder_name: str | None = None
+    expiration_month: int | None = None
+    expiration_year: int | None = None
+    is_default: bool = False
+
+
+class CardPaymentRequest(BaseModel):
+    token: str | None = None
+    saved_card_id: int | None = None
+    installments: int = 1
+    payment_method_id: str | None = None
+    payment_method_kind: str | None = None
+
+
+class ThreeDsInfoOut(BaseModel):
+    external_resource_url: str | None = None
+    creq: str | None = None
+
+
+class CardPaymentOut(BaseModel):
+    payment_id: str
+    status: str
+    status_detail: str
+    requires_3ds: bool = False
+    three_ds_info: ThreeDsInfoOut | None = None
+    cobranca_finalizada: bool = False
+    domain_event_id: int | None = None
+    payment_method_type: str | None = None
 
 
 class MotoAnalyticsRow(BaseModel):

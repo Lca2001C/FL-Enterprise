@@ -7,6 +7,17 @@ export type Paginated<T> = {
   offset: number;
 };
 
+export type PaymentsConfig = {
+  mercadopago_configured: boolean;
+  mercadopago_public_key: string | null;
+  webhook_configured: boolean;
+  credentials_mode: 'test' | 'production';
+  mercadopago_credentials_source: 'operacao' | 'global' | 'none';
+  mercadopago_credentials_complete: boolean;
+  mercadopago_has_operacao_token: boolean;
+  webhook_url: string | null;
+};
+
 export type UserOut = {
   id: number;
   email: string;
@@ -98,6 +109,8 @@ export type OperacaoConfig = {
   telegram_owner_notify_id: string | null;
   telegram_owner_notify_enabled: boolean;
   mercadopago_access_token?: string;
+  mercadopago_public_key?: string;
+  mercadopago_webhook_secret?: string;
 };
 
 export type TelegramCustomMessage = {
@@ -140,14 +153,44 @@ export type FinanceiroOut = {
   contrato_id: number | null;
 };
 
+export type ThreeDsInfo = {
+  external_resource_url: string | null;
+  creq: string | null;
+};
+
+export type ClienteMpCardOut = {
+  id: number;
+  mp_card_id: string;
+  payment_method_id: string;
+  last_four_digits: string;
+  cardholder_name: string | null;
+  expiration_month: number | null;
+  expiration_year: number | null;
+  is_default: boolean;
+};
+
+export type CardPaymentOut = {
+  payment_id: string;
+  status: string;
+  status_detail: string;
+  requires_3ds: boolean;
+  three_ds_info: ThreeDsInfo | null;
+  cobranca_finalizada: boolean;
+  domain_event_id: number | null;
+};
+
+export type PaymentMethodType = 'pix' | 'credit_card' | 'debit_card';
+
 export type CobrancaOut = {
   id: number;
   operacao_id: number;
   contrato_id: number;
   valor: number;
   vencimento: string;
+  mercadopago_order_id: string | null;
   mercadopago_payment_id: string | null;
   payment_gateway: 'mercadopago';
+  payment_method_type: PaymentMethodType | null;
   pix_copia_cola: string | null;
   status: string;
   dias_atraso: number;
