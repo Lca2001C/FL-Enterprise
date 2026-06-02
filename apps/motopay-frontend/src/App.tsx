@@ -153,7 +153,6 @@ const Dashboard = () => {
   const showAjustes = true;
   useRealtime({ enabled: isAdmin });
   useAlertsPolling({ pollInterval: 30000, enabled: isAdmin });
-  const brandTitle = isAdmin ? 'MotoPay Admin' : operacaoNome ? `MotoPay · ${operacaoNome}` : 'MotoPay Painel';
   const roleDisplay =
     user?.tipo === 'dono' && operacaoNome
       ? `${roleLabel(user.tipo)} — ${operacaoNome}`
@@ -451,96 +450,106 @@ const Dashboard = () => {
       )}
       <aside
         id="app-sidebar"
-        className={`sidebar ${isMobileNav ? 'sidebar-solid' : 'glass'} ${sidebarOpen ? 'open' : ''}`}
+        className={`sidebar ${isMobileNav ? 'sidebar-solid' : ''} ${sidebarOpen ? 'open' : ''}`}
         aria-hidden={isMobileNav && !sidebarOpen}
       >
         <div className="sidebar-header">
-          <Shield size={24} color="#6366f1" />
-          <span className="brand-font sidebar-brand">{brandTitle}</span>
+          <div className="sidebar-logo">
+            <Shield size={18} color="#d4a574" />
+          </div>
+          <div className="sidebar-brand-wrap">
+            <span className="brand-font sidebar-brand">MotoPay</span>
+            <span className="sidebar-brand-sub">{isAdmin ? 'Admin' : (operacaoNome ?? 'Painel')}</span>
+          </div>
           <button
             type="button"
             className="sidebar-close mobile-only"
             onClick={() => setSidebarOpen(false)}
           >
-            <X size={20} />
+            <X size={18} />
           </button>
         </div>
 
         <nav className="nav-menu" data-tour="nav-menu">
+          <p className="nav-section-label">Principal</p>
           <NavItem
-            icon={<LayoutDashboard size={20} />}
+            icon={<LayoutDashboard size={18} />}
             label="Visão Geral"
             active={activeTab === 'dashboard'}
             onClick={() => goToTab('dashboard')}
             tourId="nav-dashboard"
           />
           <NavItem
-            icon={<Bike size={20} />}
-            label="Gestão de Frota"
+            icon={<Bike size={18} />}
+            label="Frota"
             active={activeTab === 'motos'}
             onClick={() => goToTab('motos')}
             tourId="nav-motos"
           />
           <NavItem
-            icon={<Users size={20} />}
+            icon={<Users size={18} />}
             label="Clientes"
             active={activeTab === 'clientes'}
             onClick={() => goToTab('clientes')}
             tourId="nav-clientes"
           />
           <NavItem
-            icon={<FileText size={20} />}
+            icon={<FileText size={18} />}
             label="Contratos"
             active={activeTab === 'contratos'}
             onClick={() => goToTab('contratos')}
             tourId="nav-contratos"
           />
+          <p className="nav-section-label">Financeiro</p>
           <NavItem
-            icon={<Receipt size={20} />}
+            icon={<Receipt size={18} />}
             label="Financeiro"
             active={activeTab === 'financeiro'}
             onClick={() => goToTab('financeiro')}
             tourId="nav-financeiro"
           />
           <NavItem
-            icon={<BarChart3 size={20} />}
-            label="Métricas"
-            active={activeTab === 'metricas'}
-            onClick={() => goToTab('metricas')}
-            tourId="nav-metricas"
-          />
-          <NavItem
-            icon={<Banknote size={20} />}
+            icon={<Banknote size={18} />}
             label="Cobranças"
             active={activeTab === 'cobrancas'}
             onClick={() => goToTab('cobrancas')}
             tourId="nav-cobrancas"
           />
+          <NavItem
+            icon={<BarChart3 size={18} />}
+            label="Métricas"
+            active={activeTab === 'metricas'}
+            onClick={() => goToTab('metricas')}
+            tourId="nav-metricas"
+          />
           {showAjustes && (
-            <NavItem
-              icon={<Settings size={20} />}
-              label="Ajustes"
-              active={activeTab === 'ajustes'}
-              onClick={() => goToTab('ajustes')}
-              tourId="nav-ajustes"
-            />
+            <>
+              <p className="nav-section-label">Sistema</p>
+              <NavItem
+                icon={<Settings size={18} />}
+                label="Ajustes"
+                active={activeTab === 'ajustes'}
+                onClick={() => goToTab('ajustes')}
+                tourId="nav-ajustes"
+              />
+            </>
           )}
           {isAdmin && (
             <>
               <NavItem
-                icon={<Building2 size={20} />}
+                icon={<Building2 size={18} />}
                 label="Operações"
                 active={activeTab === 'admin-operacoes'}
                 onClick={() => goToTab('admin-operacoes')}
               />
               <NavItem
-                icon={<UserCog size={20} />}
+                icon={<UserCog size={18} />}
                 label="Usuários"
                 active={activeTab === 'admin-usuarios'}
                 onClick={() => goToTab('admin-usuarios')}
               />
               <NavItem
-                icon={<Activity size={20} />}
+                icon={<Activity size={18} />}
                 label="Filas & Ops"
                 active={activeTab === 'admin-ops'}
                 onClick={() => goToTab('admin-ops')}
@@ -557,11 +566,11 @@ const Dashboard = () => {
               data-tour="tour-sidebar-btn"
               onClick={() => void startTour()}
             >
-              <HelpCircle size={18} /> Tour guiado
+              <HelpCircle size={16} /> Tour guiado
             </button>
           )}
           <button type="button" className="conta-link" onClick={() => goToTab('conta')}>
-            <UserCircle size={18} /> Minha conta
+            <UserCircle size={16} /> Minha conta
           </button>
           <div className="user-info">
             <div className="avatar">{user?.email?.[0].toUpperCase()}</div>
@@ -571,7 +580,7 @@ const Dashboard = () => {
             </div>
           </div>
           <button type="button" className="logout-btn" onClick={logout}>
-            <LogOut size={18} /> Sair
+            <LogOut size={16} /> Sair
           </button>
         </div>
       </aside>
@@ -588,12 +597,14 @@ const Dashboard = () => {
                 aria-expanded={isMobileNav ? sidebarOpen : undefined}
                 aria-controls="app-sidebar"
               >
-                <Menu size={22} />
+                <Menu size={20} />
               </button>
               <div>
-                <h1>{TAB_LABELS[activeTab] ?? 'Painel'}</h1>
-                <p className="text-muted">
-                  Bem-vindo, {user?.email.split('@')[0]}
+                <h2 style={{ fontSize: '1.35rem', fontFamily: "'Playfair Display', serif", fontWeight: 700, marginBottom: 2 }}>
+                  {TAB_LABELS[activeTab] ?? 'Painel'}
+                </h2>
+                <p className="text-muted" style={{ fontSize: '0.82rem' }}>
+                  Bem-vindo, <strong style={{ color: 'var(--primary)', fontWeight: 600 }}>{user?.email.split('@')[0]}</strong>
                 </p>
               </div>
             </div>
@@ -645,6 +656,7 @@ const Dashboard = () => {
         .dashboard-layout {
           display: flex;
           min-height: 100vh;
+          min-height: 100dvh;
         }
         .sidebar-backdrop {
           display: none;
@@ -658,33 +670,58 @@ const Dashboard = () => {
           left: 0;
           top: 0;
           padding-bottom: env(safe-area-inset-bottom, 0px);
-          border-radius: 0 24px 24px 0;
           display: flex;
           flex-direction: column;
           z-index: 200;
+          background: var(--bg-sidebar);
+          border-right: 1px solid var(--glass-border);
+          box-shadow: 4px 0 24px rgba(0,0,0,0.5);
         }
         .sidebar-solid {
           background: var(--bg-sidebar);
           backdrop-filter: none;
           -webkit-backdrop-filter: none;
-          border: none;
-          border-right: 1px solid var(--glass-border);
-          box-shadow: none;
         }
         .sidebar-header {
-          padding: 18px 20px;
-          padding-top: calc(12px + env(safe-area-inset-top, 0px));
+          padding: 20px 18px 16px;
+          padding-top: calc(14px + env(safe-area-inset-top, 0px));
           display: flex;
           align-items: center;
-          gap: 12px;
-          font-size: 1rem;
-          font-weight: 700;
+          gap: 10px;
+          flex-shrink: 0;
+          border-bottom: 1px solid var(--glass-border);
+        }
+        .sidebar-logo {
+          width: 34px;
+          height: 34px;
+          background: rgba(212,165,116,0.12);
+          border: 1px solid rgba(212,165,116,0.25);
+          border-radius: 9px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
           flex-shrink: 0;
         }
-        .sidebar-brand {
+        .sidebar-brand-wrap {
           flex: 1;
-          line-height: 1.2;
-          font-size: 0.95rem;
+          min-width: 0;
+        }
+        .sidebar-brand {
+          display: block;
+          font-size: 1.05rem;
+          font-weight: 700;
+          line-height: 1.15;
+          color: var(--text-main);
+          letter-spacing: 0.01em;
+        }
+        .sidebar-brand-sub {
+          display: block;
+          font-size: 0.7rem;
+          color: var(--primary);
+          font-weight: 500;
+          letter-spacing: 0.06em;
+          text-transform: uppercase;
+          margin-top: 1px;
         }
         .sidebar-close,
         .menu-btn {
@@ -693,26 +730,27 @@ const Dashboard = () => {
           border: none;
           color: var(--text-muted);
           cursor: pointer;
-          padding: 10px;
-          min-width: 44px;
-          min-height: 44px;
+          padding: 8px;
+          min-width: 36px;
+          min-height: 36px;
           align-items: center;
           justify-content: center;
           flex-shrink: 0;
           -webkit-tap-highlight-color: transparent;
           touch-action: manipulation;
-          border-radius: 10px;
+          border-radius: 8px;
+          transition: var(--transition);
         }
         .sidebar-close:hover,
         .menu-btn:hover {
-          color: white;
-          background: rgba(255, 255, 255, 0.06);
+          color: var(--text-main);
+          background: rgba(255,255,255,0.06);
         }
         .mobile-only {
           display: none;
         }
         .nav-menu {
-          padding: 12px 16px;
+          padding: 8px 12px;
           flex: 1;
           min-height: 0;
           overflow-y: auto;
@@ -722,30 +760,32 @@ const Dashboard = () => {
         .content {
           margin-left: var(--sidebar-width);
           flex: 1;
-          padding: 24px 32px calc(40px + env(safe-area-inset-bottom, 0px));
-          padding-left: max(32px, env(safe-area-inset-left, 0px));
-          padding-right: max(32px, env(safe-area-inset-right, 0px));
+          padding: 28px 36px calc(48px + env(safe-area-inset-bottom, 0px));
+          padding-left: max(36px, env(safe-area-inset-left, 0px));
+          padding-right: max(36px, env(safe-area-inset-right, 0px));
           width: calc(100% - var(--sidebar-width));
           min-height: 0;
         }
         .content-header {
           margin-bottom: 32px;
+          padding-bottom: 24px;
+          border-bottom: 1px solid var(--glass-border);
         }
         .header-row {
           display: flex;
           justify-content: space-between;
-          align-items: flex-start;
+          align-items: center;
           flex-wrap: wrap;
           gap: 16px;
         }
         .header-left {
           display: flex;
-          align-items: flex-start;
+          align-items: center;
           gap: 12px;
         }
         .header-actions {
           display: flex;
-          align-items: flex-end;
+          align-items: center;
           gap: 12px;
           flex-wrap: wrap;
         }
@@ -756,132 +796,166 @@ const Dashboard = () => {
         }
         .scope-label {
           margin-bottom: 0;
-          font-size: 0.75rem;
+          font-size: 0.7rem;
         }
         .stats-grid {
           display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-          gap: 20px;
-          margin-bottom: 32px;
+          grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+          gap: 18px;
+          margin-bottom: 28px;
         }
         .stat-card {
-          padding: 24px;
+          padding: 22px 24px;
+          border-left: 3px solid transparent;
+          transition: var(--transition);
+        }
+        .stat-card:hover {
+          border-left-color: var(--primary);
+        }
+        .stat-title {
+          font-size: 0.72rem;
+          font-weight: 700;
+          letter-spacing: 0.1em;
+          text-transform: uppercase;
+          color: var(--text-muted);
+          margin-bottom: 10px;
         }
         .stat-value {
-          font-size: 1.6rem;
+          font-size: 1.75rem;
           font-weight: 700;
-          margin: 8px 0;
+          margin: 0 0 8px;
           font-family: 'Outfit', sans-serif;
+          color: var(--text-main);
+          line-height: 1;
         }
         .trend {
-          font-size: 0.8rem;
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          font-size: 0.75rem;
           font-weight: 600;
-          padding: 4px 8px;
+          padding: 3px 8px;
           border-radius: 6px;
-          background: rgba(16, 185, 129, 0.1);
-          color: var(--accent);
+          background: rgba(92,191,138,0.1);
+          color: var(--success);
+          border: 1px solid rgba(92,191,138,0.2);
         }
         .trend.negative {
-          background: rgba(239, 68, 68, 0.1);
+          background: rgba(224,92,92,0.1);
           color: var(--danger);
+          border-color: rgba(224,92,92,0.2);
         }
         .main-grid {
           display: grid;
           grid-template-columns: 2fr 1fr;
-          gap: 24px;
+          gap: 20px;
         }
         .side-stack {
           display: flex;
           flex-direction: column;
-          gap: 24px;
+          gap: 20px;
         }
         .card {
-          padding: 24px;
+          padding: 22px 24px;
         }
         .card-title-row {
           display: flex;
           justify-content: space-between;
           align-items: center;
-          margin-bottom: 12px;
+          margin-bottom: 16px;
+          padding-bottom: 12px;
+          border-bottom: 1px solid var(--glass-border);
         }
         .card-title-row h3 {
           display: flex;
           align-items: center;
           gap: 8px;
-          font-size: 1rem;
+          font-size: 0.92rem;
+          font-weight: 600;
+          color: var(--text-main);
+          letter-spacing: 0.01em;
         }
         .link-btn {
           background: none;
           border: none;
           color: var(--primary);
           cursor: pointer;
-          font-size: 0.8rem;
+          font-size: 0.78rem;
+          font-weight: 500;
+          opacity: 0.8;
+          transition: var(--transition);
+          white-space: nowrap;
         }
+        .link-btn:hover { opacity: 1; }
         .inad-list {
           display: flex;
           flex-direction: column;
-          gap: 10px;
+          gap: 8px;
         }
         .inad-item {
           display: flex;
           justify-content: space-between;
           align-items: center;
           gap: 8px;
-          padding-bottom: 10px;
-          border-bottom: 1px solid var(--glass-border);
-          font-size: 0.85rem;
+          padding: 10px 12px;
+          border-radius: var(--radius-sm);
+          background: rgba(255,255,255,0.02);
+          font-size: 0.84rem;
+          transition: var(--transition);
         }
+        .inad-item:hover { background: rgba(212,165,116,0.05); }
         .inad-item span {
           display: block;
-          font-size: 0.75rem;
+          font-size: 0.72rem;
+          color: var(--text-muted);
+          margin-top: 2px;
         }
         .mini-pix-btn {
-          background: var(--primary-glow);
-          border: 1px solid var(--primary);
+          background: rgba(212,165,116,0.1);
+          border: 1px solid rgba(212,165,116,0.3);
           color: var(--primary);
           border-radius: 6px;
           padding: 6px;
           cursor: pointer;
           flex-shrink: 0;
+          transition: var(--transition);
         }
+        .mini-pix-btn:hover { background: rgba(212,165,116,0.2); }
         .sidebar-footer {
-          padding: 16px;
-          padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+          padding: 14px;
+          padding-bottom: calc(14px + env(safe-area-inset-bottom, 0px));
           border-top: 1px solid var(--glass-border);
           flex-shrink: 0;
         }
         .conta-link {
           width: 100%;
-          background: rgba(255, 255, 255, 0.04);
-          border: 1px solid var(--glass-border);
+          background: none;
+          border: none;
           color: var(--text-muted);
-          padding: 10px 12px;
+          padding: 9px 12px;
           border-radius: 8px;
           cursor: pointer;
           display: flex;
           align-items: center;
           gap: 8px;
-          font-size: 0.85rem;
-          margin-bottom: 12px;
+          font-size: 0.83rem;
+          margin-bottom: 8px;
+          transition: var(--transition);
         }
         .conta-link:hover {
-          color: white;
-          background: rgba(255, 255, 255, 0.08);
+          color: var(--text-main);
+          background: rgba(212,165,116,0.07);
         }
         .tour-link {
-          border: 1px solid rgba(99, 102, 241, 0.35);
-          color: #c7d2fe;
-          background: linear-gradient(135deg, rgba(99, 102, 241, 0.12), rgba(79, 70, 229, 0.08));
-          box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+          color: var(--primary);
+          border: 1px solid rgba(212,165,116,0.2);
+          background: rgba(212,165,116,0.06);
         }
         .tour-link:hover {
-          color: white;
-          border-color: rgba(129, 140, 248, 0.55);
-          background: linear-gradient(135deg, rgba(99, 102, 241, 0.28), rgba(79, 70, 229, 0.18));
+          background: rgba(212,165,116,0.12);
+          border-color: rgba(212,165,116,0.4);
         }
-        .setup-checklist h3 {
-          margin-bottom: 8px;
-        }
+        .setup-checklist h3 { margin-bottom: 8px; }
         .checklist {
           list-style: none;
           padding: 0;
@@ -895,54 +969,61 @@ const Dashboard = () => {
           font-size: 0.9rem;
           color: var(--text-muted);
         }
-        .checklist li.done {
-          color: var(--accent);
-        }
+        .checklist li.done { color: var(--success); }
         .checklist-actions {
           display: flex;
           gap: 10px;
           flex-wrap: wrap;
         }
         .btn-secondary {
-          background: var(--secondary);
-          color: white;
-          border: none;
-          padding: 10px 16px;
-          border-radius: 8px;
+          background: rgba(212,165,116,0.1);
+          color: var(--primary);
+          border: 1px solid rgba(212,165,116,0.25);
+          padding: 10px 18px;
+          border-radius: var(--radius-sm);
           cursor: pointer;
+          font-size: 0.88rem;
+          font-weight: 600;
+          transition: var(--transition);
         }
+        .btn-secondary:hover { background: rgba(212,165,116,0.18); }
         .user-info {
           display: flex;
           align-items: center;
-          gap: 12px;
-          margin-bottom: 16px;
+          gap: 10px;
+          margin-bottom: 10px;
+          padding: 10px 4px;
         }
         .avatar {
-          width: 40px;
-          height: 40px;
-          background: var(--primary);
+          width: 34px;
+          height: 34px;
+          background: linear-gradient(135deg, var(--primary), var(--primary-dark));
           border-radius: 50%;
           display: flex;
           align-items: center;
           justify-content: center;
           font-weight: 700;
+          font-size: 0.85rem;
+          color: #1a1410;
           flex-shrink: 0;
         }
         .details .email {
-          font-size: 0.85rem;
+          font-size: 0.78rem;
           font-weight: 600;
           word-break: break-all;
+          color: var(--text-main);
         }
         .details .role {
-          font-size: 0.75rem;
+          font-size: 0.7rem;
           color: var(--text-muted);
+          margin-top: 1px;
         }
         .logout-btn {
           width: 100%;
-          background: rgba(239, 68, 68, 0.1);
+          background: rgba(224,92,92,0.08);
           color: var(--danger);
-          border: none;
-          padding: 10px;
+          border: 1px solid rgba(224,92,92,0.15);
+          padding: 9px;
           border-radius: 8px;
           display: flex;
           align-items: center;
@@ -973,7 +1054,7 @@ const Dashboard = () => {
           flex-shrink: 0;
         }
         .dot.success {
-          background: var(--accent);
+          background: var(--success);
         }
         .dot.danger {
           background: var(--danger);
@@ -994,14 +1075,15 @@ const Dashboard = () => {
           color: var(--text-muted);
         }
         .progress-bar {
-          height: 8px;
-          background: var(--secondary);
+          height: 6px;
+          background: rgba(255,255,255,0.06);
           border-radius: 4px;
           overflow: hidden;
         }
         .fill {
           height: 100%;
-          background: var(--primary);
+          background: linear-gradient(90deg, var(--primary-dark), var(--primary));
+          border-radius: 4px;
         }
         @media (max-width: 1024px) {
           .main-grid {
@@ -1119,32 +1201,52 @@ const NavItem = ({
     tabIndex={0}
     data-tour={tourId}
   >
-    {icon}
+    <span className="nav-icon">{icon}</span>
     <span>{label}</span>
     <style jsx>{`
       .nav-item {
         display: flex;
         align-items: center;
-        gap: 12px;
-        padding: 14px 16px;
-        min-height: 48px;
-        border-radius: 12px;
+        gap: 10px;
+        padding: 9px 12px;
+        min-height: 40px;
+        border-radius: var(--radius-sm);
         color: var(--text-muted);
         cursor: pointer;
         transition: var(--transition);
-        margin-bottom: 4px;
+        margin-bottom: 2px;
+        font-size: 0.88rem;
+        font-weight: 500;
+        border: none;
+        background: none;
+        width: 100%;
+        text-align: left;
         -webkit-tap-highlight-color: transparent;
         touch-action: manipulation;
       }
       .nav-item:hover {
-        background: rgba(255, 255, 255, 0.05);
-        color: white;
+        background: rgba(212,165,116,0.07);
+        color: var(--text-main);
       }
       .nav-item.active {
-        background: var(--primary-glow);
+        background: rgba(212,165,116,0.12);
         color: var(--primary);
-        border-left: 4px solid var(--primary);
-        border-radius: 4px 12px 12px 4px;
+        border-left: 2px solid var(--primary);
+        padding-left: 10px;
+      }
+      .nav-icon {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 28px;
+        height: 28px;
+        border-radius: 6px;
+        flex-shrink: 0;
+        transition: var(--transition);
+      }
+      .nav-item.active .nav-icon {
+        background: rgba(212,165,116,0.15);
+        color: var(--primary);
       }
     `}</style>
   </div>
@@ -1161,30 +1263,43 @@ const StatCard = ({
   trend: string;
   negative?: boolean;
 }) => (
-  <div className="glass stat-card animate-fade">
-    <p className="text-muted" style={{ fontSize: '0.9rem' }}>
-      {title}
-    </p>
+  <div className="glass stat-card glass-card animate-fade">
+    <p className="stat-title">{title}</p>
     <div className="stat-value">{value}</div>
     <span className={`trend ${negative ? 'negative' : ''}`}>{trend}</span>
     <style jsx>{`
-      .stat-value {
-        font-size: 1.6rem;
+      .stat-title {
+        font-size: 0.7rem;
         font-weight: 700;
-        margin: 8px 0;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: var(--text-muted);
+        margin-bottom: 10px;
+      }
+      .stat-value {
+        font-size: 1.8rem;
+        font-weight: 700;
+        margin: 0 0 10px;
         font-family: 'Outfit', sans-serif;
+        color: var(--text-main);
+        line-height: 1;
       }
       .trend {
-        font-size: 0.8rem;
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        font-size: 0.72rem;
         font-weight: 600;
-        padding: 4px 8px;
-        border-radius: 6px;
-        background: rgba(16, 185, 129, 0.1);
-        color: var(--accent);
+        padding: 3px 8px;
+        border-radius: 5px;
+        background: rgba(92,191,138,0.1);
+        color: var(--success);
+        border: 1px solid rgba(92,191,138,0.2);
       }
       .trend.negative {
-        background: rgba(239, 68, 68, 0.1);
+        background: rgba(224,92,92,0.1);
         color: var(--danger);
+        border-color: rgba(224,92,92,0.2);
       }
     `}</style>
   </div>
