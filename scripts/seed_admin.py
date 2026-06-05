@@ -36,7 +36,9 @@ def main() -> None:
         db.commit()
         db.refresh(op)
         admin = Usuario(
-            email=os.getenv("SEED_ADMIN_EMAIL", "admin@motopay.local"),
+            email=os.getenv("SEED_ADMIN_EMAIL", "
+            
+            "),
             senha_hash=hash_password(os.getenv("SEED_ADMIN_PASSWORD", "adminadmin")),
             tipo=UserRole.ADMIN.value,
             operacao_id=None,

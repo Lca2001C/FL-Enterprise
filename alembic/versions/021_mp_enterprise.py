@@ -1,7 +1,7 @@
 """MP enterprise: portal token, refunds, oauth, disputes
 
 Revision ID: 021_mp_enterprise
-Revises: 020_contrato_mp_subscription_status
+Revises: 020_mp_sub_status
 Create Date: 2026-06-01
 
 """
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "021_mp_enterprise"
-down_revision: str | None = "020_contrato_mp_subscription_status"
+down_revision: str | None = "020_mp_sub_status"
 branch_labels: str | None = None
 depends_on: str | None = None
 
