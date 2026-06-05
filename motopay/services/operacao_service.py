@@ -166,6 +166,9 @@ def _apply_dono_restrictions(body: OperacaoUpdate) -> OperacaoUpdate:
         telegram_bot_menu_buttons=body.telegram_bot_menu_buttons,
         telegram_owner_notify_id=body.telegram_owner_notify_id,
         telegram_owner_notify_enabled=body.telegram_owner_notify_enabled,
+        mercadopago_access_token=body.mercadopago_access_token,
+        mercadopago_public_key=body.mercadopago_public_key,
+        mercadopago_webhook_secret=body.mercadopago_webhook_secret,
     )
 
 
@@ -205,6 +208,10 @@ def update_operacao(
         op.telegram_owner_notify_enabled = body.telegram_owner_notify_enabled
     if body.mercadopago_access_token is not None:
         op.mercadopago_access_token = body.mercadopago_access_token.strip() or None
+    if body.mercadopago_public_key is not None:
+        op.mercadopago_public_key = body.mercadopago_public_key.strip() or None
+    if body.mercadopago_webhook_secret is not None:
+        op.mercadopago_webhook_secret = body.mercadopago_webhook_secret.strip() or None
     db.add(op)
     db.commit()
     db.refresh(op)

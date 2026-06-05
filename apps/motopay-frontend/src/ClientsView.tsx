@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, type FormEvent } from 'react';
-import { Plus, Search, Star, Phone, Trash2, Bike, FileText } from 'lucide-react';
+import { Plus, Search, Star, Phone, Trash2, Bike, FileText, CreditCard } from 'lucide-react';
+import ClientMpCardsModal from './components/ClientMpCardsModal';
 import { useAuth } from './AuthContext';
 import type { ClienteOut, Paginated } from './apiTypes';
 import { PAGE_SIZE } from './apiTypes';
@@ -19,10 +20,12 @@ const ClientsView = () => {
   const [search, setSearch] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [editCliente, setEditCliente] = useState<ClienteOut | null>(null);
+  const [cardsCliente, setCardsCliente] = useState<ClienteOut | null>(null);
   const [formData, setFormData] = useState({
     nome: '',
     cpf: '',
     telefone: '',
+    email: '',
     telegram_id: '',
   });
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -58,7 +61,7 @@ const ClientsView = () => {
 
   const openCreate = () => {
     setEditCliente(null);
-    setFormData({ nome: '', cpf: '', telefone: '', telegram_id: '' });
+    setFormData({ nome: '', cpf: '', telefone: '', email: '', telegram_id: '' });
     setShowModal(true);
   };
 
@@ -68,6 +71,7 @@ const ClientsView = () => {
       nome: c.nome,
       cpf: c.cpf,
       telefone: c.telefone,
+      email: c.email ?? '',
       telegram_id: c.telegram_id ?? '',
     });
     setShowModal(true);
@@ -81,6 +85,7 @@ const ClientsView = () => {
         await api.patch(`/api/v1/clientes/${editCliente.id}`, {
           nome: formData.nome,
           telefone: formData.telefone,
+          email: formData.email.trim() || null,
           telegram_id: formData.telegram_id || null,
         });
       } else {
@@ -88,6 +93,7 @@ const ClientsView = () => {
           nome: formData.nome,
           cpf: formData.cpf,
           telefone: formData.telefone,
+          email: formData.email.trim() || null,
           telegram_id: formData.telegram_id || null,
         });
       }
@@ -210,6 +216,14 @@ const ClientsView = () => {
                     <button
                       type="button"
                       className="icon-btn"
+                      title="Cartões Mercado Pago"
+                      onClick={() => setCardsCliente(c)}
+                    >
+                      <CreditCard size={16} />
+                    </button>
+                    <button
+                      type="button"
+                      className="icon-btn"
                       title="Ver contratos"
                       onClick={() => navigateToContracts('todos', c.id)}
                     >
@@ -257,6 +271,15 @@ const ClientsView = () => {
         </div>
       )}
 
+      {cardsCliente && (
+        <ClientMpCardsModal
+          cliente={cardsCliente}
+          api={api}
+          onClose={() => setCardsCliente(null)}
+          onError={setError}
+        />
+      )}
+
       {showModal && (
         <div className="modal-overlay">
           <div className="glass modal-content animate-fade">
@@ -283,6 +306,16 @@ const ClientsView = () => {
                   />
                 </div>
               )}
+              <div className="input-group">
+                <label className="input-label">E-mail (Mercado Pago)</label>
+                <input
+                  className="input-field"
+                  type="email"
+                  value={formData.email}
+                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  placeholder="pagador@email.com (produção)"
+                />
+              </div>
               <div className="input-group">
                 <label className="input-label">Telefone (WhatsApp)</label>
                 <input

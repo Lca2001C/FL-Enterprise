@@ -354,11 +354,14 @@ npm run dev
 
 Abra `http://localhost:5173`. Use `VITE_API_BASE_URL` apontando para a API como o navegador acessa (ex.: `http://localhost:8000`). Configure `CORS_ORIGINS` na API com a origem do front (ex.: `http://localhost:5173`). Administradores usam **Operação (escopo)** no topo para filtrar por `operacao_id` nas chamadas à API.
 
-### Webhook Mercado Pago
+### Mercado Pago (Pix, cartão, webhook)
 
-`POST {API_PUBLIC_BASE_URL}/webhooks/mercadopago`
+Guia completo: [`docs/MERCADOPAGO_SETUP.md`](docs/MERCADOPAGO_SETUP.md). Validar env: `python scripts/mp_config_check.py`.
 
-Configure `MERCADOPAGO_ACCESS_TOKEN` e opcionalmente `MERCADOPAGO_WEBHOOK_SECRET` (header `x-signature`). Pagamentos Pix confirmados (`approved`) atualizam `cobrancas`, lançam `financeiro`, recalculam score e enfileiram notificação Telegram.
+- **Credenciais por operação:** dono/admin salva Access Token, Public Key e Webhook Secret em **Ajustes** (os três juntos).
+- **Fallback global:** variáveis `MERCADOPAGO_*` / `MERCADOPAGO_*_TEST` no `.env` quando a operação não tem credenciais.
+- **Webhook:** `POST {API_PUBLIC_BASE_URL}/webhooks/mercadopago` — evento **Order (Mercado Pago)** no painel MP; validação HMAC (`x-signature`). Em dev local use ngrok: `python scripts/mp_webhook_tunnel.py --url https://….ngrok-free.app`.
+- Orders confirmadas atualizam `cobrancas`, lançam `financeiro`, recalculam score e enfileiram Telegram.
 
 ### Papéis de usuário
 

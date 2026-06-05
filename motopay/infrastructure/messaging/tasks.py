@@ -25,7 +25,16 @@ from motopay.infrastructure.telegram.templates import (
     should_skip_default_template,
 )
 from motopay.observability.logger import get_logger
-from motopay.services.billing_service import late_amounts_for_contrato, refresh_overdue_pix
+from motopay.infrastructure.telegram.owner_notify import (
+    notify_owner_chargeback,
+    notify_owner_refund,
+)
+from motopay.services.billing_service import (
+    late_amounts_for_contrato,
+    refresh_overdue_pix,
+    sync_mercadopago_subscription_amount,
+)
+from motopay.services.payer_portal_service import ensure_portal_url_for_cobranca
 from motopay.services.scoring_service import effective_escalation_level, recalculate_cliente_score
 
 logger = get_logger(__name__)
@@ -118,6 +127,35 @@ def handle_domain_event(self, event_id: int) -> None:
                         overrides=overrides, payload=ev.payload, nivel=nivel
                     )
                     use_html = True
+        elif ev.tipo == DomainEventType.ESTORNO_CONFIRMADO.value:
+            op = _get_operacao(db, int(ev.payload.get("operacao_id", 0) or 0))
+            if op:
+                notify_owner_refund(
+                    operacao=op,
+                    cobranca_id=int(ev.payload.get("cobranca_id", 0)),
+                    delta=str(ev.payload.get("delta", "0")),
+                    payment_id=str(ev.payload.get("mercadopago_payment_id", "")),
+                )
+            cid = ev.payload.get("cliente_id")
+            if cid:
+                cliente = db.get(Cliente, int(cid))
+                if cliente and cliente.telegram_id:
+                    chat_id = cliente.telegram_id
+                    message = render_template(
+                        "estorno_confirmado",
+                        overrides=overrides,
+                        delta=str(ev.payload.get("delta", "0")),
+                        cobranca_id=str(ev.payload.get("cobranca_id", "")),
+                    )
+        elif ev.tipo == DomainEventType.CHARGEBACK_ATUALIZADO.value:
+            op = _get_operacao(db, int(ev.payload.get("operacao_id", 0) or 0))
+            if op:
+                notify_owner_chargeback(
+                    operacao=op,
+                    cobranca_id=int(ev.payload.get("cobranca_id", 0)),
+                    status=str(ev.payload.get("status", "")),
+                    payment_id=str(ev.payload.get("mercadopago_payment_id", "")),
+                )
         elif ev.tipo == DomainEventType.MOTO_EM_MANUTENCAO.value:
             moto_id = ev.payload.get("moto_id")
             if moto_id:
@@ -332,6 +370,8 @@ def _process_delinquency(db: Session, today: date) -> None:
 
         refresh_overdue_pix(db, contrato=ct, today=today)
         amounts = late_amounts_for_contrato(db, ct, today)
+        if ct.mercadopago_subscription_id:
+            sync_mercadopago_subscription_amount(db, ct, amount=amounts.valor_total)
 
         skip_telegram = False
         if ct.promessa_pagamento_em and ct.promessa_pagamento_em >= today:
@@ -343,6 +383,9 @@ def _process_delinquency(db: Session, today: date) -> None:
             from motopay.services.billing_service import get_open_cobranca
 
             open_cob = get_open_cobranca(db, ct.id)
+            portal_url = (
+                ensure_portal_url_for_cobranca(db, open_cob) if open_cob else None
+            )
             ev = EventoDominio(
                 tipo=DomainEventType.CLIENTE_INADIMPLENTE.value,
                 payload={
@@ -357,6 +400,7 @@ def _process_delinquency(db: Session, today: date) -> None:
                     "juros": str(amounts.juros),
                     "valor_total": str(amounts.valor_total),
                     "pix_copia_cola": open_cob.pix_copia_cola if open_cob else None,
+                    "portal_url": portal_url,
                 },
             )
             db.add(ev)
@@ -374,3 +418,21 @@ def _process_delinquency(db: Session, today: date) -> None:
     db.commit()
     for eid in pending_events:
         handle_domain_event.delay(eid)
+
+
+@celery_app.task(
+    bind=True,
+    name="motopay.infrastructure.messaging.tasks.reconcile_mercadopago_payments",
+    base=DLQTask,
+    queue="default",
+    soft_time_limit=300,
+    time_limit=360,
+)
+def reconcile_mercadopago_payments(self) -> int:
+    from motopay.services.mp_reconciliation import reconcile_all_mercadopago
+
+    db = SessionLocal()
+    try:
+        return reconcile_all_mercadopago(db)
+    finally:
+        db.close()

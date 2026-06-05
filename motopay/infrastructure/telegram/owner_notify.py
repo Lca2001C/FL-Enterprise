@@ -72,3 +72,54 @@ def notify_owner_contact_request(
             operacao.id,
             exc,
         )
+
+
+def notify_owner_refund(
+    *,
+    operacao: Operacao,
+    cobranca_id: int,
+    delta: str,
+    payment_id: str,
+) -> None:
+    if not operacao.telegram_owner_notify_enabled:
+        return
+    chat_id = (operacao.telegram_owner_notify_id or "").strip()
+    if not chat_id:
+        return
+    text = (
+        "Estorno Mercado Pago\n"
+        f"Operação: {operacao.nome}\n"
+        f"Cobrança #{cobranca_id}\n"
+        f"Valor estornado: R$ {delta}\n"
+        f"Payment ID: {payment_id}"
+    )
+    try:
+        send_telegram_text(chat_id=chat_id, text=text)
+    except Exception as exc:
+        logger.warning("owner_refund_notify_failed operacao_id=%s: %s", operacao.id, exc)
+
+
+def notify_owner_chargeback(
+    *,
+    operacao: Operacao,
+    cobranca_id: int,
+    status: str,
+    payment_id: str,
+) -> None:
+    if not operacao.telegram_owner_notify_enabled:
+        return
+    chat_id = (operacao.telegram_owner_notify_id or "").strip()
+    if not chat_id:
+        return
+    text = (
+        "Chargeback / disputa Mercado Pago\n"
+        f"Operação: {operacao.nome}\n"
+        f"Cobrança #{cobranca_id}\n"
+        f"Status: {status}\n"
+        f"Payment ID: {payment_id}\n"
+        "Acompanhe no painel MP: https://www.mercadopago.com.br/activities/chargebacks"
+    )
+    try:
+        send_telegram_text(chat_id=chat_id, text=text)
+    except Exception as exc:
+        logger.warning("owner_chargeback_notify_failed operacao_id=%s: %s", operacao.id, exc)

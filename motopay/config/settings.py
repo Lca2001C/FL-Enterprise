@@ -77,7 +77,17 @@ class Settings(BaseSettings):
     allow_webhook_token_in_query: bool = True
 
     mercadopago_access_token: str = ""
+    mercadopago_public_key: str = ""
     mercadopago_webhook_secret: str = ""
+    mercadopago_credentials_mode: str = "test"
+    mercadopago_access_token_test: str = ""
+    mercadopago_public_key_test: str = ""
+    mercadopago_webhook_secret_test: str = ""
+    mercadopago_oauth_client_id: str = ""
+    mercadopago_oauth_client_secret: str = ""
+    mercadopago_oauth_redirect_uri: str = ""
+    payer_portal_base_url: str = ""
+    payer_portal_token_ttl_days: int = 30
 
     celery_beat_hour: int = 11
     celery_beat_minute: int = 0

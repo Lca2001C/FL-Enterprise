@@ -20,11 +20,13 @@ from motopay.interfaces.api.routers import (
     auth,
     clientes,
     cobrancas,
+    config,
     contratos,
     financeiro,
     motos,
     operacoes,
     ops,
+    public_pay,
     usuarios,
     webhooks,
 )
@@ -172,6 +174,8 @@ app.include_router(clientes.router, prefix=api_prefix)
 app.include_router(contratos.router, prefix=api_prefix)
 app.include_router(financeiro.router, prefix=api_prefix)
 app.include_router(cobrancas.router, prefix=api_prefix)
+app.include_router(public_pay.router, prefix=api_prefix)
+app.include_router(config.router, prefix=api_prefix)
 app.include_router(analytics.router, prefix=api_prefix)
 app.include_router(ops.router, prefix=api_prefix)
 

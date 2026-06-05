@@ -10,9 +10,17 @@ import {
   Filter,
   X,
   Download,
+  Pencil,
 } from 'lucide-react';
 import { useAuth } from './AuthContext';
-import type { ClienteOut, CobrancaOut, ContratoOut, MotoOut, Paginated } from './apiTypes';
+import type {
+  ClienteOut,
+  CobrancaOut,
+  ContratoOut,
+  MotoOut,
+  MpSubscriptionOut,
+  Paginated,
+} from './apiTypes';
 import type { ContractsFilter } from './apiTypes';
 import { PAGE_SIZE } from './apiTypes';
 import {
@@ -70,6 +78,10 @@ const ContractsView = () => {
   const [showModal, setShowModal] = useState(false);
   const [copiedId, setCopiedId] = useState<number | null>(null);
   const [actionLoading, setActionLoading] = useState<number | null>(null);
+  const [subscriptionLink, setSubscriptionLink] = useState<MpSubscriptionOut | null>(null);
+  const [editCt, setEditCt] = useState<ContratoOut | null>(null);
+  const [editValor, setEditValor] = useState('');
+  const [editCiclo, setEditCiclo] = useState<'semanal' | 'mensal'>('mensal');
 
   const [form, setForm] = useState({
     cliente_id: '',
@@ -258,6 +270,30 @@ const ContractsView = () => {
     }
   };
 
+  const openEditContrato = (ct: ContratoOut) => {
+    setEditCt(ct);
+    setEditValor(String(ct.valor_recorrente));
+    setEditCiclo(ct.ciclo as 'semanal' | 'mensal');
+  };
+
+  const handleSaveEditContrato = async () => {
+    if (!editCt) return;
+    setActionLoading(editCt.id);
+    setError('');
+    try {
+      await api.patch(`/api/v1/contratos/${editCt.id}`, {
+        valor_recorrente: parseFloat(editValor),
+        ciclo: editCiclo,
+      });
+      setEditCt(null);
+      await fetchContratos(offset);
+    } catch (err) {
+      setError(parseApiError(err, 'Erro ao atualizar contrato'));
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
   const handleEncerrar = async (id: number) => {
     if (!confirm('Encerrar este contrato? A moto não será liberada automaticamente.')) return;
     setActionLoading(id);
@@ -292,11 +328,29 @@ const ContractsView = () => {
     setActionLoading(contratoId);
     setError('');
     try {
-      await api.post('/api/v1/cobrancas/assinatura-mercadopago', { contrato_id: contratoId });
+      const r = await api.post<MpSubscriptionOut>('/api/v1/cobrancas/assinatura-mercadopago', {
+        contrato_id: contratoId,
+      });
+      setSubscriptionLink(r.data);
       await fetchContratos(offset);
       await fetchMeta();
     } catch (err) {
       setError(parseApiError(err, 'Erro ao criar assinatura Mercado Pago'));
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const openSubscriptionLink = async (contratoId: number) => {
+    setActionLoading(contratoId);
+    setError('');
+    try {
+      const r = await api.get<MpSubscriptionOut>(
+        `/api/v1/contratos/${contratoId}/assinatura-mercadopago`
+      );
+      setSubscriptionLink(r.data);
+    } catch (err) {
+      setError(parseApiError(err, 'Erro ao obter link da assinatura'));
     } finally {
       setActionLoading(null);
     }
@@ -460,7 +514,18 @@ const ContractsView = () => {
                     <td>
                       <div className="sub-badges">
                         {ct.mercadopago_subscription_id && (
-                          <span className="sub-badge mp">MP</span>
+                          <button
+                            type="button"
+                            className="sub-badge mp"
+                            style={{ border: 'none', cursor: 'pointer' }}
+                            title="Abrir link de autorização"
+                            onClick={() => void openSubscriptionLink(ct.id)}
+                          >
+                            MP
+                            {ct.mercadopago_subscription_status
+                              ? ` (${ct.mercadopago_subscription_status})`
+                              : ''}
+                          </button>
                         )}
                         {!ct.mercadopago_subscription_id && (
                           <span className="text-muted">—</span>
@@ -494,6 +559,15 @@ const ContractsView = () => {
                         )}
                         {ct.status === 'ativo' && (
                           <>
+                            <button
+                              type="button"
+                              className="icon-btn"
+                              title="Editar valor e ciclo"
+                              disabled={busy}
+                              onClick={() => openEditContrato(ct)}
+                            >
+                              <Pencil size={16} />
+                            </button>
                             <button
                               type="button"
                               className="icon-btn"
@@ -554,6 +628,97 @@ const ContractsView = () => {
           >
             Próxima
           </button>
+        </div>
+      )}
+
+      {editCt && (
+        <div className="modal-overlay" onClick={() => setEditCt(null)}>
+          <div className="modal glass" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 420 }}>
+            <h3>Editar contrato #{editCt.id}</h3>
+            <div className="input-group">
+              <label className="input-label">Valor recorrente</label>
+              <input
+                type="number"
+                step="0.01"
+                className="input-field"
+                value={editValor}
+                onChange={(e) => setEditValor(e.target.value)}
+              />
+            </div>
+            <div className="input-group">
+              <label className="input-label">Ciclo</label>
+              <select
+                className="input-field"
+                value={editCiclo}
+                onChange={(e) => setEditCiclo(e.target.value as 'semanal' | 'mensal')}
+              >
+                <option value="mensal">Mensal</option>
+                <option value="semanal">Semanal</option>
+              </select>
+            </div>
+            {editCt.mercadopago_subscription_id && (
+              <p className="text-muted" style={{ fontSize: '0.85rem', marginBottom: 12 }}>
+                Assinatura MP ativa: o valor/ciclo será sincronizado automaticamente.
+              </p>
+            )}
+            <div className="modal-actions">
+              <button type="button" className="btn-secondary" onClick={() => setEditCt(null)}>
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className="btn-primary"
+                disabled={actionLoading === editCt.id}
+                onClick={() => void handleSaveEditContrato()}
+              >
+                Salvar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {subscriptionLink && (
+        <div className="modal-overlay" onClick={() => setSubscriptionLink(null)}>
+          <div className="modal glass" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 480 }}>
+            <h3>Assinatura Mercado Pago</h3>
+            <p className="text-muted">
+              Contrato #{subscriptionLink.contrato_id} — status:{' '}
+              <strong>{subscriptionLink.status ?? 'pending'}</strong>
+            </p>
+            {subscriptionLink.init_point ? (
+              <>
+                <p style={{ fontSize: '0.9rem', marginBottom: 12 }}>
+                  Envie o link ao cliente para autorizar a cobrança recorrente:
+                </p>
+                <a
+                  href={subscriptionLink.init_point}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn-primary"
+                  style={{ display: 'inline-block', marginBottom: 12 }}
+                >
+                  Abrir autorização no Mercado Pago
+                </a>
+                <textarea
+                  className="input-field"
+                  readOnly
+                  rows={2}
+                  value={subscriptionLink.init_point}
+                />
+              </>
+            ) : (
+              <p className="text-muted">Link de autorização indisponível. Tente novamente.</p>
+            )}
+            <button
+              type="button"
+              className="btn-secondary"
+              style={{ marginTop: 12 }}
+              onClick={() => setSubscriptionLink(null)}
+            >
+              Fechar
+            </button>
+          </div>
         </div>
       )}
 

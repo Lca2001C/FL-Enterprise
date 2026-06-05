@@ -41,7 +41,15 @@ class DomainEventType(str, Enum):
     PAGAMENTO_CONFIRMADO = "PAGAMENTO_CONFIRMADO"
     CLIENTE_INADIMPLENTE = "CLIENTE_INADIMPLENTE"
     MOTO_EM_MANUTENCAO = "MOTO_EM_MANUTENCAO"
+    ESTORNO_CONFIRMADO = "ESTORNO_CONFIRMADO"
+    CHARGEBACK_ATUALIZADO = "CHARGEBACK_ATUALIZADO"
 
 
 class PaymentGateway(str, Enum):
     MERCADOPAGO = "mercadopago"
+
+
+class PaymentMethodType(str, Enum):
+    PIX = "pix"
+    CREDIT_CARD = "credit_card"
+    DEBIT_CARD = "debit_card"

@@ -1,5 +1,6 @@
 import React from 'react';
 import { AuthProvider, useAuth } from './AuthContext';
+import { MercadoPagoProvider } from './integrations/mercadopago/MercadoPagoProvider';
 import Login from './Login';
 import FleetView from './FleetView';
 import ClientsView from './ClientsView';
@@ -8,6 +9,7 @@ import FinanceView from './FinanceView';
 import MetricsView from './MetricsView';
 import ChargesView from './ChargesView';
 import SettingsView from './SettingsView';
+import PublicPayView from './PublicPayView';
 import AccountView from './AccountView';
 import AdminOperacoesView from './AdminOperacoesView';
 import AdminUsuariosView from './AdminUsuariosView';
@@ -1203,16 +1205,25 @@ const MainApp = () => {
   return <Dashboard />;
 };
 
+function isPublicPayRoute(): boolean {
+  return /^\/pay\/[^/]+\/?$/.test(window.location.pathname);
+}
+
 function App() {
+  if (isPublicPayRoute()) {
+    return <PublicPayView />;
+  }
   return (
     <AuthProvider>
-      <AlertProvider>
-        <>
-          <ReloadPrompt />
-          <InstallPrompt />
-          <MainApp />
-        </>
-      </AlertProvider>
+      <MercadoPagoProvider>
+        <AlertProvider>
+          <>
+            <ReloadPrompt />
+            <InstallPrompt />
+            <MainApp />
+          </>
+        </AlertProvider>
+      </MercadoPagoProvider>
     </AuthProvider>
   );
 }

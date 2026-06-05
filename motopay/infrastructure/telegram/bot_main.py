@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import date
+
 from sqlalchemy import select
 from telegram import KeyboardButton, ReplyKeyboardMarkup, Update
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
@@ -27,7 +29,8 @@ from motopay.infrastructure.telegram.templates import (
     render_template,
     resolve_bot_menu_buttons,
 )
-from motopay.services.billing_service import get_open_cobranca
+from motopay.services.billing_service import charge_amounts_for_cobranca, get_open_cobranca
+from motopay.services.payer_portal_service import ensure_portal_url_for_cobranca
 from motopay.services.negotiation_service import record_promessa_from_telegram_user
 
 
@@ -296,7 +299,31 @@ async def cmd_pix(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             )
             return
         cob = get_open_cobranca(db, ct.id)
-        if not cob or not cob.pix_copia_cola:
+        if not cob:
+            await update.effective_message.reply_text(
+                render_template("overdue_no_pix", overrides=overrides)
+            )
+            return
+        op = db.get(Operacao, ct.operacao_id)
+        amounts = charge_amounts_for_cobranca(cob, ct, op, date.today()) if op else None
+        valor_total = str(amounts.valor_total if amounts else cob.valor)
+        portal_url = ensure_portal_url_for_cobranca(db, cob)
+        db.commit()
+        pix_block = cob.pix_copia_cola or ""
+        if portal_url:
+            pix_suffix = f"Pix copia e cola:\n{pix_block}" if pix_block else ""
+            await update.effective_message.reply_text(
+                render_template(
+                    "bot_pix_portal",
+                    overrides=overrides,
+                    vencimento=cob.vencimento.isoformat(),
+                    valor_total=valor_total,
+                    portal_url=portal_url,
+                    pix_block=pix_suffix,
+                )
+            )
+            return
+        if not pix_block:
             await update.effective_message.reply_text(
                 render_template("overdue_no_pix", overrides=overrides)
             )
@@ -306,8 +333,8 @@ async def cmd_pix(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 "bot_pix",
                 overrides=overrides,
                 vencimento=cob.vencimento.isoformat(),
-                valor_total=str(cob.valor),
-                pix_copia_cola=cob.pix_copia_cola,
+                valor_total=valor_total,
+                pix_copia_cola=pix_block,
             )
         )
 

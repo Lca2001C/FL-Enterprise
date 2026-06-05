@@ -5,20 +5,24 @@ from motopay.interfaces.api.schemas import OperacaoUpdate, TelegramCustomMessage
 from motopay.services.operacao_service import update_operacao
 
 
-def test_dono_update_ignores_mercadopago_token(db_session, operacao_a):
+def test_dono_can_save_mercadopago_credentials(db_session, operacao_a):
     update_operacao(
         db_session,
         operacao_a.id,
         OperacaoUpdate(
             nome="Nome hackeado",
-            mercadopago_access_token="secret",
+            mercadopago_access_token="TEST-token",
+            mercadopago_public_key="TEST-pk",
+            mercadopago_webhook_secret="whsec",
             multa_fixa_percentual=5,
         ),
         role=UserRole.DONO,
     )
     db_session.refresh(operacao_a)
     assert operacao_a.nome == "Operação A"
-    assert operacao_a.mercadopago_access_token is None
+    assert operacao_a.mercadopago_access_token == "TEST-token"
+    assert operacao_a.mercadopago_public_key == "TEST-pk"
+    assert operacao_a.mercadopago_webhook_secret == "whsec"
     assert float(operacao_a.multa_fixa_percentual) == 5.0
 
 

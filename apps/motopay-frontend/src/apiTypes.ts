@@ -45,10 +45,19 @@ export type ClienteOut = {
   nome: string;
   cpf: string;
   telefone: string;
+  email: string | null;
+  mercadopago_customer_id?: string | null;
   telegram_id: string | null;
   score: number;
   moto_placa?: string | null;
   moto_modelo?: string | null;
+};
+
+export type MpSubscriptionOut = {
+  contrato_id: number;
+  mercadopago_subscription_id: string;
+  init_point: string | null;
+  status: string | null;
 };
 
 export type ContratoOut = {
@@ -68,6 +77,7 @@ export type ContratoOut = {
   promessa_pagamento_em: string | null;
   promessa_notas: string | null;
   mercadopago_subscription_id: string | null;
+  mercadopago_subscription_status: string | null;
 };
 
 export type TelegramBotMenuButton = {
@@ -140,6 +150,47 @@ export type FinanceiroOut = {
   contrato_id: number | null;
 };
 
+export type PaymentsConfig = {
+  mercadopago_configured: boolean;
+  mercadopago_public_key: string | null;
+  webhook_configured: boolean;
+  credentials_mode: 'test' | 'production';
+  mercadopago_credentials_source: string;
+  mercadopago_credentials_complete: boolean;
+  mercadopago_has_operacao_token: boolean;
+  mercadopago_oauth_available?: boolean;
+  mercadopago_oauth_connected?: boolean;
+  mercadopago_webhook_ready?: boolean;
+  webhook_url: string | null;
+};
+
+export type ClienteMpCardOut = {
+  id: number;
+  cliente_id: number;
+  operacao_id: number;
+  mp_card_id: string;
+  payment_method_id: string;
+  last_four_digits: string;
+  cardholder_name: string | null;
+  expiration_month: number | null;
+  expiration_year: number | null;
+  is_default: boolean;
+};
+
+export type ThreeDsInfoOut = {
+  external_resource_url: string | null;
+  creq: string | null;
+};
+
+export type CardPaymentOut = {
+  cobranca: CobrancaOut;
+  order_id: string;
+  payment_id: string;
+  status: string;
+  requires_3ds: boolean;
+  three_ds_info: ThreeDsInfoOut | null;
+};
+
 export type CobrancaOut = {
   id: number;
   operacao_id: number;
@@ -147,13 +198,34 @@ export type CobrancaOut = {
   valor: number;
   vencimento: string;
   mercadopago_payment_id: string | null;
+  mercadopago_order_id: string | null;
   payment_gateway: 'mercadopago';
+  payment_method_type: string | null;
   pix_copia_cola: string | null;
   status: string;
   dias_atraso: number;
   multa: number;
   juros: number;
   valor_total: number;
+  valor_estornado?: number;
+  mercadopago_dispute_status?: string | null;
+  mercadopago_payment_status?: string | null;
+};
+
+export type PortalLinkOut = {
+  token: string;
+  url: string;
+};
+
+export type PayerPortalOut = {
+  cobranca: CobrancaOut;
+  cliente_nome: string;
+  cliente_id: number;
+  cliente_email: string | null;
+  cliente_cpf: string;
+  mercadopago_public_key: string | null;
+  credentials_mode: string;
+  payable: boolean;
 };
 
 export type AnalyticsSummary = {
