@@ -3,6 +3,7 @@ import { Copy, Check, CreditCard } from 'lucide-react';
 import type { AxiosInstance } from 'axios';
 import PaymentBrickCheckout from '../integrations/mercadopago/PaymentBrickCheckout';
 import StatusScreenCheckout from '../integrations/mercadopago/StatusScreenCheckout';
+import { ensureMercadoPagoDeviceId } from '../integrations/mercadopago/deviceId';
 import type {
   CardPaymentOut,
   ClienteMpCardOut,
@@ -152,11 +153,13 @@ export default function PayCobrancaModal({
     setPayLoading(true);
     onError('');
     try {
+      const deviceId = await ensureMercadoPagoDeviceId();
       const body: Record<string, unknown> = {
         token: data.token,
         payment_method_id: data.payment_method_id,
         payment_method_kind: method,
         installments: data.installments,
+        device_id: deviceId,
       };
       if (selectedSavedId != null) {
         body.saved_card_id = selectedSavedId;

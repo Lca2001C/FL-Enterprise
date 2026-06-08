@@ -18,6 +18,14 @@ from motopay.infrastructure.payments.mercadopago_client import (
     parse_mp_card,
     payer_email_for_mercadopago,
 )
+from motopay.infrastructure.payments.mp_payload_builder import (
+    MercadoPagoDataError,
+    build_additional_info,
+    build_items_for_contrato,
+    build_mp_payer,
+    build_statement_descriptor,
+    split_full_name,
+)
 from motopay.infrastructure.payments.payment_method_utils import (
     mp_payment_method_type,
     resolve_payment_method_type,
@@ -62,8 +70,9 @@ def save_cliente_mp_card(
     client = MercadoPagoClient(access_token=ensure_valid_mp_token(db, op))
     customer_id = cliente.mercadopago_customer_id
     if not customer_id:
+        first_name, _ = split_full_name(cliente.nome, cliente.sobrenome)
         customer_id = client.get_or_create_customer(
-            email=email, first_name=cliente.nome.split()[0], cpf=cliente.cpf
+            email=email, first_name=first_name, cpf=cliente.cpf
         )
         cliente.mercadopago_customer_id = customer_id
         db.add(cliente)
@@ -151,6 +160,7 @@ def pay_cobranca_with_card(
     payment_method_kind: Literal["credit_card", "debit_card"] = "credit_card",
     saved_card_id: int | None = None,
     installments: int = 1,
+    device_id: str | None = None,
 ) -> CardPaymentOut:
     from datetime import date
 
@@ -197,17 +207,37 @@ def pay_cobranca_with_card(
             cob.status = CobrancaStatus.ATRASADO.value
 
     client = MercadoPagoClient(access_token=ensure_valid_mp_token(db, op))
+
+    # Monta payload completo seguindo recomendações MP (boost de aprovação)
+    try:
+        payer_obj = build_mp_payer(
+            cliente, fallback_email=payer_email_for_mercadopago(cliente)
+        )
+        items = build_items_for_contrato(ct, moto=ct.moto, total_value=charge_value)
+        add_info = build_additional_info(cliente, items=items)
+    except MercadoPagoDataError as exc:
+        raise ForbiddenError(str(exc)) from exc
+    statement_descriptor = build_statement_descriptor(op.nome)
+    description = items[0]["description"] if items else None
+    payer_email = payer_obj.pop("email", payer_email_for_mercadopago(cliente))
+
     try:
         order = client.create_online_order(
             external_reference=f"cobranca-{cob.id}",
             value=charge_value,
-            payer_email=payer_email_for_mercadopago(cliente),
+            payer_email=payer_email,
             payer_cpf=cliente.cpf,
             payment_method_id=payment_method_id,
             payment_method_type=mp_type,
             token=token,
             installments=inst,
             customer_id=customer_id,
+            payer_extra=payer_obj,
+            items=items,
+            additional_info=add_info,
+            statement_descriptor=statement_descriptor,
+            device_id=device_id,
+            description=description,
         )
     except MercadoPagoApiError as exc:
         raise ForbiddenError(

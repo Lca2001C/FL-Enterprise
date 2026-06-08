@@ -107,12 +107,22 @@ class Cliente(Base):
         BigInteger, ForeignKey("operacoes.id", ondelete="CASCADE"), nullable=False, index=True
     )
     nome: Mapped[str] = mapped_column(String(255), nullable=False)
+    sobrenome: Mapped[str | None] = mapped_column(String(255), nullable=True)
     cpf: Mapped[str] = mapped_column(String(14), nullable=False)
     telefone: Mapped[str] = mapped_column(String(32), nullable=False)
     email: Mapped[str | None] = mapped_column(String(320), nullable=True)
     telegram_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     score: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default="100")
     mercadopago_customer_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    endereco_logradouro: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    endereco_numero: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    endereco_bairro: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    endereco_cidade: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    endereco_estado: Mapped[str | None] = mapped_column(String(2), nullable=True)
+    endereco_cep: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
 
     operacao: Mapped[Operacao] = relationship(back_populates="clientes")
     mp_cards: Mapped[list[ClienteMpCard]] = relationship(back_populates="cliente")

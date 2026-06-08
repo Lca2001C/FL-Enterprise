@@ -89,6 +89,17 @@
     />
 
     <title>MotoPay Painel</title>
+    <!--
+      Mercado Pago Device Fingerprint (MP_DEVICE_SESSION_ID).
+      Carregado em todas as páginas para garantir que o checkout tenha o
+      device_id quando o usuário tentar pagar com cartão. O atributo `view`
+      indica o contexto (checkout) para a Anti-Fraude do MP.
+    -->
+    <script
+      src="https://www.mercadopago.com/v2/security.js"
+      view="checkout"
+      output="deviceId"
+    ></script>
   </head>
   <body>
     <div id="root"></div>

@@ -72,4 +72,5 @@ def public_card(
         payment_method_kind=kind,
         installments=body.installments,
         saved_card_id=body.saved_card_id,
+        device_id=body.device_id,
     )

@@ -226,13 +226,21 @@ class MercadoPagoClient:
         self._token = token
         self._base = "https://api.mercadopago.com"
 
-    def _headers(self, *, idempotency_key: str | None = None) -> dict[str, str]:
+    def _headers(
+        self,
+        *,
+        idempotency_key: str | None = None,
+        device_id: str | None = None,
+    ) -> dict[str, str]:
         headers = {
             "Authorization": f"Bearer {self._token}",
             "Content-Type": "application/json",
         }
         if idempotency_key:
             headers["X-Idempotency-Key"] = idempotency_key
+        if device_id:
+            # Header oficial recomendado pelo MP para device fingerprint
+            headers["X-meli-session-id"] = device_id
         return headers
 
     def _request(
@@ -242,12 +250,15 @@ class MercadoPagoClient:
         *,
         json: dict[str, Any] | None = None,
         idempotency_key: str | None = None,
+        device_id: str | None = None,
         timeout: float = 60.0,
     ) -> dict[str, Any]:
         r = httpx.request(
             method,
             f"{self._base}{path}",
-            headers=self._headers(idempotency_key=idempotency_key),
+            headers=self._headers(
+                idempotency_key=idempotency_key, device_id=device_id
+            ),
             json=json,
             timeout=timeout,
         )
@@ -276,8 +287,16 @@ class MercadoPagoClient:
         token: str | None = None,
         installments: int = 1,
         customer_id: str | None = None,
+        payer_extra: dict[str, Any] | None = None,
+        items: list[dict[str, Any]] | None = None,
+        additional_info: dict[str, Any] | None = None,
+        statement_descriptor: str | None = None,
+        device_id: str | None = None,
+        description: str | None = None,
     ) -> MercadoPagoOrderResult:
-        payer: dict[str, Any] = {"email": payer_email}
+        # Payer: começa do extra (first_name, last_name, phone, identification)
+        payer: dict[str, Any] = dict(payer_extra or {})
+        payer["email"] = payer_email
         cpf = _normalize_cpf(payer_cpf)
         if cpf:
             payer["identification"] = {"type": "CPF", "number": cpf}
@@ -289,6 +308,8 @@ class MercadoPagoClient:
             pm["token"] = token
         if payment_method_type == "credit_card":
             pm["installments"] = installments
+        if statement_descriptor:
+            pm["statement_descriptor"] = statement_descriptor
 
         payload: dict[str, Any] = {
             "type": "online",
@@ -305,11 +326,22 @@ class MercadoPagoClient:
             },
             "payer": payer,
         }
+        if items:
+            payload["items"] = items
+        if description:
+            payload["description"] = description[:600]
+        if additional_info:
+            payload["additional_info"] = additional_info
+        if statement_descriptor:
+            # Statement descriptor também no nível raiz da Order
+            payload["statement_descriptor"] = statement_descriptor
+
         data = self._request(
             "POST",
             "/v1/orders",
             json=payload,
             idempotency_key=str(uuid.uuid4()),
+            device_id=device_id,
         )
         return parse_order_response(data)
 
@@ -378,6 +410,7 @@ class MercadoPagoClient:
         reason: str,
         payer_email: str,
         ciclo: str = CicloCobranca.MENSAL.value,
+        statement_descriptor: str | None = None,
     ) -> dict[str, Any]:
         settings = get_settings()
         back_url = settings.api_public_base_url.rstrip("/")
@@ -385,8 +418,8 @@ class MercadoPagoClient:
         if cors and cors[0] != "*":
             back_url = cors[0]
         freq, freq_type = self.preapproval_frequency(ciclo)
-        payload = {
-            "reason": reason,
+        payload: dict[str, Any] = {
+            "reason": reason[:80] if reason else "Locacao",
             "external_reference": external_reference,
             "auto_recurring": {
                 "frequency": freq,
@@ -398,6 +431,8 @@ class MercadoPagoClient:
             "back_url": back_url,
             "status": "pending",
         }
+        if statement_descriptor:
+            payload["statement_descriptor"] = statement_descriptor
         return self._request("POST", "/preapproval", json=payload)
 
     def get_preapproval(self, preapproval_id: str) -> dict[str, Any]:

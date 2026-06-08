@@ -5,6 +5,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import PaymentBrickCheckout from './integrations/mercadopago/PaymentBrickCheckout';
 import StatusScreenCheckout from './integrations/mercadopago/StatusScreenCheckout';
 import { initMercadoPagoSdk } from './integrations/mercadopago/init';
+import { ensureMercadoPagoDeviceId } from './integrations/mercadopago/deviceId';
 import type { CardPaymentOut, ClienteMpCardOut, PayerPortalOut } from './apiTypes';
 import { formatBrl, formatDate } from './utils/format';
 import { parseApiError } from './utils/apiError';
@@ -202,11 +203,13 @@ export default function PublicPayView() {
     setPayLoading(true);
     setError('');
     try {
+      const deviceId = await ensureMercadoPagoDeviceId();
       const body: Record<string, unknown> = {
         token: data.token,
         payment_method_id: data.payment_method_id,
         payment_method_kind: method,
         installments: data.installments,
+        device_id: deviceId,
       };
       if (selectedSavedId != null) body.saved_card_id = selectedSavedId;
       const r = await api.post<CardPaymentOut>(`/api/v1/public/pay/${token}/card`, body);

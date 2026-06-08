@@ -209,10 +209,17 @@ def create_cliente(
     c = Cliente(
         operacao_id=operacao_id,
         nome=body.nome.strip(),
+        sobrenome=body.sobrenome.strip() if body.sobrenome else None,
         cpf=cpf,
         telefone=body.telefone.strip(),
         email=body.email.strip().lower() if body.email else None,
         telegram_id=body.telegram_id.strip() if body.telegram_id else None,
+        endereco_logradouro=(body.endereco_logradouro or "").strip() or None,
+        endereco_numero=(body.endereco_numero or "").strip() or None,
+        endereco_bairro=(body.endereco_bairro or "").strip() or None,
+        endereco_cidade=(body.endereco_cidade or "").strip() or None,
+        endereco_estado=((body.endereco_estado or "").strip().upper() or None),
+        endereco_cep=(body.endereco_cep or "").strip() or None,
     )
     db.add(c)
     db.commit()
@@ -226,12 +233,26 @@ def update_cliente(
     c = get_cliente(db, user, operacao_scope, cliente_id)
     if body.nome is not None:
         c.nome = body.nome.strip()
+    if body.sobrenome is not None:
+        c.sobrenome = body.sobrenome.strip() if body.sobrenome else None
     if body.telefone is not None:
         c.telefone = body.telefone.strip()
     if body.email is not None:
         c.email = body.email.strip().lower() if body.email else None
     if body.telegram_id is not None:
         c.telegram_id = body.telegram_id.strip() if body.telegram_id else None
+    if body.endereco_logradouro is not None:
+        c.endereco_logradouro = body.endereco_logradouro.strip() or None
+    if body.endereco_numero is not None:
+        c.endereco_numero = body.endereco_numero.strip() or None
+    if body.endereco_bairro is not None:
+        c.endereco_bairro = body.endereco_bairro.strip() or None
+    if body.endereco_cidade is not None:
+        c.endereco_cidade = body.endereco_cidade.strip() or None
+    if body.endereco_estado is not None:
+        c.endereco_estado = body.endereco_estado.strip().upper() or None
+    if body.endereco_cep is not None:
+        c.endereco_cep = body.endereco_cep.strip() or None
     db.add(c)
     db.commit()
     db.refresh(c)
