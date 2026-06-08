@@ -15,11 +15,11 @@ from __future__ import annotations
 
 import re
 import unicodedata
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
-from motopay.infrastructure.db.models import Cliente, Contrato, Moto, Operacao
+from motopay.infrastructure.db.models import Cliente, Contrato, Moto
 
 # --- Limites e constantes do Mercado Pago ------------------------------------
 
@@ -186,7 +186,7 @@ def build_additional_info_payer(cliente: Cliente) -> dict[str, Any]:
     reg = getattr(cliente, "created_at", None)
     if isinstance(reg, datetime):
         if reg.tzinfo is None:
-            reg = reg.replace(tzinfo=timezone.utc)
+            reg = reg.replace(tzinfo=UTC)
         info["registration_date"] = reg.isoformat(timespec="milliseconds")
     phone_parts = validate_phone(cliente.telefone)
     if phone_parts:

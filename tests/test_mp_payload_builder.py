@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 from types import SimpleNamespace
 
 import pytest
-
 from motopay.infrastructure.payments.mp_payload_builder import (
     DEFAULT_VEHICLE_RENTAL_CATEGORY,
     MercadoPagoDataError,
@@ -25,7 +24,6 @@ from motopay.infrastructure.payments.mp_payload_builder import (
     validate_phone,
     validate_uf,
 )
-
 
 # --- split_full_name ---------------------------------------------------------
 
@@ -177,7 +175,7 @@ def _fake_cliente(**overrides):
         endereco_cidade="São Paulo",
         endereco_estado="SP",
         endereco_cep="01310-200",
-        created_at=datetime(2025, 1, 15, 10, 30, tzinfo=timezone.utc),
+        created_at=datetime(2025, 1, 15, 10, 30, tzinfo=UTC),
     )
     for k, v in overrides.items():
         setattr(base, k, v)
