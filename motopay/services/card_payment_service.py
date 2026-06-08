@@ -208,18 +208,30 @@ def pay_cobranca_with_card(
 
     client = MercadoPagoClient(access_token=ensure_valid_mp_token(db, op))
 
-    # Monta payload completo seguindo recomendações MP (boost de aprovação)
+    # Monta payload completo seguindo recomendações MP (boost de aprovação).
+    # Cada bloco é tolerante a falhas — se um cliente não tem CPF/endereço
+    # válidos o pagamento ainda vai, só sem o enriquecimento daquele bloco.
+    import logging as _logging
+    _log = _logging.getLogger(__name__)
+    fallback_email = payer_email_for_mercadopago(cliente)
     try:
-        payer_obj = build_mp_payer(
-            cliente, fallback_email=payer_email_for_mercadopago(cliente)
-        )
+        payer_obj = build_mp_payer(cliente, fallback_email=fallback_email)
+    except MercadoPagoDataError as exc:
+        _log.info("MP card: payer reduzido (%s)", exc)
+        payer_obj = {"email": fallback_email}
+    try:
         items = build_items_for_contrato(ct, moto=ct.moto, total_value=charge_value)
+    except MercadoPagoDataError as exc:
+        _log.info("MP card: items omitidos (%s)", exc)
+        items = []
+    try:
         add_info = build_additional_info(cliente, items=items)
     except MercadoPagoDataError as exc:
-        raise ForbiddenError(str(exc)) from exc
+        _log.info("MP card: additional_info omitida (%s)", exc)
+        add_info = None
     statement_descriptor = build_statement_descriptor(op.nome)
     description = items[0]["description"] if items else None
-    payer_email = payer_obj.pop("email", payer_email_for_mercadopago(cliente))
+    payer_email = payer_obj.pop("email", fallback_email)
 
     try:
         order = client.create_online_order(

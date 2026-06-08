@@ -60,28 +60,53 @@ def _build_mp_enrichment(
     valor_total: Decimal,
     contrato: Contrato | None,
 ) -> dict[str, object]:
-    """Constrói payer/items/additional_info/statement_descriptor — todos opcionais.
+    """Constrói payer/items/additional_info/statement_descriptor — degradação suave.
 
-    Em caso de dados incompletos do cliente (sem endereço, etc.), os campos
-    opcionais são omitidos mas os obrigatórios (items, payer) seguem.
+    Sempre devolve algo enviável ao MP. Quando um bloco opcional falha por
+    dados incompletos do cliente (CPF mal formado, endereço ausente, etc.),
+    ele é omitido individualmente — a cobrança nunca quebra por isso.
     """
-    payer = build_mp_payer(
-        cliente, fallback_email=payer_email_for_mercadopago(cliente)
-    )
-    payer_email = payer.pop("email", payer_email_for_mercadopago(cliente))
-    items = build_items_for_contrato(
-        contrato,
-        moto=getattr(contrato, "moto", None) if contrato else None,
-        total_value=valor_total,
-    )
-    add_info = build_additional_info(cliente, items=items)
+    import logging
+
+    log = logging.getLogger(__name__)
+
+    fallback_email = payer_email_for_mercadopago(cliente)
+
+    try:
+        payer = build_mp_payer(cliente, fallback_email=fallback_email)
+        payer_email = payer.pop("email", fallback_email)
+    except MercadoPagoDataError as exc:
+        log.info("MP enrichment: payer reduzido (%s)", exc)
+        payer = {}
+        payer_email = fallback_email
+
+    try:
+        items = build_items_for_contrato(
+            contrato,
+            moto=getattr(contrato, "moto", None) if contrato else None,
+            total_value=valor_total,
+        )
+    except MercadoPagoDataError as exc:
+        log.info("MP enrichment: items omitidos (%s)", exc)
+        items = []
+
+    try:
+        add_info = build_additional_info(cliente, items=items)
+    except MercadoPagoDataError as exc:
+        log.info("MP enrichment: additional_info omitida (%s)", exc)
+        add_info = None
+
+    description: str | None = None
+    if items:
+        description = items[0].get("description") or items[0].get("title")
+
     return {
         "payer_extra": payer,
         "payer_email": payer_email,
-        "items": items,
+        "items": items or None,
         "additional_info": add_info,
         "statement_descriptor": build_statement_descriptor(op.nome),
-        "description": items[0]["description"] if items and items[0].get("description") else items[0]["title"],
+        "description": description,
     }
 
 
@@ -105,12 +130,10 @@ def create_pix_for_cobranca(
             )
     if mp_configured_for_operacao(op) and mp_credentials_complete(op):
         assert_payer_email_ready(cliente)
-        try:
-            extra = _build_mp_enrichment(
-                op=op, cliente=cliente, valor_total=valor_total, contrato=contrato
-            )
-        except MercadoPagoDataError as exc:
-            raise ForbiddenError(str(exc)) from exc
+        # _build_mp_enrichment NUNCA levanta — degrada cada campo opcional.
+        extra = _build_mp_enrichment(
+            op=op, cliente=cliente, valor_total=valor_total, contrato=contrato
+        )
         try:
             order = MercadoPagoClient(access_token=_access_token(db, op)).create_online_order(
                 external_reference=f"cobranca-{cobranca_id}",
@@ -153,12 +176,10 @@ def create_pix_for_contrato(
     del due_date
     if mp_configured_for_operacao(op) and mp_credentials_complete(op):
         assert_payer_email_ready(cliente)
-        try:
-            extra = _build_mp_enrichment(
-                op=op, cliente=cliente, valor_total=valor_total, contrato=contrato
-            )
-        except MercadoPagoDataError as exc:
-            raise ForbiddenError(str(exc)) from exc
+        # _build_mp_enrichment NUNCA levanta — degrada cada campo opcional.
+        extra = _build_mp_enrichment(
+            op=op, cliente=cliente, valor_total=valor_total, contrato=contrato
+        )
         try:
             order = MercadoPagoClient(access_token=_access_token(db, op)).create_online_order(
                 external_reference=f"contrato-{contrato_id}",

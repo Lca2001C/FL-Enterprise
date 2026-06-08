@@ -30,16 +30,24 @@ async def prometheus_metrics(_: object = Depends(require_metrics_or_admin)) -> R
     return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
+# Inclui_in_schema=False na rota com barra para evitar duplicidade no OpenAPI.
+# Aceitamos /alerts e /alerts/ pois o axios + nginx montam ora um, ora outro
+# (o interceptor adiciona operacao_id como query e o nginx faz proxy de prefix).
 alert_router = APIRouter(prefix="/alerts", tags=["alerts"])
 
 
 @alert_router.get("", response_model=list[dict])
+@alert_router.get("/", response_model=list[dict], include_in_schema=False)
 async def list_alerts(
     severity: str | None = None,
     tenant_id: int | None = None,
     limit: int = 100,
+    operacao_id: int | None = None,
     _: object = Depends(require_metrics_or_admin),
 ) -> list[dict]:
+    # operacao_id chega via interceptor de admin mas alerts é global —
+    # aceitamos o parametro silenciosamente (no-op) para nao gerar 422.
+    del operacao_id
     severity_enum = None
     if severity:
         try:
