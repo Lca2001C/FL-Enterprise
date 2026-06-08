@@ -5,7 +5,12 @@ from sqlalchemy.orm import Session
 from motopay.config import get_settings
 from motopay.domain.exceptions import ForbiddenError, MotoPayError, NotFoundError
 from motopay.infrastructure.db.session import get_db
-from motopay.interfaces.api.deps import CurrentUser, require_admin, require_settings_access, resolve_operacao_id
+from motopay.interfaces.api.deps import (
+    CurrentUser,
+    require_admin,
+    require_settings_access,
+    resolve_operacao_id,
+)
 from motopay.interfaces.api.schemas import (
     CustomMessageTriggerMetaOut,
     MpOAuthStartOut,

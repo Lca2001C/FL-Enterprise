@@ -18,8 +18,10 @@ from motopay.services.contrato_document_service import generate_contrato_pdf
 from motopay.services.fleet_service import (
     create_contrato,
     get_contrato,
-    list_contratos as list_contratos_service,
     update_contrato,
+)
+from motopay.services.fleet_service import (
+    list_contratos as list_contratos_service,
 )
 
 router = APIRouter(prefix="/contratos", tags=["contratos"])

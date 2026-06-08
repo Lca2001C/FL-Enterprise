@@ -3,8 +3,6 @@ from __future__ import annotations
 from datetime import date
 from decimal import Decimal
 
-from sqlalchemy import select
-
 from motopay.domain.enums import CicloCobranca, CobrancaStatus, ContratoStatus
 from motopay.infrastructure.db.models import (
     Cliente,
@@ -14,6 +12,7 @@ from motopay.infrastructure.db.models import (
     Operacao,
 )
 from motopay.services.billing_service import handle_mercadopago_subscription_payment
+from sqlalchemy import select
 
 
 def test_subscription_payment_creates_and_confirms_cobranca(db_session):

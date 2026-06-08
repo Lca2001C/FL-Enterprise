@@ -16,7 +16,12 @@ from motopay.infrastructure.payments.mercadopago_client import (
     mp_public_key_for_operacao,
 )
 from motopay.interfaces.api.deps import CurrentUser
-from motopay.interfaces.api.schemas import CardPaymentOut, ClienteMpCardOut, CobrancaOut, PayerPortalOut
+from motopay.interfaces.api.schemas import (
+    CardPaymentOut,
+    ClienteMpCardOut,
+    CobrancaOut,
+    PayerPortalOut,
+)
 from motopay.services.billing_service import (
     _OPEN_COBRANCA_STATUSES,
     _cobranca_to_out,

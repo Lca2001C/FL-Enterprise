@@ -4,8 +4,6 @@ from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from unittest.mock import MagicMock, patch
 
-from sqlalchemy import select
-
 from motopay.domain.enums import CicloCobranca, CobrancaStatus, ContratoStatus
 from motopay.infrastructure.db.models import (
     Cliente,
@@ -22,6 +20,8 @@ from motopay.services.billing_service import (
     handle_mercadopago_subscription_payment,
     sync_refund_from_mercadopago_payment,
 )
+from sqlalchemy import select
+
 from tests.conftest import auth_header, login
 
 
