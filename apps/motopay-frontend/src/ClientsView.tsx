@@ -23,10 +23,17 @@ const ClientsView = () => {
   const [cardsCliente, setCardsCliente] = useState<ClienteOut | null>(null);
   const [formData, setFormData] = useState({
     nome: '',
+    sobrenome: '',
     cpf: '',
     telefone: '',
     email: '',
     telegram_id: '',
+    endereco_logradouro: '',
+    endereco_numero: '',
+    endereco_bairro: '',
+    endereco_cidade: '',
+    endereco_estado: '',
+    endereco_cep: '',
   });
   const [debouncedSearch, setDebouncedSearch] = useState('');
 
@@ -61,7 +68,20 @@ const ClientsView = () => {
 
   const openCreate = () => {
     setEditCliente(null);
-    setFormData({ nome: '', cpf: '', telefone: '', email: '', telegram_id: '' });
+    setFormData({
+      nome: '',
+      sobrenome: '',
+      cpf: '',
+      telefone: '',
+      email: '',
+      telegram_id: '',
+      endereco_logradouro: '',
+      endereco_numero: '',
+      endereco_bairro: '',
+      endereco_cidade: '',
+      endereco_estado: '',
+      endereco_cep: '',
+    });
     setShowModal(true);
   };
 
@@ -69,13 +89,30 @@ const ClientsView = () => {
     setEditCliente(c);
     setFormData({
       nome: c.nome,
+      sobrenome: c.sobrenome ?? '',
       cpf: c.cpf,
       telefone: c.telefone,
       email: c.email ?? '',
       telegram_id: c.telegram_id ?? '',
+      endereco_logradouro: c.endereco_logradouro ?? '',
+      endereco_numero: c.endereco_numero ?? '',
+      endereco_bairro: c.endereco_bairro ?? '',
+      endereco_cidade: c.endereco_cidade ?? '',
+      endereco_estado: c.endereco_estado ?? '',
+      endereco_cep: c.endereco_cep ?? '',
     });
     setShowModal(true);
   };
+
+  const buildEnderecoPayload = () => ({
+    sobrenome: formData.sobrenome.trim() || null,
+    endereco_logradouro: formData.endereco_logradouro.trim() || null,
+    endereco_numero: formData.endereco_numero.trim() || null,
+    endereco_bairro: formData.endereco_bairro.trim() || null,
+    endereco_cidade: formData.endereco_cidade.trim() || null,
+    endereco_estado: formData.endereco_estado.trim().toUpperCase() || null,
+    endereco_cep: formData.endereco_cep.replace(/\D/g, '') || null,
+  });
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -87,6 +124,7 @@ const ClientsView = () => {
           telefone: formData.telefone,
           email: formData.email.trim() || null,
           telegram_id: formData.telegram_id || null,
+          ...buildEnderecoPayload(),
         });
       } else {
         await api.post('/api/v1/clientes', {
@@ -95,6 +133,7 @@ const ClientsView = () => {
           telefone: formData.telefone,
           email: formData.email.trim() || null,
           telegram_id: formData.telegram_id || null,
+          ...buildEnderecoPayload(),
         });
       }
       setShowModal(false);
@@ -337,6 +376,66 @@ const ClientsView = () => {
                 <small className="text-muted">
                   Necessário para lembretes, Pix em atraso e confirmação de pagamento.
                 </small>
+              </div>
+
+              <div style={{ marginTop: 14, marginBottom: 8 }}>
+                <strong style={{ fontFamily: 'Outfit' }}>Endereço (recomendado pelo Mercado Pago)</strong>
+                <p className="text-muted" style={{ fontSize: '0.8rem', margin: '4px 0 0' }}>
+                  Aumenta a taxa de aprovação dos pagamentos. CEP, cidade e estado vão como
+                  additional_info.shipments.
+                </p>
+              </div>
+              <div className="input-group" style={{ display: 'flex', gap: 8 }}>
+                <input
+                  className="input-field"
+                  style={{ flex: 1 }}
+                  placeholder="Logradouro"
+                  value={formData.endereco_logradouro}
+                  onChange={(e) => setFormData({ ...formData, endereco_logradouro: e.target.value })}
+                />
+                <input
+                  className="input-field"
+                  style={{ width: 110 }}
+                  placeholder="Número"
+                  value={formData.endereco_numero}
+                  onChange={(e) => setFormData({ ...formData, endereco_numero: e.target.value })}
+                />
+              </div>
+              <div className="input-group" style={{ display: 'flex', gap: 8 }}>
+                <input
+                  className="input-field"
+                  style={{ flex: 1 }}
+                  placeholder="Bairro"
+                  value={formData.endereco_bairro}
+                  onChange={(e) => setFormData({ ...formData, endereco_bairro: e.target.value })}
+                />
+                <input
+                  className="input-field"
+                  style={{ width: 140 }}
+                  placeholder="CEP"
+                  maxLength={9}
+                  value={formData.endereco_cep}
+                  onChange={(e) => setFormData({ ...formData, endereco_cep: e.target.value })}
+                />
+              </div>
+              <div className="input-group" style={{ display: 'flex', gap: 8 }}>
+                <input
+                  className="input-field"
+                  style={{ flex: 1 }}
+                  placeholder="Cidade"
+                  value={formData.endereco_cidade}
+                  onChange={(e) => setFormData({ ...formData, endereco_cidade: e.target.value })}
+                />
+                <input
+                  className="input-field"
+                  style={{ width: 80, textTransform: 'uppercase' }}
+                  placeholder="UF"
+                  maxLength={2}
+                  value={formData.endereco_estado}
+                  onChange={(e) =>
+                    setFormData({ ...formData, endereco_estado: e.target.value.toUpperCase() })
+                  }
+                />
               </div>
               <div className="modal-actions">
                 <button type="button" className="btn-secondary" onClick={() => setShowModal(false)}>

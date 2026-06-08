@@ -183,17 +183,31 @@ class MotoOut(BaseModel):
 
 class ClienteCreate(BaseModel):
     nome: str
+    sobrenome: str | None = None
     cpf: str
     telefone: str
     email: str | None = None
     telegram_id: str | None = None
+    endereco_logradouro: str | None = None
+    endereco_numero: str | None = None
+    endereco_bairro: str | None = None
+    endereco_cidade: str | None = None
+    endereco_estado: str | None = None
+    endereco_cep: str | None = None
 
 
 class ClienteUpdate(BaseModel):
     nome: str | None = None
+    sobrenome: str | None = None
     telefone: str | None = None
     email: str | None = None
     telegram_id: str | None = None
+    endereco_logradouro: str | None = None
+    endereco_numero: str | None = None
+    endereco_bairro: str | None = None
+    endereco_cidade: str | None = None
+    endereco_estado: str | None = None
+    endereco_cep: str | None = None
 
 
 class ClienteOut(BaseModel):
@@ -202,6 +216,7 @@ class ClienteOut(BaseModel):
     id: int
     operacao_id: int
     nome: str
+    sobrenome: str | None = None
     cpf: str
     telefone: str
     email: str | None = None
@@ -210,6 +225,12 @@ class ClienteOut(BaseModel):
     score: int
     moto_placa: str | None = None
     moto_modelo: str | None = None
+    endereco_logradouro: str | None = None
+    endereco_numero: str | None = None
+    endereco_bairro: str | None = None
+    endereco_cidade: str | None = None
+    endereco_estado: str | None = None
+    endereco_cep: str | None = None
 
 
 class ContratoCreate(BaseModel):
@@ -386,6 +407,7 @@ class CardPaymentRequest(BaseModel):
     payment_method_kind: str = "credit_card"
     saved_card_id: int | None = None
     installments: int = 1
+    device_id: str | None = None
 
 
 class ThreeDsInfoOut(BaseModel):
@@ -431,6 +453,7 @@ class PortalCardPaymentRequest(BaseModel):
     payment_method_kind: str = "credit_card"
     saved_card_id: int | None = None
     installments: int = 1
+    device_id: str | None = None
 
 
 class RefundRequest(BaseModel):

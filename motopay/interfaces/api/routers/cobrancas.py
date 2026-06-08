@@ -93,6 +93,7 @@ def pay_with_card(
         payment_method_kind=kind,  # type: ignore[arg-type]
         saved_card_id=body.saved_card_id,
         installments=body.installments,
+        device_id=body.device_id,
     )
 
 

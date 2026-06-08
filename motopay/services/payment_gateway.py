@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from motopay.domain.enums import PaymentGateway
 from motopay.domain.exceptions import ForbiddenError
-from motopay.infrastructure.db.models import Cliente, Operacao
+from motopay.infrastructure.db.models import Cliente, Contrato, Operacao
 from motopay.infrastructure.payments.mercadopago_client import (
     MercadoPagoApiError,
     MercadoPagoClient,
@@ -18,6 +18,13 @@ from motopay.infrastructure.payments.mercadopago_client import (
     mp_credentials_complete,
     mp_token_for_operacao,
     payer_email_for_mercadopago,
+)
+from motopay.infrastructure.payments.mp_payload_builder import (
+    MercadoPagoDataError,
+    build_additional_info,
+    build_items_for_contrato,
+    build_mp_payer,
+    build_statement_descriptor,
 )
 from motopay.services.mercadopago_token_service import ensure_valid_mp_token
 
@@ -46,6 +53,38 @@ def _access_token(db: Session | None, op: Operacao) -> str:
     return mp_token_for_operacao(op)
 
 
+def _build_mp_enrichment(
+    *,
+    op: Operacao,
+    cliente: Cliente,
+    valor_total: Decimal,
+    contrato: Contrato | None,
+) -> dict[str, object]:
+    """Constrói payer/items/additional_info/statement_descriptor — todos opcionais.
+
+    Em caso de dados incompletos do cliente (sem endereço, etc.), os campos
+    opcionais são omitidos mas os obrigatórios (items, payer) seguem.
+    """
+    payer = build_mp_payer(
+        cliente, fallback_email=payer_email_for_mercadopago(cliente)
+    )
+    payer_email = payer.pop("email", payer_email_for_mercadopago(cliente))
+    items = build_items_for_contrato(
+        contrato,
+        moto=getattr(contrato, "moto", None) if contrato else None,
+        total_value=valor_total,
+    )
+    add_info = build_additional_info(cliente, items=items)
+    return {
+        "payer_extra": payer,
+        "payer_email": payer_email,
+        "items": items,
+        "additional_info": add_info,
+        "statement_descriptor": build_statement_descriptor(op.nome),
+        "description": items[0]["description"] if items and items[0].get("description") else items[0]["title"],
+    }
+
+
 def create_pix_for_cobranca(
     *,
     op: Operacao,
@@ -54,6 +93,7 @@ def create_pix_for_cobranca(
     valor_total: Decimal,
     due_date: date,
     db: Session | None = None,
+    contrato: Contrato | None = None,
 ) -> tuple[str, str, str | None, str]:
     """Retorna (order_id, payment_id, pix_copia_cola, gateway)."""
     del due_date
@@ -66,13 +106,24 @@ def create_pix_for_cobranca(
     if mp_configured_for_operacao(op) and mp_credentials_complete(op):
         assert_payer_email_ready(cliente)
         try:
+            extra = _build_mp_enrichment(
+                op=op, cliente=cliente, valor_total=valor_total, contrato=contrato
+            )
+        except MercadoPagoDataError as exc:
+            raise ForbiddenError(str(exc)) from exc
+        try:
             order = MercadoPagoClient(access_token=_access_token(db, op)).create_online_order(
                 external_reference=f"cobranca-{cobranca_id}",
                 value=valor_total,
-                payer_email=payer_email_for_mercadopago(cliente),
+                payer_email=extra["payer_email"],  # type: ignore[arg-type]
                 payer_cpf=cliente.cpf,
                 payment_method_id="pix",
                 payment_method_type="bank_transfer",
+                payer_extra=extra["payer_extra"],  # type: ignore[arg-type]
+                items=extra["items"],  # type: ignore[arg-type]
+                additional_info=extra["additional_info"],  # type: ignore[arg-type]
+                statement_descriptor=extra["statement_descriptor"],  # type: ignore[arg-type]
+                description=extra["description"],  # type: ignore[arg-type]
             )
         except MercadoPagoApiError as exc:
             raise ForbiddenError(
@@ -96,19 +147,31 @@ def create_pix_for_contrato(
     valor_total: Decimal,
     due_date: date,
     db: Session | None = None,
+    contrato: Contrato | None = None,
 ) -> tuple[str, str, str | None, str]:
     """Compat: Pix por contrato (usa cobranca-{contrato_id} como referência externa)."""
     del due_date
     if mp_configured_for_operacao(op) and mp_credentials_complete(op):
         assert_payer_email_ready(cliente)
         try:
+            extra = _build_mp_enrichment(
+                op=op, cliente=cliente, valor_total=valor_total, contrato=contrato
+            )
+        except MercadoPagoDataError as exc:
+            raise ForbiddenError(str(exc)) from exc
+        try:
             order = MercadoPagoClient(access_token=_access_token(db, op)).create_online_order(
                 external_reference=f"contrato-{contrato_id}",
                 value=valor_total,
-                payer_email=payer_email_for_mercadopago(cliente),
+                payer_email=extra["payer_email"],  # type: ignore[arg-type]
                 payer_cpf=cliente.cpf,
                 payment_method_id="pix",
                 payment_method_type="bank_transfer",
+                payer_extra=extra["payer_extra"],  # type: ignore[arg-type]
+                items=extra["items"],  # type: ignore[arg-type]
+                additional_info=extra["additional_info"],  # type: ignore[arg-type]
+                statement_descriptor=extra["statement_descriptor"],  # type: ignore[arg-type]
+                description=extra["description"],  # type: ignore[arg-type]
             )
         except MercadoPagoApiError as exc:
             raise ForbiddenError(

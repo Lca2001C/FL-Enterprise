@@ -26,6 +26,7 @@ from motopay.infrastructure.db.models import (
     Contrato,
     EventoDominio,
     Financeiro,
+    Moto,
     Operacao,
 )
 from motopay.infrastructure.payments.mercadopago_client import (
@@ -250,6 +251,7 @@ def refresh_overdue_pix(db: Session, *, contrato: Contrato, today: date) -> Cobr
         valor_total=amounts.valor_total,
         due_date=today,
         db=db,
+        contrato=contrato,
     )
 
     if cob is not None:
@@ -335,6 +337,7 @@ def ensure_pix_for_cobranca(
         valor_total=amounts.valor_total,
         due_date=cob.vencimento,
         db=db,
+        contrato=ct,
     )
     _apply_pix_to_cobranca(
         cob,
@@ -396,6 +399,7 @@ def create_pix_charge_for_contract(
         valor_total=amounts.valor_total,
         due_date=ct.proximo_vencimento,
         db=db,
+        contrato=ct,
     )
 
     if existing is not None:
@@ -474,12 +478,29 @@ def create_mercadopago_subscription_for_contract(
     if not cliente:
         raise NotFoundError("Cliente não encontrado")
     client = MercadoPagoClient(access_token=ensure_valid_mp_token(db, op))
+    # Importações locais para evitar ciclos
+    from motopay.infrastructure.payments.mp_payload_builder import (
+        MercadoPagoDataError,
+        assert_subscription_ready,
+        build_statement_descriptor,
+    )
+    try:
+        assert_subscription_ready(cliente, ct)
+    except MercadoPagoDataError as exc:
+        raise ForbiddenError(str(exc)) from exc
+    moto_obj = db.get(Moto, ct.moto_id)
+    nome_op = (op.nome or "Locacao").strip() or "Locacao"
+    if moto_obj is not None:
+        reason = f"{nome_op} - {moto_obj.modelo} - Contrato #{ct.id}"
+    else:
+        reason = f"{nome_op} - Contrato #{ct.id}"
     data = client.create_preapproval(
         external_reference=f"contrato-{ct.id}",
         value=ct.valor_recorrente,
-        reason=f"Contrato #{ct.id}",
+        reason=reason,
         payer_email=payer_email_for_mercadopago(cliente),
         ciclo=ct.ciclo,
+        statement_descriptor=build_statement_descriptor(op.nome),
     )
     sub_id = str(data["id"])
     ct.mercadopago_subscription_id = sub_id

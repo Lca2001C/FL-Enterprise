@@ -186,6 +186,7 @@ def portal_pay_card(
     payment_method_kind: str,
     installments: int,
     saved_card_id: int | None,
+    device_id: str | None = None,
 ) -> CardPaymentOut:
     cob = _cob_by_portal_token(db, token)
 
@@ -204,4 +205,5 @@ def portal_pay_card(
         payment_method_kind=kind,  # type: ignore[arg-type]
         saved_card_id=saved_card_id,
         installments=installments,
+        device_id=device_id,
     )

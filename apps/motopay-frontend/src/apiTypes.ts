@@ -46,6 +46,7 @@ export type ClienteOut = {
   id: number;
   operacao_id: number;
   nome: string;
+  sobrenome?: string | null;
   cpf: string;
   telefone: string;
   email: string | null;
@@ -54,6 +55,27 @@ export type ClienteOut = {
   score: number;
   moto_placa?: string | null;
   moto_modelo?: string | null;
+  endereco_logradouro?: string | null;
+  endereco_numero?: string | null;
+  endereco_bairro?: string | null;
+  endereco_cidade?: string | null;
+  endereco_estado?: string | null;
+  endereco_cep?: string | null;
+};
+
+export type ClienteCreatePayload = {
+  nome: string;
+  sobrenome?: string | null;
+  cpf: string;
+  telefone: string;
+  email?: string | null;
+  telegram_id?: string | null;
+  endereco_logradouro?: string | null;
+  endereco_numero?: string | null;
+  endereco_bairro?: string | null;
+  endereco_cidade?: string | null;
+  endereco_estado?: string | null;
+  endereco_cep?: string | null;
 };
 
 export type MpSubscriptionOut = {
