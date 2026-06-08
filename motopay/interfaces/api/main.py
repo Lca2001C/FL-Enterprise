@@ -14,6 +14,10 @@ from motopay.domain.exceptions import (
     NotFoundError,
     UnauthorizedError,
 )
+from motopay.infrastructure.payments.mercadopago_client import (
+    MercadoPagoApiError,
+    mercadopago_api_error_message,
+)
 from motopay.infrastructure.security.client_ip import get_client_ip
 from motopay.interfaces.api.middleware import ObservabilityMiddleware
 from motopay.interfaces.api.routers import (
@@ -225,6 +229,14 @@ async def not_found_handler(_: Request, exc: NotFoundError) -> JSONResponse:
 @app.exception_handler(ConflictError)
 async def conflict_handler(_: Request, exc: ConflictError) -> JSONResponse:
     return JSONResponse(status_code=409, content={"detail": str(exc)})
+
+
+@app.exception_handler(MercadoPagoApiError)
+async def mercadopago_api_error_handler(_: Request, exc: MercadoPagoApiError) -> JSONResponse:
+    return JSONResponse(
+        status_code=422,
+        content={"detail": mercadopago_api_error_message(exc)},
+    )
 
 
 @app.exception_handler(MotoPayError)

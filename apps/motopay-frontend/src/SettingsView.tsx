@@ -32,6 +32,33 @@ const DEFAULT_BOT_MENU_BUTTONS: TelegramBotMenuButton[] = [
   DEFAULT_BOT_MENU_CONTACT_BUTTON,
 ];
 
+const sanitizePercent = (value: number) => (Number.isFinite(value) ? value : 0);
+
+const applyOperacaoConfig = (data: OperacaoConfig): OperacaoConfig => ({
+  ...data,
+  multa_fixa_percentual: sanitizePercent(Number(data.multa_fixa_percentual)),
+  juros_diario_percentual: sanitizePercent(Number(data.juros_diario_percentual)),
+  telegram_custom_messages: data.telegram_custom_messages ?? [],
+  telegram_bot_menu_buttons: data.telegram_bot_menu_buttons ?? DEFAULT_BOT_MENU_BUTTONS,
+  telegram_owner_notify_id: data.telegram_owner_notify_id ?? null,
+  telegram_owner_notify_enabled: data.telegram_owner_notify_enabled ?? false,
+});
+
+const sanitizeMenuButtonsForPatch = (
+  buttons: TelegramBotMenuButton[]
+): TelegramBotMenuButton[] =>
+  buttons.map((btn) => {
+    const command = btn.command.trim().toLowerCase();
+    if (isBuiltinBotMenuCommand(command)) {
+      return { label: btn.label.trim(), command };
+    }
+    return {
+      label: btn.label.trim(),
+      command,
+      response: (btn.response ?? '').trim(),
+    };
+  });
+
 const SettingsView = () => {
   const { api, user, operacaoScopeId } = useAuth();
   const [config, setConfig] = useState<OperacaoConfig>({
@@ -109,32 +136,14 @@ const SettingsView = () => {
             telegram_owner_notify_id: null,
             telegram_owner_notify_enabled: false,
           });
-          setMpToken('');
           setLoading(false);
           return;
         }
         const r = await api.get<OperacaoConfig>(`/api/v1/operacoes/${adminTargetId}`);
-        setConfig({
-          ...r.data,
-          telegram_custom_messages: r.data.telegram_custom_messages ?? [],
-          telegram_bot_menu_buttons: r.data.telegram_bot_menu_buttons ?? DEFAULT_BOT_MENU_BUTTONS,
-          telegram_owner_notify_id: r.data.telegram_owner_notify_id ?? null,
-          telegram_owner_notify_enabled: r.data.telegram_owner_notify_enabled ?? false,
-        });
-        setMpToken('');
+        setConfig(applyOperacaoConfig(r.data));
       } else {
         const r = await api.get<OperacaoConfig>('/api/v1/operacoes/me');
-        setConfig({
-          nome: r.data.nome,
-          multa_fixa_percentual: r.data.multa_fixa_percentual,
-          juros_diario_percentual: r.data.juros_diario_percentual,
-          telegram_templates: r.data.telegram_templates,
-          telegram_custom_messages: [],
-          telegram_bot_menu_buttons: r.data.telegram_bot_menu_buttons ?? DEFAULT_BOT_MENU_BUTTONS,
-          telegram_owner_notify_id: r.data.telegram_owner_notify_id ?? null,
-          telegram_owner_notify_enabled: r.data.telegram_owner_notify_enabled ?? false,
-        });
-        setMpToken('');
+        setConfig(applyOperacaoConfig(r.data));
       }
       await fetchPaymentsConfig();
     } catch (e) {
@@ -207,31 +216,38 @@ const SettingsView = () => {
     }
   };
 
-  const buildPatchBody = () => {
-    if (isDono) {
-      return {
-        multa_fixa_percentual: config.multa_fixa_percentual,
-        juros_diario_percentual: config.juros_diario_percentual,
-        telegram_templates: config.telegram_templates,
-        telegram_bot_menu_buttons: config.telegram_bot_menu_buttons,
-        telegram_owner_notify_id: config.telegram_owner_notify_id,
-        telegram_owner_notify_enabled: config.telegram_owner_notify_enabled,
-      };
+  const buildTemplateOverrides = () => {
+    const overrides: Record<string, string> = {};
+    for (const meta of templateMeta) {
+      overrides[meta.key] = config.telegram_templates[meta.key] ?? meta.default;
     }
-    const body: Record<string, unknown> = {
-      nome: config.nome,
-      multa_fixa_percentual: config.multa_fixa_percentual,
-      juros_diario_percentual: config.juros_diario_percentual,
-      telegram_templates: config.telegram_templates,
-      telegram_custom_messages: config.telegram_custom_messages,
-      telegram_bot_menu_buttons: config.telegram_bot_menu_buttons,
-      telegram_owner_notify_id: config.telegram_owner_notify_id,
+    return overrides;
+  };
+
+  const buildPatchBody = () => {
+    const menuButtons = sanitizeMenuButtonsForPatch(config.telegram_bot_menu_buttons);
+    const shared = {
+      multa_fixa_percentual: sanitizePercent(config.multa_fixa_percentual),
+      juros_diario_percentual: sanitizePercent(config.juros_diario_percentual),
+      telegram_templates: buildTemplateOverrides(),
+      telegram_bot_menu_buttons: menuButtons,
+      telegram_owner_notify_id: config.telegram_owner_notify_id ?? null,
       telegram_owner_notify_enabled: config.telegram_owner_notify_enabled,
     };
-    if (mpToken.trim()) body.mercadopago_access_token = mpToken.trim();
-    if (mpPublicKey.trim()) body.mercadopago_public_key = mpPublicKey.trim();
-    if (mpWebhookSecret.trim()) body.mercadopago_webhook_secret = mpWebhookSecret.trim();
-    return body;
+    const mpFields: Record<string, string> = {};
+    if (mpToken.trim()) mpFields.mercadopago_access_token = mpToken.trim();
+    if (mpPublicKey.trim()) mpFields.mercadopago_public_key = mpPublicKey.trim();
+    if (mpWebhookSecret.trim()) mpFields.mercadopago_webhook_secret = mpWebhookSecret.trim();
+
+    if (isDono) {
+      return { ...shared, ...mpFields };
+    }
+    return {
+      nome: config.nome.trim(),
+      telegram_custom_messages: config.telegram_custom_messages,
+      ...shared,
+      ...mpFields,
+    };
   };
 
   const handleSave = async (e: FormEvent) => {
@@ -239,15 +255,21 @@ const SettingsView = () => {
     setSaving(true);
     setError('');
     try {
+      const body = buildPatchBody();
+      let saved: OperacaoConfig;
       if (isAdmin) {
         if (adminTargetId == null) {
           showToast('Selecione uma operação no topo da página.');
           return;
         }
-        await api.patch(`/api/v1/operacoes/${adminTargetId}`, buildPatchBody());
+        const r = await api.patch<OperacaoConfig>(`/api/v1/operacoes/${adminTargetId}`, body);
+        saved = r.data;
       } else {
-        await api.patch('/api/v1/operacoes/me', buildPatchBody());
+        const r = await api.patch<OperacaoConfig>('/api/v1/operacoes/me', body);
+        saved = r.data;
       }
+      setConfig(applyOperacaoConfig(saved));
+      await fetchPaymentsConfig();
       showToast('Configurações salvas com sucesso!');
     } catch (e) {
       setError(parseApiError(e, 'Erro ao salvar configurações'));
@@ -498,7 +520,10 @@ const SettingsView = () => {
                     className="input-field"
                     value={config.multa_fixa_percentual}
                     onChange={(e) =>
-                      setConfig({ ...config, multa_fixa_percentual: parseFloat(e.target.value) })
+                      setConfig({
+                        ...config,
+                        multa_fixa_percentual: sanitizePercent(parseFloat(e.target.value)),
+                      })
                     }
                   />
                   <span className="input-suffix">%</span>
@@ -515,7 +540,10 @@ const SettingsView = () => {
                     className="input-field"
                     value={config.juros_diario_percentual}
                     onChange={(e) =>
-                      setConfig({ ...config, juros_diario_percentual: parseFloat(e.target.value) })
+                      setConfig({
+                        ...config,
+                        juros_diario_percentual: sanitizePercent(parseFloat(e.target.value)),
+                      })
                     }
                   />
                   <span className="input-suffix">%</span>
