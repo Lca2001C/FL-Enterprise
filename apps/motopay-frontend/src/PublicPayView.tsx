@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
 import { Copy, Check, Shield, CreditCard } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
 import PaymentBrickCheckout from './integrations/mercadopago/PaymentBrickCheckout';
 import StatusScreenCheckout from './integrations/mercadopago/StatusScreenCheckout';
 import { initMercadoPagoSdk } from './integrations/mercadopago/init';
@@ -10,6 +11,7 @@ import { parseApiError } from './utils/apiError';
 import { mercadoPagoPayerEmail } from './utils/mercadopagoPayer';
 import { resolveApiBase } from './utils/apiBase';
 import ErrorBanner from './components/ErrorBanner';
+import ReloadPrompt from './components/ReloadPrompt';
 
 type PaymentMethodKind = 'pix' | 'credit_card' | 'debit_card';
 
@@ -27,7 +29,8 @@ function portalTokenFromPath(): string | null {
 export default function PublicPayView() {
   const token = portalTokenFromPath();
   const apiBase = resolveApiBase(import.meta.env.VITE_API_BASE_URL);
-  const api = axios.create({ baseURL: apiBase });
+  // useMemo garante uma única instância estável — novo render não recria o cliente HTTP
+  const api = useMemo(() => axios.create({ baseURL: apiBase }), [apiBase]);
 
   const [checkout, setCheckout] = useState<PayerPortalOut | null>(null);
   const [loading, setLoading] = useState(true);
@@ -168,9 +171,26 @@ export default function PublicPayView() {
 
   const copyPix = async () => {
     if (!pixCode) return;
-    await navigator.clipboard.writeText(pixCode);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    try {
+      await navigator.clipboard.writeText(pixCode);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      const el = document.querySelector<HTMLTextAreaElement>('.pix-textarea');
+      if (el) {
+        el.select();
+        el.setSelectionRange(0, 99999);
+        const ok = document.execCommand('copy');
+        if (ok) {
+          setCopied(true);
+          setTimeout(() => setCopied(false), 2000);
+        } else {
+          setError('Não foi possível copiar automaticamente. Selecione o código manualmente.');
+        }
+      } else {
+        setError('Não foi possível copiar automaticamente. Selecione o código manualmente.');
+      }
+    }
     startPixPolling();
   };
 
@@ -208,6 +228,8 @@ export default function PublicPayView() {
     !(cardResult && cardResult.cobranca.status === 'recebido');
 
   return (
+    <>
+    <ReloadPrompt />
     <div className="public-pay-page">
       <div className="glass card public-pay-card">
         <div className="public-pay-header">
@@ -267,7 +289,17 @@ export default function PublicPayView() {
             )}
             {pixCode && (
               <div>
-                <textarea className="input-field" readOnly rows={4} value={pixCode} />
+                <div className="pix-qr-wrap">
+                  <QRCodeSVG
+                    value={pixCode}
+                    size={200}
+                    bgColor="#14111a"
+                    fgColor="#d4a574"
+                    level="M"
+                    style={{ borderRadius: 12, padding: 12, background: '#14111a', display: 'block', margin: '0 auto 16px' }}
+                  />
+                </div>
+                <textarea className="input-field pix-textarea" readOnly rows={4} value={pixCode} />
                 <button type="button" className="btn-secondary" onClick={() => void copyPix()}>
                   {copied ? <Check size={16} /> : <Copy size={16} />} Copiar Pix
                 </button>
@@ -418,5 +450,6 @@ export default function PublicPayView() {
         }
       `}</style>
     </div>
+    </>
   );
 }

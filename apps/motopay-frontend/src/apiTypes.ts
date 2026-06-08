@@ -28,11 +28,14 @@ export type OperacaoOut = {
   telegram_templates: Record<string, string>;
 };
 
+export type VeiculoTipo = 'moto' | 'carro' | 'caminhonete' | 'van' | 'caminhao' | 'onibus' | 'outros';
+
 export type MotoOut = {
   id: number;
   operacao_id: number;
   placa: string;
   modelo: string;
+  tipo: VeiculoTipo;
   status: string;
   km: number;
   tem_imagem?: boolean;
@@ -237,6 +240,14 @@ export type AnalyticsSummary = {
   total_cobrancas: number;
   cobrancas_pendentes: number;
   cobrancas_atrasadas: number;
+};
+
+export type DashboardInadimplenciaItem = {
+  contrato_id: number;
+  cliente_nome: string;
+  dias_atraso: number;
+  proximo_vencimento: string;
+  pix_copia_cola: string | null;
 };
 
 export type RecentActivityItem = {

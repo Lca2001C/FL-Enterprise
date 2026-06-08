@@ -83,6 +83,7 @@ class Moto(Base):
     )
     placa: Mapped[str] = mapped_column(String(16), nullable=False)
     modelo: Mapped[str] = mapped_column(String(128), nullable=False)
+    tipo: Mapped[str] = mapped_column(String(32), nullable=False, server_default="moto")
     status: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
     km: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0, server_default="0")
     imagem_path: Mapped[str | None] = mapped_column(String(512), nullable=True)

@@ -60,15 +60,15 @@ def list_motos(
 def get_moto(db: Session, user: CurrentUser, operacao_scope: int | None, moto_id: int) -> Moto:
     m = db.get(Moto, moto_id)
     if not m:
-        raise NotFoundError("Moto não encontrada")
+        raise NotFoundError("Veículo não encontrado")
     if user.role in _SCOPED_ROLES and m.operacao_id != user.operacao_id:
-        raise ForbiddenError("Moto fora do escopo")
+        raise ForbiddenError("Veículo fora do escopo")
     if (
         user.role == UserRole.ADMIN
         and operacao_scope is not None
         and m.operacao_id != operacao_scope
     ):
-        raise ForbiddenError("Moto fora do escopo informado")
+        raise ForbiddenError("Veículo fora do escopo informado")
     return m
 
 
@@ -87,6 +87,7 @@ def create_moto(
         operacao_id=operacao_id,
         placa=body.placa.upper().strip(),
         modelo=body.modelo.strip(),
+        tipo=body.tipo.value,
         status=body.status.value,
         km=body.km,
     )
@@ -113,6 +114,8 @@ def update_moto(
         m.placa = placa
     if body.modelo is not None:
         m.modelo = body.modelo.strip()
+    if body.tipo is not None:
+        m.tipo = body.tipo.value
     if body.status is not None:
         m.status = body.status.value
     if body.km is not None:
@@ -299,7 +302,7 @@ def create_contrato(
         raise NotFoundError("Cliente inválido para esta operação")
     moto = db.get(Moto, body.moto_id)
     if not moto or moto.operacao_id != operacao_id:
-        raise NotFoundError("Moto inválida para esta operação")
+        raise NotFoundError("Veículo inválido para esta operação")
     ct = Contrato(
         operacao_id=operacao_id,
         cliente_id=body.cliente_id,

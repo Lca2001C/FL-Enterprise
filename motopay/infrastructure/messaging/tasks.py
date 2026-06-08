@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from motopay.config import get_settings
-from motopay.domain.enums import ContratoStatus, DomainEventType
+from motopay.domain.enums import ContratoStatus, DomainEventType, MotoStatus
 from motopay.infrastructure.db.models import Cliente, Contrato, EventoDominio, Moto, Operacao
 from motopay.infrastructure.db.session import SessionLocal
 from motopay.infrastructure.messaging.celery_app import celery_app
@@ -213,6 +213,48 @@ def handle_domain_event(self, event_id: int) -> None:
 
 
 @celery_app.task(
+    bind=True, name="motopay.infrastructure.messaging.tasks.send_d3_reminder", **_RETRY_KW
+)
+def send_d3_reminder(self, contrato_id: int) -> None:
+    db = SessionLocal()
+    try:
+        ct = db.get(Contrato, contrato_id)
+        if not ct or ct.status != ContratoStatus.ATIVO.value:
+            return
+        settings = get_settings()
+        tz = ZoneInfo(settings.app_timezone)
+        today = datetime.now(tz).date()
+        if ct.ultima_cobranca_telegram_em == today:
+            return
+        cliente = db.get(Cliente, ct.cliente_id)
+        if not cliente or not cliente.telegram_id:
+            return
+        op = _get_operacao(db, ct.operacao_id)
+        overrides = op.telegram_templates if op else None
+        context = {
+            "cliente": cliente.nome,
+            "proximo_vencimento": ct.proximo_vencimento,
+            "contrato_id": ct.id,
+            "valor_recorrente": f"{ct.valor_recorrente:.2f}",
+        }
+        text = render_template("d3_reminder", overrides=overrides, **context)
+        try:
+            _send_trigger_text_messages(
+                chat_id=cliente.telegram_id,
+                operacao=op,
+                trigger="d3_reminder",
+                default_text=text,
+                context=context,
+            )
+            _mark_telegram_sent(db, ct.id, today)
+            db.commit()
+        except TelegramPermanentError as e:
+            logger.warning("d3_reminder_permanent_failure contrato_id=%s: %s", contrato_id, e)
+    finally:
+        db.close()
+
+
+@celery_app.task(
     bind=True, name="motopay.infrastructure.messaging.tasks.send_d1_reminder", **_RETRY_KW
 )
 def send_d1_reminder(self, contrato_id: int) -> None:
@@ -220,6 +262,12 @@ def send_d1_reminder(self, contrato_id: int) -> None:
     try:
         ct = db.get(Contrato, contrato_id)
         if not ct or ct.status != ContratoStatus.ATIVO.value:
+            return
+        # Dedup: não envia se já enviou algum lembrete hoje (evita duplo envio em restart de Beat)
+        settings = get_settings()
+        tz = ZoneInfo(settings.app_timezone)
+        today = datetime.now(tz).date()
+        if ct.ultima_cobranca_telegram_em == today:
             return
         cliente = db.get(Cliente, ct.cliente_id)
         if not cliente or not cliente.telegram_id:
@@ -240,6 +288,8 @@ def send_d1_reminder(self, contrato_id: int) -> None:
                 default_text=text,
                 context=context,
             )
+            _mark_telegram_sent(db, ct.id, today)
+            db.commit()
         except TelegramPermanentError as e:
             logger.warning("d1_reminder_permanent_failure contrato_id=%s: %s", contrato_id, e)
     finally:
@@ -254,6 +304,12 @@ def send_d0_reminder(self, contrato_id: int) -> None:
     try:
         ct = db.get(Contrato, contrato_id)
         if not ct or ct.status != ContratoStatus.ATIVO.value:
+            return
+        # Dedup: não envia se já enviou algum lembrete hoje (evita duplo envio em restart de Beat)
+        settings = get_settings()
+        tz = ZoneInfo(settings.app_timezone)
+        today = datetime.now(tz).date()
+        if ct.ultima_cobranca_telegram_em == today:
             return
         cliente = db.get(Cliente, ct.cliente_id)
         if not cliente or not cliente.telegram_id:
@@ -274,6 +330,8 @@ def send_d0_reminder(self, contrato_id: int) -> None:
                 default_text=text,
                 context=context,
             )
+            _mark_telegram_sent(db, ct.id, today)
+            db.commit()
         except TelegramPermanentError as e:
             logger.warning("d0_reminder_permanent_failure contrato_id=%s: %s", contrato_id, e)
     finally:
@@ -289,13 +347,26 @@ def send_d0_reminder(self, contrato_id: int) -> None:
     time_limit=2100,
 )
 def daily_automation_tick(self) -> None:
+    from motopay.infrastructure.redis_client import get_redis_connection
+
     settings = get_settings()
     tz = ZoneInfo(settings.app_timezone)
     today = datetime.now(tz).date()
+    lock_key = f"lock:daily_automation:{today.isoformat()}"
+
+    r = get_redis_connection()
+    # NX=True: só adquire se a chave não existe; EX=7200s evita lock eterno
+    acquired = r.set(lock_key, "1", nx=True, ex=7200)
+    if not acquired:
+        logger.info("daily_automation_tick ignorado — já executou hoje (%s)", today)
+        return
+
     tomorrow = today + timedelta(days=1)
+    in3 = today + timedelta(days=3)
     db = SessionLocal()
     try:
         _process_contract_expiry(db, today)
+        _process_d3(db, in3)
         _process_d0(db, today)
         _process_d1(db, tomorrow)
         _process_delinquency(db, today)
@@ -316,6 +387,15 @@ def _process_contract_expiry(db: Session, today: date) -> None:
     for ct in rows:
         ct.status = ContratoStatus.FINALIZADO.value
         db.add(ct)
+        # Libera o veículo para nova locação
+        moto = db.get(Moto, ct.moto_id)
+        if moto and moto.status == MotoStatus.ALUGADA.value:
+            moto.status = MotoStatus.DISPONIVEL.value
+            db.add(moto)
+        logger.info(
+            "contract_expired contrato_id=%s moto_id=%s vigencia=%s",
+            ct.id, ct.moto_id, ct.data_fim_vigencia,
+        )
     db.commit()
 
 
@@ -339,6 +419,17 @@ def _process_d1(db: Session, tomorrow: date) -> None:
     ).all()
     for ct in rows:
         send_d1_reminder.delay(ct.id)
+
+
+def _process_d3(db: Session, in3: date) -> None:
+    rows = db.scalars(
+        select(Contrato).where(
+            Contrato.status == ContratoStatus.ATIVO.value,
+            Contrato.proximo_vencimento == in3,
+        )
+    ).all()
+    for ct in rows:
+        send_d3_reminder.delay(ct.id)
 
 
 def _base_escalation(days_late: int) -> int:

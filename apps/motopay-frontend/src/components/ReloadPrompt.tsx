@@ -23,7 +23,7 @@ export default function ReloadPrompt() {
     <>
       {offlineReady && (
         <div className="reload-prompt reload-prompt--info" role="status">
-          <span>Disponível para uso offline neste dispositivo.</span>
+          <span>App instalado. Conexão necessária para dados ao vivo.</span>
           <button type="button" onClick={() => setOfflineReady(false)}>
             OK
           </button>

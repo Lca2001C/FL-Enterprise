@@ -1,6 +1,7 @@
 import logging
 
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -98,6 +99,20 @@ app.add_middleware(
 )
 
 
+_CSP = (
+    "default-src 'self'; "
+    "script-src 'self' 'unsafe-inline' https://sdk.mercadopago.com https://http2.mlstatic.com; "
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+    "font-src 'self' https://fonts.gstatic.com; "
+    "img-src 'self' data: blob: https://http2.mlstatic.com https://mla-s1-p.mlstatic.com; "
+    "connect-src 'self' https://api.mercadopago.com https://events.mercadopago.com; "
+    "frame-src https://www.mercadopago.com.br https://www.mercadopago.com; "
+    "worker-src 'self' blob:; "
+    "object-src 'none'; "
+    "base-uri 'self';"
+)
+
+
 @app.middleware("http")
 async def security_headers(request: Request, call_next):
     response = await call_next(request)
@@ -105,6 +120,7 @@ async def security_headers(request: Request, call_next):
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
+    response.headers["Content-Security-Policy"] = _CSP
     if get_settings().environment == "production":
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     return response
@@ -137,6 +153,58 @@ async def audit_admin_global_scope(request: Request, call_next):
         get_client_ip(request),
     )
     return response
+
+
+def _translate_pydantic_error(err: dict) -> str:
+    """Converte mensagens de erro do Pydantic (inglês) para português."""
+    etype = err.get("type", "")
+    ctx = err.get("ctx") or {}
+    loc = err.get("loc", ())
+    field = str(loc[-1]) if loc else "campo"
+
+    _TRANSLATIONS: dict[str, str] = {
+        "missing": f"O campo '{field}' é obrigatório.",
+        "string_too_short": f"O campo '{field}' deve ter pelo menos {ctx.get('min_length', '?')} caractere(s).",
+        "string_too_long": f"O campo '{field}' deve ter no máximo {ctx.get('max_length', '?')} caractere(s).",
+        "string_type": f"O campo '{field}' deve ser um texto.",
+        "int_type": f"O campo '{field}' deve ser um número inteiro.",
+        "int_parsing": f"O campo '{field}' deve ser um número inteiro válido.",
+        "float_type": f"O campo '{field}' deve ser um número.",
+        "float_parsing": f"O campo '{field}' deve ser um número válido.",
+        "bool_type": f"O campo '{field}' deve ser verdadeiro ou falso.",
+        "bool_parsing": f"O campo '{field}' deve ser verdadeiro ou falso.",
+        "value_error": err.get("msg", f"Valor inválido no campo '{field}'."),
+        "enum": f"O campo '{field}' tem um valor inválido. Opções: {ctx.get('expected', '?')}.",
+        "literal_error": f"O campo '{field}' tem um valor inválido.",
+        "greater_than": f"O campo '{field}' deve ser maior que {ctx.get('gt', '?')}.",
+        "greater_than_equal": f"O campo '{field}' deve ser no mínimo {ctx.get('ge', '?')}.",
+        "less_than": f"O campo '{field}' deve ser menor que {ctx.get('lt', '?')}.",
+        "less_than_equal": f"O campo '{field}' deve ser no máximo {ctx.get('le', '?')}.",
+        "date_from_datetime_parsing": f"O campo '{field}' deve ser uma data válida (AAAA-MM-DD).",
+        "datetime_parsing": f"O campo '{field}' deve ser uma data/hora válida.",
+        "decimal_parsing": f"O campo '{field}' deve ser um valor decimal válido.",
+        "url_parsing": f"O campo '{field}' deve ser uma URL válida.",
+        "json_invalid": f"O corpo da requisição contém JSON inválido.",
+        "json_type": f"O corpo da requisição deve ser um objeto JSON.",
+        "extra_forbidden": f"O campo '{field}' não é permitido.",
+        "model_type": f"Estrutura de dados inválida no campo '{field}'.",
+    }
+
+    # email_validator retorna type="value_error" com msg em inglês — traduzimos pela mensagem
+    msg = err.get("msg", "")
+    if "email" in msg.lower() or "e-mail" in msg.lower():
+        return f"O campo '{field}' deve conter um e-mail válido."
+    if "special-use" in msg or "reserved" in msg:
+        return f"O campo '{field}' deve conter um e-mail válido."
+
+    return _TRANSLATIONS.get(etype, err.get("msg", f"Valor inválido no campo '{field}'."))
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(_: Request, exc: RequestValidationError) -> JSONResponse:
+    errors = [_translate_pydantic_error(e) for e in exc.errors()]
+    detail = errors[0] if len(errors) == 1 else errors
+    return JSONResponse(status_code=422, content={"detail": detail})
 
 
 @app.exception_handler(UnauthorizedError)

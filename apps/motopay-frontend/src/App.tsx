@@ -44,14 +44,12 @@ import {
 import type {
   AnalyticsSummary,
   AppTab,
-  ClienteOut,
-  CobrancaOut,
   ContratoOut,
+  DashboardInadimplenciaItem,
   MotoOut,
   Paginated,
   RecentActivityItem,
 } from './apiTypes';
-import { fetchAllPaginated } from './utils/fetchPaginated';
 import { formatBrl, formatDate, roleLabel } from './utils/format';
 import { parseApiError } from './utils/apiError';
 import ErrorBanner from './components/ErrorBanner';
@@ -119,9 +117,7 @@ const Dashboard = () => {
     };
   }, [sidebarOpen]);
   const [recentActivity, setRecentActivity] = React.useState<RecentActivityItem[]>([]);
-  const [inadimplentes, setInadimplentes] = React.useState<ContratoOut[]>([]);
-  const [clientes, setClientes] = React.useState<ClienteOut[]>([]);
-  const [cobrancas, setCobrancas] = React.useState<CobrancaOut[]>([]);
+  const [inadimplenciaItems, setInadimplenciaItems] = React.useState<DashboardInadimplenciaItem[]>([]);
   const [totalMotos, setTotalMotos] = React.useState(0);
   const [totalClientes, setTotalClientes] = React.useState(0);
   const [totalContratos, setTotalContratos] = React.useState(0);
@@ -160,21 +156,6 @@ const Dashboard = () => {
       ? `${roleLabel(user.tipo)} — ${operacaoNome}`
       : roleLabel(user?.tipo);
 
-  const cobrancaByContrato = React.useMemo(() => {
-    const map: Record<number, CobrancaOut> = {};
-    for (const c of cobrancas) {
-      if (c.status === 'pendente' || c.status === 'atrasado') {
-        map[c.contrato_id] = c;
-      }
-    }
-    return map;
-  }, [cobrancas]);
-
-  const clienteMap = React.useMemo(
-    () => Object.fromEntries(clientes.map((c) => [c.id, c])),
-    [clientes]
-  );
-
   const fleetPct =
     totalMotos > 0 ? Math.round(((stats?.motos_ativas ?? 0) / totalMotos) * 100) : 0;
 
@@ -185,24 +166,19 @@ const Dashboard = () => {
     setLoading(true);
     setError('');
     try {
-      const [sRes, aRes, ctTotalRes, ctInadRes, clTotalRes, clItems, cobItems, motoRes] =
-        await Promise.all([
+      const [sRes, aRes, ctTotalRes, clTotalRes, motoRes, inadRes] = await Promise.all([
         api.get<AnalyticsSummary>('/api/v1/analytics/summary'),
         api.get<RecentActivityItem[]>('/api/v1/analytics/recent-activity'),
         api.get<Paginated<ContratoOut>>('/api/v1/contratos', { params: { limit: 1, offset: 0 } }),
-        api.get<Paginated<ContratoOut>>('/api/v1/contratos', {
-          params: { limit: 50, offset: 0, inadimplente: true },
-        }),
-        api.get<Paginated<ClienteOut>>('/api/v1/clientes', { params: { limit: 1, offset: 0 } }),
-        fetchAllPaginated<ClienteOut>(api, '/api/v1/clientes'),
-        fetchAllPaginated<CobrancaOut>(api, '/api/v1/cobrancas'),
+        api.get<Paginated<{ id: number }>>('/api/v1/clientes', { params: { limit: 1, offset: 0 } }),
         api.get<Paginated<MotoOut>>('/api/v1/motos', { params: { limit: 1, offset: 0 } }),
+        api.get<DashboardInadimplenciaItem[]>('/api/v1/analytics/inadimplencia', {
+          params: { limit: 5 },
+        }),
       ]);
       setStats(sRes.data);
       setRecentActivity(aRes.data);
-      setInadimplentes(ctInadRes.data.items);
-      setClientes(clItems);
-      setCobrancas(cobItems);
+      setInadimplenciaItems(inadRes.data);
       setTotalMotos(motoRes.data.total);
       setTotalClientes(clTotalRes.data.total);
       setTotalContratos(ctTotalRes.data.total);
@@ -223,7 +199,19 @@ const Dashboard = () => {
   };
 
   const copyPix = async (contratoId: number, pix: string) => {
-    await navigator.clipboard.writeText(pix);
+    try {
+      await navigator.clipboard.writeText(pix);
+    } catch {
+      // Fallback for HTTP or browsers that block clipboard API
+      const ta = document.createElement('textarea');
+      ta.value = pix;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+    }
     setCopiedContratoId(contratoId);
     setTimeout(() => setCopiedContratoId(null), 2000);
   };
@@ -362,7 +350,7 @@ const Dashboard = () => {
                     <h3>
                       <AlertTriangle size={18} color="var(--danger)" /> Inadimplência
                     </h3>
-                    {inadimplentes.length > 0 && (
+                    {(stats?.clientes_inadimplentes ?? 0) > 0 && (
                       <button
                         type="button"
                         className="link-btn"
@@ -374,38 +362,34 @@ const Dashboard = () => {
                   </div>
                   {loading ? (
                     <p className="text-muted">Carregando...</p>
-                  ) : inadimplentes.length === 0 ? (
+                  ) : inadimplenciaItems.length === 0 ? (
                     <p className="text-muted">Nenhum contrato inadimplente.</p>
                   ) : (
                     <div className="inad-list">
-                      {inadimplentes.slice(0, 5).map((ct) => {
-                        const cl = clienteMap[ct.cliente_id];
-                        const cob = cobrancaByContrato[ct.id];
-                        return (
-                          <div key={ct.id} className="inad-item">
-                            <div>
-                              <strong>{cl?.nome ?? `Cliente #${ct.cliente_id}`}</strong>
-                              <span className="text-muted">
-                                {ct.dias_atraso_acumulado} dia(s) · venc.{' '}
-                                {formatDate(ct.proximo_vencimento)}
-                              </span>
-                            </div>
-                            {cob?.pix_copia_cola && (
-                              <button
-                                type="button"
-                                className="mini-pix-btn"
-                                onClick={() => void copyPix(ct.id, cob.pix_copia_cola!)}
-                              >
-                                {copiedContratoId === ct.id ? (
-                                  <Check size={12} />
-                                ) : (
-                                  <Copy size={12} />
-                                )}
-                              </button>
-                            )}
+                      {inadimplenciaItems.map((item) => (
+                        <div key={item.contrato_id} className="inad-item">
+                          <div>
+                            <strong>{item.cliente_nome}</strong>
+                            <span className="text-muted">
+                              {item.dias_atraso} dia(s) · venc.{' '}
+                              {formatDate(item.proximo_vencimento)}
+                            </span>
                           </div>
-                        );
-                      })}
+                          {item.pix_copia_cola && (
+                            <button
+                              type="button"
+                              className="mini-pix-btn"
+                              onClick={() => void copyPix(item.contrato_id, item.pix_copia_cola!)}
+                            >
+                              {copiedContratoId === item.contrato_id ? (
+                                <Check size={12} />
+                              ) : (
+                                <Copy size={12} />
+                              )}
+                            </button>
+                          )}
+                        </div>
+                      ))}
                     </div>
                   )}
                 </div>
@@ -1196,11 +1180,11 @@ const NavItem = ({
   onClick: () => void;
   tourId?: string;
 }) => (
-  <div
+  <button
+    type="button"
     className={`nav-item ${active ? 'active' : ''}`}
     onClick={onClick}
-    role="button"
-    tabIndex={0}
+    aria-current={active ? 'page' : undefined}
     data-tour={tourId}
   >
     <span className="nav-icon">{icon}</span>
@@ -1211,7 +1195,7 @@ const NavItem = ({
         align-items: center;
         gap: 10px;
         padding: 9px 12px;
-        min-height: 40px;
+        min-height: 44px;
         border-radius: var(--radius-sm);
         color: var(--text-muted);
         cursor: pointer;
@@ -1251,7 +1235,7 @@ const NavItem = ({
         color: var(--primary);
       }
     `}</style>
-  </div>
+  </button>
 );
 
 const StatCard = ({

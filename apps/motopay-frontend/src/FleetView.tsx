@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef, type FormEvent, type ChangeEvent } from 'react';
 import { Plus, Search, Trash2, Edit2, ImagePlus } from 'lucide-react';
 import { useAuth } from './AuthContext';
-import type { MotoOut, Paginated } from './apiTypes';
+import type { MotoOut, Paginated, VeiculoTipo } from './apiTypes';
 import { PAGE_SIZE } from './apiTypes';
 import { parseApiError } from './utils/apiError';
 import { offsetAfterDelete } from './utils/fetchPaginated';
@@ -12,6 +12,16 @@ import MotoThumbnail from './components/MotoThumbnail';
 
 const STATUS_OPTIONS = ['disponivel', 'alugada', 'manutencao', 'inativa'] as const;
 const ACCEPTED_IMAGE_TYPES = 'image/jpeg,image/png,image/webp';
+
+const VEICULO_TIPO_OPTIONS: { value: VeiculoTipo; label: string }[] = [
+  { value: 'moto', label: 'Moto' },
+  { value: 'carro', label: 'Carro' },
+  { value: 'caminhonete', label: 'Caminhonete' },
+  { value: 'van', label: 'Van' },
+  { value: 'caminhao', label: 'Caminhão' },
+  { value: 'onibus', label: 'Ônibus' },
+  { value: 'outros', label: 'Outros' },
+];
 
 const FleetView = () => {
   const { api } = useAuth();
@@ -24,7 +34,7 @@ const FleetView = () => {
   const [statusFilter, setStatusFilter] = useState<string>('todos');
   const [showModal, setShowModal] = useState(false);
   const [editMoto, setEditMoto] = useState<MotoOut | null>(null);
-  const [formData, setFormData] = useState({ placa: '', modelo: '', status: 'disponivel', km: 0 });
+  const [formData, setFormData] = useState<{ placa: string; modelo: string; tipo: VeiculoTipo; status: string; km: number }>({ placa: '', modelo: '', tipo: 'moto', status: 'disponivel', km: 0 });
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
@@ -78,14 +88,14 @@ const FleetView = () => {
 
   const openCreate = () => {
     setEditMoto(null);
-    setFormData({ placa: '', modelo: '', status: 'disponivel', km: 0 });
+    setFormData({ placa: '', modelo: '', tipo: 'moto', status: 'disponivel', km: 0 });
     resetImageState();
     setShowModal(true);
   };
 
   const openEdit = (moto: MotoOut) => {
     setEditMoto(moto);
-    setFormData({ placa: moto.placa, modelo: moto.modelo, status: moto.status, km: moto.km });
+    setFormData({ placa: moto.placa, modelo: moto.modelo, tipo: (moto.tipo ?? 'moto') as VeiculoTipo, status: moto.status, km: moto.km });
     resetImageState();
     setShowModal(true);
   };
@@ -125,6 +135,7 @@ const FleetView = () => {
         const r = await api.patch(`/api/v1/motos/${editMoto.id}`, {
           placa: formData.placa,
           modelo: formData.modelo,
+          tipo: formData.tipo,
           status: formData.status,
           km: formData.km,
         });
@@ -146,19 +157,19 @@ const FleetView = () => {
       resetImageState();
       await fetchMotos(offset);
     } catch (err) {
-      setError(parseApiError(err, 'Erro ao salvar moto'));
+      setError(parseApiError(err, 'Erro ao salvar veículo'));
     }
   };
 
   const handleDelete = async (id: number) => {
-    if (!confirm('Deseja realmente excluir esta moto?')) return;
+    if (!confirm('Deseja realmente excluir este veículo?')) return;
     setError('');
     const wasLast = motos.length === 1;
     try {
       await api.delete(`/api/v1/motos/${id}`);
       await fetchMotos(offsetAfterDelete(offset, PAGE_SIZE, wasLast));
     } catch (err) {
-      setError(parseApiError(err, 'Erro ao excluir moto'));
+      setError(parseApiError(err, 'Erro ao excluir veículo'));
     }
   };
 
@@ -173,7 +184,7 @@ const FleetView = () => {
           <p className="text-muted">Total de {total} veículos cadastrados</p>
         </div>
         <button className="btn-primary" onClick={openCreate} data-tour="fleet-add">
-          <Plus size={20} /> Nova Moto
+          <Plus size={20} /> Novo Veículo
         </button>
       </div>
 
@@ -209,11 +220,11 @@ const FleetView = () => {
           <p style={{ padding: 40, textAlign: 'center' }}>Carregando frota...</p>
         ) : motos.length === 0 ? (
           <EmptyState
-            title="Nenhuma moto encontrada"
+            title="Nenhum veículo encontrado"
             description="Cadastre veículos para iniciar locações."
             action={
               <button className="btn-primary" onClick={openCreate}>
-                <Plus size={18} /> Nova Moto
+                <Plus size={18} /> Novo Veículo
               </button>
             }
           />
@@ -224,9 +235,10 @@ const FleetView = () => {
                 <th>Foto</th>
                 <th>Placa</th>
                 <th>Modelo</th>
+                <th>Tipo</th>
                 <th>KM</th>
                 <th>Status</th>
-                <th>Motorista</th>
+                <th>Locatário</th>
                 <th style={{ textAlign: 'right' }}>Ações</th>
               </tr>
             </thead>
@@ -243,6 +255,7 @@ const FleetView = () => {
                   </td>
                   <td className="font-mono">{moto.placa}</td>
                   <td>{moto.modelo}</td>
+                  <td>{VEICULO_TIPO_OPTIONS.find((o) => o.value === moto.tipo)?.label ?? moto.tipo}</td>
                   <td>{moto.km.toLocaleString('pt-BR')} km</td>
                   <td>
                     <span className={`status-badge ${moto.status}`}>
@@ -298,13 +311,13 @@ const FleetView = () => {
       {showModal && (
         <div className="modal-overlay">
           <div className="glass modal-content animate-fade fleet-modal">
-            <h3>{editMoto ? 'Editar Moto' : 'Cadastrar Nova Moto'}</h3>
+            <h3>{editMoto ? 'Editar Veículo' : 'Cadastrar Novo Veículo'}</h3>
             <form onSubmit={(e) => void handleSubmit(e)}>
               <div className="image-section">
                 <label className="input-label">Identificação visual</label>
                 <div className="image-preview-area">
                   {imagePreview ? (
-                    <img src={imagePreview} alt="Prévia da moto" className="image-preview" />
+                    <img src={imagePreview} alt="Prévia do veículo" className="image-preview" />
                   ) : showExistingImage && editMoto ? (
                     <MotoThumbnail
                       api={api}
@@ -341,7 +354,7 @@ const FleetView = () => {
                     </button>
                   )}
                 </div>
-                <small className="text-muted">JPEG, PNG ou WebP — máx. 5 MB</small>
+                <small className="text-muted">JPEG, PNG ou WebP — máx. 15 MB</small>
               </div>
 
               <div className="input-group">
@@ -365,6 +378,20 @@ const FleetView = () => {
                   placeholder="Honda CG 160"
                   required
                 />
+              </div>
+              <div className="input-group">
+                <label className="input-label">Tipo de veículo</label>
+                <select
+                  className="input-field"
+                  value={formData.tipo}
+                  onChange={(e) => setFormData({ ...formData, tipo: e.target.value as VeiculoTipo })}
+                >
+                  {VEICULO_TIPO_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
               </div>
               <div className="input-group">
                 <label className="input-label">Quilometragem atual</label>

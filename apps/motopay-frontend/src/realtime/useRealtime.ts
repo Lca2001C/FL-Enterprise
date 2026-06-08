@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { useAuth } from '../AuthContext';
 import { useAlerts, type Alert } from '../stores/AlertContext';
-import { disconnectRealtimeSocket, getRealtimeSocket } from './socket';
+import { disconnectRealtimeSocket, getRealtimeSocket, reconnectRealtimeSocketIfNeeded } from './socket';
 
 export function useRealtime(options?: { enabled?: boolean }) {
   const { token, apiBase, user } = useAuth();
@@ -32,9 +32,18 @@ export function useRealtime(options?: { enabled?: boolean }) {
     socket.on('alert.new', onAlert);
     socket.on('celery.queue_stats', onQueueStats);
 
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        reconnectRealtimeSocketIfNeeded();
+      }
+    };
+
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
     return () => {
       socket.off('alert.new', onAlert);
       socket.off('celery.queue_stats', onQueueStats);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
       disconnectRealtimeSocket();
     };
   }, [addAlert, apiBase, enabled, token]);

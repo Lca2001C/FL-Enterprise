@@ -13,6 +13,16 @@ class MotoStatus(str, Enum):
     INATIVA = "inativa"
 
 
+class VeiculoTipo(str, Enum):
+    MOTO = "moto"
+    CARRO = "carro"
+    CAMINHONETE = "caminhonete"
+    VAN = "van"
+    CAMINHAO = "caminhao"
+    ONIBUS = "onibus"
+    OUTROS = "outros"
+
+
 class ContratoStatus(str, Enum):
     ATIVO = "ativo"
     FINALIZADO = "finalizado"

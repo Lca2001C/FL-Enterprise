@@ -132,11 +132,25 @@ def cancel_external_payment(
     op: Operacao | None,
     db: Session | None = None,
 ) -> None:
+    import logging
+
+    _log = logging.getLogger(__name__)
     del gateway
-    if not order_id or not op or not mp_configured_for_operacao(op):
+    if not op or not mp_configured_for_operacao(op):
+        return
+    if not order_id:
+        if payment_id:
+            _log.warning(
+                "cancel_external_payment: order_id ausente para payment_id=%s — cancelamento ignorado",
+                payment_id,
+            )
         return
     try:
         MercadoPagoClient(access_token=_access_token(db, op)).cancel_order(order_id)
-    except MercadoPagoApiError:
-        pass
-    del payment_id
+    except MercadoPagoApiError as exc:
+        # 400/404/422 indicam ordem já em estado terminal — seguro ignorar
+        if exc.status_code not in (400, 404, 422):
+            _log.warning(
+                "cancel_order falhou order_id=%s payment_id=%s status=%s",
+                order_id, payment_id, exc.status_code,
+            )

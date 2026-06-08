@@ -511,6 +511,12 @@ select.input-field option {
   color: var(--text-main);
 }
 
+@media (max-width: 768px) {
+  .input-field {
+    font-size: 16px;
+  }
+}
+
 /* ── Tour System ─────────────────────────────────────────────── */
 
 @keyframes tourBannerShimmer {

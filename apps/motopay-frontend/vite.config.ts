@@ -42,8 +42,8 @@ export default defineConfig(({ mode }) => {
           start_url: '/',
           display: 'standalone',
           display_override: ['standalone', 'minimal-ui'],
-          background_color: '#020617',
-          theme_color: '#020617',
+          background_color: '#0a0a0f',
+          theme_color: '#d4a574',
           orientation: 'portrait-primary',
           categories: ['business', 'utilities'],
           prefer_related_applications: false,
@@ -55,21 +55,6 @@ export default defineConfig(({ mode }) => {
           navigateFallback: 'index.html',
           navigateFallbackDenylist: [/^\/api\/?/],
           runtimeCaching: [
-            {
-              urlPattern: /^\/api\/.*/i,
-              handler: 'NetworkFirst',
-              options: {
-                cacheName: 'api-cache',
-                networkTimeoutSeconds: 10,
-                expiration: {
-                  maxEntries: 50,
-                  maxAgeSeconds: 60 * 5,
-                },
-                cacheableResponse: {
-                  statuses: [0, 200],
-                },
-              },
-            },
             {
               urlPattern: /^\/api\/motos\/[^/]+\/imagem$/i,
               handler: 'StaleWhileRevalidate',

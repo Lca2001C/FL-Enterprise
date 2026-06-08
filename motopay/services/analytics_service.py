@@ -6,11 +6,18 @@ from decimal import Decimal
 from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.orm import Session
 
+from sqlalchemy.orm import aliased
+
 from motopay.domain.enums import CobrancaStatus, FinanceiroTipo, MotoStatus, UserRole
 from motopay.domain.exceptions import ForbiddenError
-from motopay.infrastructure.db.models import Cobranca, Contrato, Financeiro, Moto
+from motopay.infrastructure.db.models import Cobranca, Cliente, Contrato, Financeiro, Moto
 from motopay.interfaces.api.deps import CurrentUser
-from motopay.interfaces.api.schemas import AnalyticsSummary, MotoAnalyticsRow, RecentActivityRow
+from motopay.interfaces.api.schemas import (
+    AnalyticsSummary,
+    DashboardInadimplenciaItem,
+    MotoAnalyticsRow,
+    RecentActivityRow,
+)
 
 
 def _operacao_filter(user: CurrentUser, operacao_scope: int | None) -> int | None:
@@ -183,6 +190,66 @@ def moto_ranking(
         )
     out.sort(key=lambda r: r.lucro_liquido, reverse=True)
     return out
+
+
+def get_dashboard_inadimplencia(
+    db: Session,
+    user: CurrentUser,
+    operacao_scope: int | None,
+    limit: int = 5,
+) -> list[DashboardInadimplenciaItem]:
+    """Retorna os N contratos mais inadimplentes com nome do cliente e Pix já embutidos.
+
+    Usa uma única query com subquery correlacionada para evitar N+1 e eliminando a
+    necessidade de o dashboard carregar todos os clientes e cobranças em memória.
+    """
+    op = _operacao_filter(user, operacao_scope)
+
+    _OPEN = (CobrancaStatus.PENDENTE.value, CobrancaStatus.ATRASADO.value)
+
+    # Subquery: id da cobrança mais recente e aberta de cada contrato
+    latest_cob_id = (
+        select(func.max(Cobranca.id))
+        .where(
+            Cobranca.contrato_id == Contrato.id,
+            Cobranca.status.in_(_OPEN),
+        )
+        .correlate(Contrato)
+        .scalar_subquery()
+    )
+
+    CobAlias = aliased(Cobranca)
+
+    stmt = (
+        select(
+            Contrato.id,
+            Cliente.nome,
+            Contrato.dias_atraso_acumulado,
+            Contrato.proximo_vencimento,
+            CobAlias.pix_copia_cola,
+        )
+        .join(Cliente, Cliente.id == Contrato.cliente_id)
+        .outerjoin(CobAlias, CobAlias.id == latest_cob_id)
+        .where(Contrato.inadimplente.is_(True))
+        .order_by(Contrato.dias_atraso_acumulado.desc())
+        .limit(limit)
+    )
+
+    sc = _scope_where_contrato(user, op)
+    if sc is not None:
+        stmt = stmt.where(sc)
+
+    rows = db.execute(stmt).all()
+    return [
+        DashboardInadimplenciaItem(
+            contrato_id=row[0],
+            cliente_nome=row[1],
+            dias_atraso=row[2],
+            proximo_vencimento=row[3],
+            pix_copia_cola=row[4],
+        )
+        for row in rows
+    ]
 
 
 def get_recent_activity(

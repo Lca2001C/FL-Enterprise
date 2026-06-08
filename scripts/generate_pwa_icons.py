@@ -12,12 +12,16 @@ ICONS = PUBLIC / "icons"
 SPLASH = PUBLIC / "splash"
 SCREENSHOTS = PUBLIC / "screenshots"
 
-PWA_SIZES = (72, 96, 128, 144, 152, 192, 384, 512)
+PWA_SIZES = (72, 96, 120, 128, 144, 152, 167, 192, 384, 512)
 
 # iPhone portrait splash (width x height) — apple-touch-startup-image
 IOS_SPLASHES: tuple[tuple[str, int, int], ...] = (
-    ("apple-splash-1170x2532.png", 1170, 2532),
-    ("apple-splash-1290x2796.png", 1290, 2796),
+    ("apple-splash-1170x2532.png", 1170, 2532),   # iPhone 14 / 16
+    ("apple-splash-1179x2556.png", 1179, 2556),   # iPhone 14 Pro / 15 / 16
+    ("apple-splash-1206x2622.png", 1206, 2622),   # iPhone 16 Pro
+    ("apple-splash-1284x2778.png", 1284, 2778),   # iPhone 14 Plus / 15 Plus
+    ("apple-splash-1290x2796.png", 1290, 2796),   # iPhone 14 Pro Max / 15 Pro Max / 16 Plus
+    ("apple-splash-1320x2868.png", 1320, 2868),   # iPhone 16 Pro Max
     ("apple-splash-750x1334.png", 750, 1334),
     ("apple-splash-1242x2208.png", 1242, 2208),
     ("apple-splash-828x1792.png", 828, 1792),
@@ -66,10 +70,10 @@ def _write_png_rect(path: Path, width: int, height: int, pixels: bytes) -> None:
 
 def _render_icon(size: int) -> bytes:
     """Raster simples inspirado no favicon.svg."""
-    bg = (2, 6, 23)
-    primary = (99, 102, 241)
-    accent = (16, 185, 129)
-    card = (15, 23, 42)
+    bg = (10, 10, 15)
+    primary = (212, 165, 116)
+    accent = (92, 191, 138)
+    card = (20, 17, 26)
     pixels = bytearray(size * size * 4)
 
     def set_px(x: int, y: int, color: tuple[int, int, int]) -> None:
@@ -137,7 +141,7 @@ def _render_icon(size: int) -> bytes:
 def _render_icon_maskable(size: int) -> bytes:
     inner = int(size * 0.8)
     inner_pixels = _render_icon(inner)
-    bg = (2, 6, 23)
+    bg = (10, 10, 15)
     outer = bytearray(size * size * 4)
     offset = (size - inner) // 2
     for y in range(size):
@@ -183,7 +187,7 @@ def _blit_rgba(
 
 
 def _render_splash(width: int, height: int) -> bytes:
-    bg = (2, 6, 23)
+    bg = (10, 10, 15)
     pixels = bytearray(width * height * 4)
     for y in range(height):
         for x in range(width):
@@ -199,8 +203,8 @@ def _render_splash(width: int, height: int) -> bytes:
 
 
 def _render_screenshot(width: int, height: int) -> bytes:
-    bg = (2, 6, 23)
-    card = (15, 23, 42)
+    bg = (10, 10, 15)
+    card = (20, 17, 26)
     pixels = bytearray(width * height * 4)
     for y in range(height):
         for x in range(width):
@@ -249,6 +253,11 @@ def main() -> None:
 
     _write_png(ICONS / "apple-touch-icon.png", 180, _render_icon(180))
     print(f"Wrote {ICONS / 'apple-touch-icon.png'}")
+
+    # iPad-specific touch icons
+    _write_png(ICONS / "apple-touch-icon-120.png", 120, _render_icon(120))
+    _write_png(ICONS / "apple-touch-icon-167.png", 167, _render_icon(167))
+    print(f"Wrote apple-touch-icon-120.png and apple-touch-icon-167.png")
 
     maskable = ICONS / "pwa-512-maskable.png"
     _write_png(maskable, 512, _render_icon_maskable(512))

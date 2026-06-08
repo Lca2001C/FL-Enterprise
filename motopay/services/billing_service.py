@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import logging
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal
+from zoneinfo import ZoneInfo
 
 from dateutil.relativedelta import relativedelta
 from sqlalchemy import func, select
@@ -46,6 +47,14 @@ from motopay.services.payment_gateway import (
 from motopay.services.scoring_service import recalculate_cliente_score
 
 logger = logging.getLogger(__name__)
+
+
+def _today() -> date:
+    """Data atual no fuso horário configurado (America/Sao_Paulo por padrão)."""
+    from motopay.config import get_settings
+    tz = ZoneInfo(get_settings().app_timezone)
+    return datetime.now(tz).date()
+
 
 _CHARGEBACK_LOST_STATUSES = frozenset({"lost", "charged_back", "settled", "closed"})
 
@@ -232,15 +241,8 @@ def refresh_overdue_pix(db: Session, *, contrato: Contrato, today: date) -> Cobr
     ):
         return cob
 
-    if cob is not None:
-        cancel_external_payment(
-            gateway=cob.payment_gateway,
-            payment_id=cob.mercadopago_payment_id,
-            order_id=cob.mercadopago_order_id,
-            op=op,
-            db=db,
-        )
-
+    # Cria o novo PIX ANTES de cancelar o antigo — garante que sempre existe um
+    # código válido mesmo que o cancelamento falhe.
     order_id, payment_id, pix, gw = create_pix_for_contrato(
         op=op,
         cliente=cliente,
@@ -249,6 +251,15 @@ def refresh_overdue_pix(db: Session, *, contrato: Contrato, today: date) -> Cobr
         due_date=today,
         db=db,
     )
+
+    if cob is not None:
+        cancel_external_payment(
+            gateway=cob.payment_gateway,
+            payment_id=cob.mercadopago_payment_id,
+            order_id=cob.mercadopago_order_id,
+            op=op,
+            db=db,
+        )
 
     if cob is None:
         cob = Cobranca(
@@ -285,7 +296,7 @@ def ensure_pix_for_cobranca(
         raise NotFoundError("Cobrança não encontrada")
     if cob.status not in _OPEN_COBRANCA_STATUSES:
         raise ForbiddenError("Cobrança não está aberta")
-    today = date.today()
+    today = _today()
     ct = db.get(Contrato, cob.contrato_id)
     op = db.get(Operacao, operacao_id)
     if not ct or not op:
@@ -358,8 +369,20 @@ def create_pix_charge_for_contract(
     op = db.get(Operacao, operacao_id)
     if not op:
         raise NotFoundError("Operação não encontrada")
-    today = date.today()
+    today = _today()
     amounts = charge_amounts_for_contrato(ct, op, today)
+
+    # Reutiliza cobrança aberta se já existe com Pix e valor igual
+    existing = get_open_cobranca(db, ct.id)
+    if (
+        existing is not None
+        and existing.pix_copia_cola
+        and existing.mercadopago_order_id
+        and existing.valor == amounts.valor_total
+    ):
+        return _cobranca_to_out(existing, op, today, valor_base=ct.valor_recorrente)
+
+    # Cria o novo PIX primeiro para garantir continuidade de pagamento
     order_id, payment_id, pix, gw = create_pix_for_contrato(
         op=op,
         cliente=cliente,
@@ -368,6 +391,40 @@ def create_pix_charge_for_contract(
         due_date=ct.proximo_vencimento,
         db=db,
     )
+
+    if existing is not None:
+        # Atualiza a cobrança existente e cancela o PIX antigo — evita duplicidade
+        old_order_id = existing.mercadopago_order_id
+        _apply_pix_to_cobranca(
+            existing,
+            order_id=order_id,
+            payment_id=payment_id,
+            pix=pix,
+            gateway=gw,
+            valor=amounts.valor_total,
+            status=(
+                CobrancaStatus.ATRASADO.value
+                if amounts.dias_atraso > 0
+                else CobrancaStatus.PENDENTE.value
+            ),
+        )
+        db.add(existing)
+        db.commit()
+        db.refresh(existing)
+        cancel_external_payment(
+            gateway=existing.payment_gateway,
+            payment_id=None,
+            order_id=old_order_id,
+            op=op,
+            db=db,
+        )
+        return _cobranca_to_out(existing, op, today, valor_base=ct.valor_recorrente)
+
+    new_status = (
+        CobrancaStatus.ATRASADO.value
+        if amounts.dias_atraso > 0
+        else CobrancaStatus.PENDENTE.value
+    )
     cob = Cobranca(
         operacao_id=operacao_id,
         contrato_id=ct.id,
@@ -375,11 +432,7 @@ def create_pix_charge_for_contract(
         vencimento=ct.proximo_vencimento,
         pix_copia_cola=pix,
         payment_gateway=gw,
-        status=(
-            CobrancaStatus.ATRASADO.value
-            if amounts.dias_atraso > 0
-            else CobrancaStatus.PENDENTE.value
-        ),
+        status=new_status,
     )
     _apply_pix_to_cobranca(
         cob,
@@ -388,12 +441,12 @@ def create_pix_charge_for_contract(
         pix=pix,
         gateway=gw,
         valor=amounts.valor_total,
-        status=cob.status,
+        status=new_status,
     )
     db.add(cob)
     db.commit()
     db.refresh(cob)
-    return _cobranca_to_out(cob, op, date.today(), valor_base=ct.valor_recorrente)
+    return _cobranca_to_out(cob, op, today, valor_base=ct.valor_recorrente)
 
 
 def create_mercadopago_subscription_for_contract(
@@ -479,12 +532,24 @@ def cancel_mercadopago_subscription_for_contract(
         MercadoPagoClient(access_token=ensure_valid_mp_token(db, op)).cancel_preapproval(
             contrato.mercadopago_subscription_id
         )
-    except Exception:
+        contrato.mercadopago_subscription_status = "cancelled"
+        db.add(contrato)
+    except Exception as exc:
+        # Não atualiza o status em banco — permite nova tentativa futura.
         logger.exception(
-            "Falha ao cancelar assinatura MP contrato=%s", contrato.id
+            "Falha ao cancelar assinatura MP contrato=%s sub=%s — status mantido para nova tentativa",
+            contrato.id,
+            contrato.mercadopago_subscription_id,
         )
-    contrato.mercadopago_subscription_status = "cancelled"
-    db.add(contrato)
+        from motopay.infrastructure.telegram.owner_notify import (
+            notify_owner_subscription_cancel_failure,
+        )
+        notify_owner_subscription_cancel_failure(
+            operacao=op,
+            contrato_id=contrato.id,
+            subscription_id=contrato.mercadopago_subscription_id or "",
+            error=str(exc),
+        )
 
 
 def sync_mercadopago_subscription_amount(
@@ -563,7 +628,7 @@ def refund_cobranca_mercadopago(
     db.refresh(cob)
     ct = db.get(Contrato, cob.contrato_id)
     valor_base = ct.valor_recorrente if ct else cob.valor
-    return _cobranca_to_out(cob, op, date.today(), valor_base=valor_base)
+    return _cobranca_to_out(cob, op, _today(), valor_base=valor_base)
 
 
 def get_cobranca(
@@ -583,7 +648,7 @@ def get_cobranca(
     op = db.get(Operacao, cob.operacao_id)
     ct = db.get(Contrato, cob.contrato_id)
     valor_base = ct.valor_recorrente if ct else cob.valor
-    return _cobranca_to_out(cob, op, date.today(), valor_base=valor_base)
+    return _cobranca_to_out(cob, op, _today(), valor_base=valor_base)
 
 
 def list_cobrancas(
@@ -600,7 +665,7 @@ def list_cobrancas(
         base = base.where(Cobranca.status == status.value)
     total = db.scalar(select(func.count()).select_from(base.subquery())) or 0
     rows = list(db.scalars(base.order_by(Cobranca.id.desc()).limit(limit).offset(offset)).all())
-    today = date.today()
+    today = _today()
     op_ids = {c.operacao_id for c in rows}
     ops: dict[int, Operacao] = {}
     if op_ids:
@@ -633,7 +698,7 @@ def list_cobrancas_for_cliente(
     )
     total = db.scalar(select(func.count()).select_from(q.subquery())) or 0
     rows = list(db.scalars(q.order_by(Cobranca.id.desc()).limit(limit).offset(offset)).all())
-    today = date.today()
+    today = _today()
     out: list[CobrancaOut] = []
     for c in rows:
         ct = db.get(Contrato, c.contrato_id)
@@ -697,7 +762,7 @@ def _finalize_payment(
         tipo=FinanceiroTipo.RECEITA.value,
         valor=amount,
         descricao=f"Pagamento confirmado ({gateway} {external_id})",
-        data=date.today(),
+        data=_today(),
         moto_id=ct.moto_id,
         contrato_id=ct.id,
     )
@@ -757,7 +822,7 @@ def handle_mercadopago_refund_confirmed(
         tipo=FinanceiroTipo.DESPESA.value,
         valor=delta,
         descricao=f"Estorno Mercado Pago (payment {mercadopago_payment_id})",
-        data=date.today(),
+        data=_today(),
         moto_id=ct.moto_id if ct else None,
         contrato_id=cob.contrato_id,
     )
@@ -813,12 +878,11 @@ def sync_refund_from_mercadopago_payment(
         tipo=FinanceiroTipo.DESPESA.value,
         valor=delta,
         descricao=f"Estorno confirmado via webhook (payment {payment_id})",
-        data=date.today(),
+        data=_today(),
         moto_id=ct.moto_id if ct else None,
         contrato_id=cob.contrato_id,
     )
     db.add(fin)
-    ct = db.get(Contrato, cob.contrato_id)
     ev_id = _emit_domain_event(
         db,
         DomainEventType.ESTORNO_CONFIRMADO.value,
@@ -872,7 +936,7 @@ def handle_mercadopago_chargeback(
                 tipo=FinanceiroTipo.DESPESA.value,
                 valor=cb_amount,
                 descricao=desc,
-                data=date.today(),
+                data=_today(),
                 moto_id=ct.moto_id if ct else None,
                 contrato_id=cob.contrato_id,
             )
@@ -975,7 +1039,7 @@ def handle_mercadopago_subscription_payment(
         return False, None
 
     op = db.get(Operacao, ct.operacao_id)
-    today = date.today()
+    today = _today()
     amounts = charge_amounts_for_contrato(ct, op, today) if op else None
     cob = get_open_cobranca(db, ct.id)
     if not cob:

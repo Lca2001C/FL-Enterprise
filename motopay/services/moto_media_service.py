@@ -16,7 +16,7 @@ ALLOWED_CONTENT_TYPES: dict[str, str] = {
     "image/png": ".png",
     "image/webp": ".webp",
 }
-MAX_IMAGE_BYTES = 5 * 1024 * 1024
+MAX_IMAGE_BYTES = 15 * 1024 * 1024
 
 
 def _upload_root() -> Path:
@@ -60,7 +60,7 @@ async def save_moto_imagem(
     if not data:
         raise MotoPayError("Arquivo de imagem vazio")
     if len(data) > MAX_IMAGE_BYTES:
-        raise MotoPayError("Imagem excede o limite de 5 MB")
+        raise MotoPayError("Imagem excede o limite de 15 MB")
 
     relative = _relative_path(moto, extension)
     target = _absolute_path(relative)

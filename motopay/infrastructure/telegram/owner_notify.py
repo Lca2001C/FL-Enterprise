@@ -99,6 +99,36 @@ def notify_owner_refund(
         logger.warning("owner_refund_notify_failed operacao_id=%s: %s", operacao.id, exc)
 
 
+def notify_owner_subscription_cancel_failure(
+    *,
+    operacao: Operacao,
+    contrato_id: int,
+    subscription_id: str,
+    error: str,
+) -> None:
+    if not operacao.telegram_owner_notify_enabled:
+        return
+    chat_id = (operacao.telegram_owner_notify_id or "").strip()
+    if not chat_id:
+        return
+    text = (
+        "⚠️ Falha ao cancelar assinatura Mercado Pago\n"
+        f"Operação: {operacao.nome}\n"
+        f"Contrato #{contrato_id}\n"
+        f"Subscription ID: {subscription_id}\n"
+        f"Erro: {error}\n"
+        "Ação necessária: cancele manualmente no painel do Mercado Pago."
+    )
+    try:
+        send_telegram_text(chat_id=chat_id, text=text)
+    except Exception as exc:
+        logger.warning(
+            "owner_subscription_cancel_failure_notify_failed operacao_id=%s: %s",
+            operacao.id,
+            exc,
+        )
+
+
 def notify_owner_chargeback(
     *,
     operacao: Operacao,

@@ -51,6 +51,10 @@ DEFAULT_TELEGRAM_TEMPLATES: dict[str, str] = {
         "🔧 A moto {placa} entrou em manutenção. "
         "Entraremos em contato sobre prazos e substituição, se aplicável."
     ),
+    "d3_reminder": (
+        "Olá, {cliente}! 📅 Seu pagamento de R$ {valor_recorrente} vence em 3 dias "
+        "({proximo_vencimento}). Fique tranquilo — pague até o vencimento e evite multa e juros."
+    ),
     "d1_reminder": (
         "Lembrete: amanhã ({proximo_vencimento}) vence o pagamento "
         "do contrato #{contrato_id} no valor de R$ {valor_recorrente}."
@@ -75,9 +79,9 @@ DEFAULT_TELEGRAM_TEMPLATES: dict[str, str] = {
     "bot_promessa_not_found": (
         "Não localizamos seu cadastro com este Telegram. Peça ao operador para informar seu ID."
     ),
-    "bot_pix": "Pix pendente — vencimento {vencimento}\nTotal: {valor_total}\n\n{pix_copia_cola}",
+    "bot_pix": "Pix pendente — vencimento {vencimento}\n{valor_detalhado}\n\n{pix_copia_cola}",
     "bot_pix_portal": (
-        "Pagamento pendente — vencimento {vencimento}\nTotal: {valor_total}\n\n"
+        "Pagamento pendente — vencimento {vencimento}\n{valor_detalhado}\n\n"
         "Pague online: {portal_url}\n\n{pix_block}"
     ),
     "estorno_confirmado": (
@@ -187,6 +191,13 @@ TELEGRAM_TEMPLATE_META: dict[str, TelegramTemplateMeta] = {
         placeholders=("placa",),
         group="notificacoes",
     ),
+    "d3_reminder": TelegramTemplateMeta(
+        key="d3_reminder",
+        label="Lembrete D-3",
+        description="Lembrete enviado três dias antes do vencimento.",
+        placeholders=("cliente", "proximo_vencimento", "valor_recorrente"),
+        group="notificacoes",
+    ),
     "d1_reminder": TelegramTemplateMeta(
         key="d1_reminder",
         label="Lembrete D-1",
@@ -205,7 +216,7 @@ TELEGRAM_TEMPLATE_META: dict[str, TelegramTemplateMeta] = {
         key="bot_pix",
         label="Bot — /pix",
         description="Resposta com Pix pendente.",
-        placeholders=("valor_total", "pix_copia_cola", "vencimento"),
+        placeholders=("valor_detalhado", "valor_total", "pix_copia_cola", "vencimento"),
         group="bot",
     ),
     "bot_status": TelegramTemplateMeta(
@@ -323,7 +334,7 @@ TELEGRAM_TEMPLATE_META: dict[str, TelegramTemplateMeta] = {
 
 
 CUSTOM_MESSAGE_TRIGGER_KEYS: frozenset[str] = frozenset(
-    {"pagamento_confirmado", "d1_reminder", "d0_reminder", "moto_manutencao"}
+    {"pagamento_confirmado", "d3_reminder", "d1_reminder", "d0_reminder", "moto_manutencao"}
 )
 
 
@@ -476,6 +487,11 @@ def sample_context_for_key(key: str) -> dict[str, Any]:
             "juros": "1,05",
             "valor_total": "358,05",
         },
+        "d3_reminder": {
+            "cliente": "João Silva",
+            "proximo_vencimento": today.isoformat(),
+            "valor_recorrente": "350,00",
+        },
         "d1_reminder": {
             "proximo_vencimento": today.isoformat(),
             "contrato_id": 42,
@@ -489,7 +505,8 @@ def sample_context_for_key(key: str) -> dict[str, Any]:
         "moto_manutencao": {"placa": "ABC1D23"},
         "bot_pix": {
             "vencimento": today.isoformat(),
-            "valor_total": "350,00",
+            "valor_detalhado": "Total: R$ 350,00",
+            "valor_total": "R$ 350,00",
             "pix_copia_cola": "000201010212...",
         },
         "bot_status": {

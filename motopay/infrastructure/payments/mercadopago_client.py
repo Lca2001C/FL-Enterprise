@@ -257,7 +257,12 @@ class MercadoPagoClient:
             except Exception:
                 body = r.text
             raise MercadoPagoApiError(r.status_code, r.text, body)
-        return r.json()
+        if not r.content:
+            return {}
+        try:
+            return r.json()
+        except Exception:
+            return {}
 
     def create_online_order(
         self,
@@ -329,7 +334,9 @@ class MercadoPagoClient:
         return str(data["id"])
 
     def search_customer_by_email(self, email: str) -> str | None:
-        data = self._request("GET", f"/v1/customers/search?email={email}", timeout=30.0)
+        from urllib.parse import urlencode
+
+        data = self._request("GET", f"/v1/customers/search?{urlencode({'email': email})}", timeout=30.0)
         results = data.get("results") or []
         if results:
             return str(results[0]["id"])
@@ -355,13 +362,7 @@ class MercadoPagoClient:
         return list(data if isinstance(data, list) else [])
 
     def delete_card(self, *, customer_id: str, card_id: str) -> None:
-        r = httpx.delete(
-            f"{self._base}/v1/customers/{customer_id}/cards/{card_id}",
-            headers=self._headers(),
-            timeout=30.0,
-        )
-        if r.status_code >= 400:
-            raise MercadoPagoApiError(r.status_code, r.text)
+        self._request("DELETE", f"/v1/customers/{customer_id}/cards/{card_id}", timeout=30.0)
 
     @staticmethod
     def preapproval_frequency(ciclo: str) -> tuple[int, str]:

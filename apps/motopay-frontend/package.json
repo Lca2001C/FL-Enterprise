@@ -23,6 +23,7 @@
     "axios": "^1.16.0",
     "driver.js": "^1.4.0",
     "lucide-react": "^1.14.0",
+    "qrcode.react": "^4.2.0",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
     "socket.io-client": "^4.8.1",

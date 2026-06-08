@@ -21,3 +21,9 @@ export function disconnectRealtimeSocket(): void {
   socket?.disconnect();
   socket = null;
 }
+
+export function reconnectRealtimeSocketIfNeeded(): void {
+  if (socket && !socket.connected) {
+    socket.connect();
+  }
+}

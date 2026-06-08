@@ -20,7 +20,7 @@ celery_app.conf.update(
     accept_content=["json"],
     result_serializer="json",
     timezone=_settings.app_timezone,
-    enable_utc=False,
+    enable_utc=True,
     imports=[
         "motopay.infrastructure.messaging.tasks",
         "motopay.infrastructure.messaging.celery_observability",
@@ -28,6 +28,7 @@ celery_app.conf.update(
     task_routes={
         "motopay.infrastructure.messaging.tasks.daily_automation_tick": {"queue": "default"},
         "motopay.infrastructure.messaging.tasks.handle_domain_event": {"queue": "telegram"},
+        "motopay.infrastructure.messaging.tasks.send_d3_reminder": {"queue": "telegram"},
         "motopay.infrastructure.messaging.tasks.send_d1_reminder": {"queue": "telegram"},
         "motopay.infrastructure.messaging.tasks.send_d0_reminder": {"queue": "telegram"},
         "motopay.infrastructure.messaging.tasks.reconcile_mercadopago_payments": {
@@ -64,6 +65,10 @@ if _settings.sentry_dsn.strip():
             sentry_sdk.capture_exception(exception)
     except ImportError:
         pass
+
+celery_app.conf.beat_scheduler = "redbeat.schedulers:RedBeatScheduler"
+celery_app.conf.redbeat_redis_url = _settings.redis_url
+celery_app.conf.redbeat_key_prefix = "motopay:redbeat:"
 
 celery_app.conf.beat_schedule = {
     "daily-motopay-automation": {

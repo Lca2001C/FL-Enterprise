@@ -127,7 +127,18 @@ export default function PayCobrancaModal({
 
   const copyPix = async () => {
     if (!pixCode) return;
-    await navigator.clipboard.writeText(pixCode);
+    try {
+      await navigator.clipboard.writeText(pixCode);
+    } catch {
+      const ta = document.createElement('textarea');
+      ta.value = pixCode;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+    }
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
     if (!pollRef.current) startPixPolling();

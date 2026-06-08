@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from decimal import Decimal
 from typing import Any
 
@@ -13,6 +14,7 @@ from motopay.infrastructure.db.models import Cobranca, Operacao
 from motopay.infrastructure.db.session import get_db
 from motopay.infrastructure.messaging.tasks import handle_domain_event
 from motopay.infrastructure.payments.mercadopago_client import (
+    MercadoPagoApiError,
     MercadoPagoClient,
     mp_token_for_operacao,
     mp_webhook_secret_for_operacao,
@@ -34,6 +36,8 @@ from motopay.services.billing_service import (
     handle_mercadopago_subscription_payment,
     sync_refund_from_mercadopago_payment,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["webhooks"])
 
@@ -113,21 +117,46 @@ def mercadopago_webhook(
     topic = str(body.get("type") or body.get("action") or "").lower()
     data = body.get("data") or {}
     resource_id = str(data.get("id") or data_id or body.get("id") or "").strip()
+
+    logger.info(
+        "webhook_received topic=%s resource_id=%s ip=%s",
+        topic,
+        resource_id,
+        ip,
+    )
+
     if not resource_id:
+        logger.warning("webhook_no_resource_id body_keys=%s", list(body.keys()))
         return {"ok": True}
 
     op = _resolve_operacao_for_webhook(db, resource_id)
     if not _verify_mp_signature(request, data_id=resource_id, op=op):
+        logger.warning(
+            "webhook_invalid_signature resource_id=%s ip=%s",
+            resource_id,
+            ip,
+        )
         record_webhook_failure(ip)
         raise HTTPException(status_code=403, detail="Assinatura inválida")
     clear_webhook_attempts(ip)
 
     if "order" in topic:
+        logger.info("webhook_order resource_id=%s", resource_id)
         try:
             order_data = _fetch_order(db, op, resource_id)
-        except httpx.HTTPError as exc:
+        except (httpx.HTTPError, MercadoPagoApiError) as exc:
+            logger.error(
+                "webhook_order_fetch_failed resource_id=%s error=%s",
+                resource_id,
+                exc,
+            )
             raise HTTPException(status_code=502, detail="Falha ao validar order no MP") from exc
         if not is_order_paid(order_data):
+            logger.info(
+                "webhook_order_not_paid resource_id=%s status=%s",
+                resource_id,
+                order_data.get("status"),
+            )
             return {"ok": True}
         amount = order_total_amount(order_data)
         _found, ev_id = handle_mercadopago_order_confirmed(
@@ -136,51 +165,91 @@ def mercadopago_webhook(
             order_data=order_data,
             value=amount,
         )
+        logger.info(
+            "webhook_order_confirmed resource_id=%s found=%s ev_id=%s",
+            resource_id,
+            _found,
+            ev_id,
+        )
         if ev_id:
             handle_domain_event.delay(ev_id)
         return {"ok": True}
 
     if "preapproval" in topic or "subscription_preapproval" in topic:
+        logger.info("webhook_preapproval resource_id=%s", resource_id)
         try:
             pre_data = MercadoPagoClient(
                 access_token=_mp_access_token(db, op)
             ).get_preapproval(resource_id)
-        except httpx.HTTPError as exc:
+        except (httpx.HTTPError, MercadoPagoApiError) as exc:
+            logger.error(
+                "webhook_preapproval_fetch_failed resource_id=%s error=%s",
+                resource_id,
+                exc,
+            )
             raise HTTPException(status_code=502, detail="Falha ao validar assinatura no MP") from exc
         handle_mercadopago_preapproval_updated(
             db, preapproval_id=resource_id, preapproval_data=pre_data
         )
+        logger.info("webhook_preapproval_updated resource_id=%s", resource_id)
         return {"ok": True}
 
     if "chargeback" in topic:
+        logger.info("webhook_chargeback resource_id=%s", resource_id)
         try:
             cb_data = MercadoPagoClient(
                 access_token=_mp_access_token(db, op)
             ).get_chargeback(resource_id)
-        except httpx.HTTPError as exc:
+        except (httpx.HTTPError, MercadoPagoApiError) as exc:
+            logger.error(
+                "webhook_chargeback_fetch_failed resource_id=%s error=%s",
+                resource_id,
+                exc,
+            )
             raise HTTPException(status_code=502, detail="Falha ao validar chargeback no MP") from exc
         _found, ev_id = handle_mercadopago_chargeback(db, chargeback_data=cb_data)
+        logger.info(
+            "webhook_chargeback_processed resource_id=%s found=%s ev_id=%s",
+            resource_id,
+            _found,
+            ev_id,
+        )
         if ev_id:
             handle_domain_event.delay(ev_id)
         return {"ok": True}
 
     if "payment" in topic:
+        logger.info("webhook_payment resource_id=%s", resource_id)
         try:
             pay_data = MercadoPagoClient(
                 access_token=_mp_access_token(db, op)
             ).get_payment(resource_id)
-        except httpx.HTTPError as exc:
+        except (httpx.HTTPError, MercadoPagoApiError) as exc:
+            logger.error(
+                "webhook_payment_fetch_failed resource_id=%s error=%s",
+                resource_id,
+                exc,
+            )
             raise HTTPException(status_code=502, detail="Falha ao validar pagamento no MP") from exc
         status = str(pay_data.get("status", "")).lower()
+        logger.info("webhook_payment_status resource_id=%s status=%s", resource_id, status)
         _record_payment_status(db, resource_id, status)
         if status in ("refunded", "partially_refunded"):
             _found, ev_id = sync_refund_from_mercadopago_payment(db, pay_data=pay_data)
+            logger.info(
+                "webhook_refund_processed resource_id=%s found=%s ev_id=%s",
+                resource_id,
+                _found,
+                ev_id,
+            )
             if ev_id:
                 handle_domain_event.delay(ev_id)
             return {"ok": True}
         if status in ("rejected", "cancelled"):
+            logger.info("webhook_payment_terminal resource_id=%s status=%s", resource_id, status)
             return {"ok": True}
         if status not in _MP_CONFIRMED_STATUSES:
+            logger.info("webhook_payment_pending resource_id=%s status=%s", resource_id, status)
             return {"ok": True}
         raw_val = pay_data.get("transaction_amount")
         val = Decimal(str(raw_val)) if raw_val is not None else None
@@ -191,10 +260,24 @@ def mercadopago_webhook(
                 pay_data=pay_data,
                 value=val,
             )
+            logger.info(
+                "webhook_subscription_payment resource_id=%s found=%s ev_id=%s",
+                resource_id,
+                _found,
+                ev_id,
+            )
         else:
             _found, ev_id = handle_mercadopago_payment_confirmed(
                 db, mercadopago_payment_id=resource_id, value=val
             )
+            logger.info(
+                "webhook_payment_confirmed resource_id=%s found=%s ev_id=%s",
+                resource_id,
+                _found,
+                ev_id,
+            )
         if ev_id:
             handle_domain_event.delay(ev_id)
+
+    logger.info("webhook_done topic=%s resource_id=%s", topic, resource_id)
     return {"ok": True}

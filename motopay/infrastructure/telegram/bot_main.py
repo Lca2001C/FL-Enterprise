@@ -2,7 +2,14 @@
 
 from __future__ import annotations
 
+import io as _io
 from datetime import date
+
+try:
+    import qrcode as _qrcode  # type: ignore[import]
+    _QR_AVAILABLE = True
+except ImportError:
+    _QR_AVAILABLE = False
 
 from sqlalchemy import select
 from telegram import KeyboardButton, ReplyKeyboardMarkup, Update
@@ -24,6 +31,7 @@ from motopay.infrastructure.telegram.conversation import (
 from motopay.infrastructure.telegram.owner_notify import notify_owner_contact_request
 from motopay.infrastructure.telegram.templates import (
     find_menu_button_by_command,
+    format_brl,
     match_button_command,
     render_menu_button_response,
     render_template,
@@ -32,6 +40,23 @@ from motopay.infrastructure.telegram.templates import (
 from motopay.services.billing_service import charge_amounts_for_cobranca, get_open_cobranca
 from motopay.services.payer_portal_service import ensure_portal_url_for_cobranca
 from motopay.services.negotiation_service import record_promessa_from_telegram_user
+
+
+def _make_pix_qr_bytes(pix_code: str) -> bytes | None:
+    """Gera QR code PNG a partir do código Pix. Retorna None se qrcode não instalado."""
+    if not _QR_AVAILABLE:
+        return None
+    qr = _qrcode.QRCode(
+        error_correction=_qrcode.constants.ERROR_CORRECT_M,
+        box_size=8,
+        border=4,
+    )
+    qr.add_data(pix_code)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color="black", back_color="white")
+    buf = _io.BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
 
 
 def _cliente_for_telegram(
@@ -285,58 +310,81 @@ async def cmd_pix(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     uid = str(update.effective_user.id) if update.effective_user else ""
     if not uid:
         return
+
+    # Coleta todos os dados do banco e fecha a sessão ANTES de qualquer I/O de rede
+    reply_template: str | None = None
+    reply_kwargs: dict = {}
+    pix_code_for_qr: str | None = None
+    overrides: dict[str, str] | None = None
+
     with SessionLocal() as db:
         cliente, overrides, _ = _cliente_for_telegram(db, uid)
         if not cliente:
-            await update.effective_message.reply_text(
-                render_template("bot_promessa_not_found", overrides=overrides)
+            reply_template = "bot_promessa_not_found"
+        else:
+            ct = _active_contrato(db, cliente.id)
+            if not ct:
+                reply_template = "bot_promessa_not_found"
+            else:
+                cob = get_open_cobranca(db, ct.id)
+                if not cob:
+                    reply_template = "overdue_no_pix"
+                else:
+                    op = db.get(Operacao, ct.operacao_id)
+                    amounts = charge_amounts_for_cobranca(cob, ct, op, date.today()) if op else None
+                    total = amounts.valor_total if amounts else cob.valor
+
+                    # Breakdown: mostra discriminação se houver juros ou multa
+                    if amounts and (amounts.multa > 0 or amounts.juros > 0):
+                        valor_detalhado = (
+                            f"Aluguel: {format_brl(ct.valor_recorrente)} + "
+                            f"Multa: {format_brl(amounts.multa)} + "
+                            f"Juros: {format_brl(amounts.juros)} = "
+                            f"Total: {format_brl(total)}"
+                        )
+                    else:
+                        valor_detalhado = f"Total: {format_brl(total)}"
+
+                    portal_url = ensure_portal_url_for_cobranca(db, cob)
+                    db.commit()
+                    pix_block = cob.pix_copia_cola or ""
+                    vencimento = cob.vencimento.isoformat()
+
+                    if portal_url:
+                        reply_template = "bot_pix_portal"
+                        reply_kwargs = {
+                            "vencimento": vencimento,
+                            "valor_detalhado": valor_detalhado,
+                            "valor_total": str(total),
+                            "portal_url": portal_url,
+                            "pix_block": f"Pix copia e cola:\n{pix_block}" if pix_block else "",
+                        }
+                    elif pix_block:
+                        reply_template = "bot_pix"
+                        reply_kwargs = {
+                            "vencimento": vencimento,
+                            "valor_detalhado": valor_detalhado,
+                            "valor_total": str(total),
+                            "pix_copia_cola": pix_block,
+                        }
+                    else:
+                        reply_template = "overdue_no_pix"
+
+                    if pix_block:
+                        pix_code_for_qr = pix_block
+
+    # Sessão fechada — envia QR e mensagem sem segurar conexão de banco
+    if pix_code_for_qr:
+        qr_bytes = _make_pix_qr_bytes(pix_code_for_qr)
+        if qr_bytes:
+            await update.effective_message.reply_photo(
+                _io.BytesIO(qr_bytes),
+                caption=reply_kwargs.get("valor_detalhado", ""),
             )
-            return
-        ct = _active_contrato(db, cliente.id)
-        if not ct:
-            await update.effective_message.reply_text(
-                render_template("bot_promessa_not_found", overrides=overrides)
-            )
-            return
-        cob = get_open_cobranca(db, ct.id)
-        if not cob:
-            await update.effective_message.reply_text(
-                render_template("overdue_no_pix", overrides=overrides)
-            )
-            return
-        op = db.get(Operacao, ct.operacao_id)
-        amounts = charge_amounts_for_cobranca(cob, ct, op, date.today()) if op else None
-        valor_total = str(amounts.valor_total if amounts else cob.valor)
-        portal_url = ensure_portal_url_for_cobranca(db, cob)
-        db.commit()
-        pix_block = cob.pix_copia_cola or ""
-        if portal_url:
-            pix_suffix = f"Pix copia e cola:\n{pix_block}" if pix_block else ""
-            await update.effective_message.reply_text(
-                render_template(
-                    "bot_pix_portal",
-                    overrides=overrides,
-                    vencimento=cob.vencimento.isoformat(),
-                    valor_total=valor_total,
-                    portal_url=portal_url,
-                    pix_block=pix_suffix,
-                )
-            )
-            return
-        if not pix_block:
-            await update.effective_message.reply_text(
-                render_template("overdue_no_pix", overrides=overrides)
-            )
-            return
-        await update.effective_message.reply_text(
-            render_template(
-                "bot_pix",
-                overrides=overrides,
-                vencimento=cob.vencimento.isoformat(),
-                valor_total=valor_total,
-                pix_copia_cola=pix_block,
-            )
-        )
+
+    await update.effective_message.reply_text(
+        render_template(reply_template, overrides=overrides, **reply_kwargs)
+    )
 
 
 async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

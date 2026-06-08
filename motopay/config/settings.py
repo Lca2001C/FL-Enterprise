@@ -151,6 +151,19 @@ class Settings(BaseSettings):
                 "DATABASE_URL menciona localhost/127.0.0.1 em production — confirme túnel/ambiente antes de escalar."
             )
 
+        if not self.trusted_proxy_ips.strip():
+            _logger.warning(
+                "TRUSTED_PROXY_IPS está vazio em production: quando atrás de Railway/Render/Cloudflare, "
+                "o rate-limiting usará o IP do proxy em vez do IP real do cliente, tornando-o ineficaz. "
+                "Defina TRUSTED_PROXY_IPS com os CIDRs do seu proxy reverso (ex.: 127.0.0.1,10.0.0.0/8)."
+            )
+
+        if not self.sentry_dsn.strip():
+            _logger.warning(
+                "SENTRY_DSN não configurado em production: erros não serão capturados automaticamente. "
+                "Crie um projeto em sentry.io e defina SENTRY_DSN para rastreamento de erros em produção."
+            )
+
         return self
 
 

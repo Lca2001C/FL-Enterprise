@@ -12,6 +12,7 @@ from motopay.domain.enums import (
     FinanceiroTipo,
     MotoStatus,
     UserRole,
+    VeiculoTipo,
 )
 
 T = TypeVar("T")
@@ -35,8 +36,10 @@ class RefreshRequest(BaseModel):
 
 
 class LoginRequest(BaseModel):
-    email: str
-    password: str
+    # str (não EmailStr) para aceitar domínios locais/de teste como .local
+    # max_length evita chaves Redis gigantes no rate-limit
+    email: str = Field(max_length=320)
+    password: str = Field(min_length=1, max_length=256)
 
 
 class UserOut(BaseModel):
@@ -151,6 +154,7 @@ class UsuarioCreate(BaseModel):
 class MotoCreate(BaseModel):
     placa: str
     modelo: str
+    tipo: VeiculoTipo = VeiculoTipo.MOTO
     status: MotoStatus
     km: int = 0
 
@@ -158,6 +162,7 @@ class MotoCreate(BaseModel):
 class MotoUpdate(BaseModel):
     placa: str | None = None
     modelo: str | None = None
+    tipo: VeiculoTipo | None = None
     status: MotoStatus | None = None
     km: int | None = None
 
@@ -169,6 +174,7 @@ class MotoOut(BaseModel):
     operacao_id: int
     placa: str
     modelo: str
+    tipo: str = "moto"
     status: str
     km: int
     tem_imagem: bool = False
@@ -323,6 +329,14 @@ class AnalyticsSummary(BaseModel):
     total_cobrancas: int = 0
     cobrancas_pendentes: int = 0
     cobrancas_atrasadas: int = 0
+
+
+class DashboardInadimplenciaItem(BaseModel):
+    contrato_id: int
+    cliente_nome: str
+    dias_atraso: int
+    proximo_vencimento: date
+    pix_copia_cola: str | None = None
 
 
 class RecentActivityRow(BaseModel):

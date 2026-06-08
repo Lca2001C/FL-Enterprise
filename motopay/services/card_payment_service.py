@@ -31,6 +31,7 @@ from motopay.services.billing_service import (
     _OPEN_COBRANCA_STATUSES,
     _cobranca_to_out,
     _effective_operacao,
+    _finalize_payment,
     charge_amounts_for_cobranca,
     get_open_cobranca,
 )
@@ -220,10 +221,27 @@ def pay_cobranca_with_card(
     cob.mercadopago_payment_id = order.payment_id
     cob.payment_gateway = "mercadopago"
     cob.payment_method_type = method_type
-    if order.is_paid:
-        cob.status = CobrancaStatus.RECEBIDO.value
     db.add(cob)
-    db.commit()
+    db.flush()
+
+    ev_id: int | None = None
+    if order.is_paid:
+        # Finalize immediately: creates Financeiro, advances proximo_vencimento,
+        # recalculates score and emits domain event. _finalize_payment calls commit.
+        _, ev_id = _finalize_payment(
+            db,
+            cob,
+            external_id=order.payment_id,
+            gateway="mercadopago",
+            value=charge_value,
+        )
+    else:
+        db.commit()
+
+    if ev_id:
+        from motopay.infrastructure.messaging.tasks import handle_domain_event
+        handle_domain_event.delay(ev_id)
+
     db.refresh(cob)
 
     three_ds = None
