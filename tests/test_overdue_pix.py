@@ -46,6 +46,7 @@ def cliente_com_telegram(db_session, operacao_multas):
         nome="João",
         cpf="12345678901",
         telefone="11999999999",
+        email="joao@test.local",
         telegram_id="123456789",
     )
     db_session.add(c)

@@ -25,15 +25,23 @@ from sqlalchemy import select
 from tests.conftest import auth_header, login
 
 
-def _seed_received_cobranca(db_session):
-    op = Operacao(
-        nome="Enterprise Op",
-        mercadopago_access_token="TEST-token",
-        mercadopago_public_key="TEST-pk",
-        mercadopago_webhook_secret="whsec",
-    )
-    db_session.add(op)
-    db_session.flush()
+def _seed_received_cobranca(db_session, operacao: Operacao | None = None):
+    if operacao is None:
+        op = Operacao(
+            nome="Enterprise Op",
+            mercadopago_access_token="TEST-token",
+            mercadopago_public_key="TEST-pk",
+            mercadopago_webhook_secret="whsec",
+        )
+        db_session.add(op)
+        db_session.flush()
+    else:
+        op = operacao
+        op.mercadopago_access_token = op.mercadopago_access_token or "TEST-token"
+        op.mercadopago_public_key = op.mercadopago_public_key or "TEST-pk"
+        op.mercadopago_webhook_secret = op.mercadopago_webhook_secret or "whsec"
+        db_session.add(op)
+        db_session.flush()
     cl = Cliente(
         operacao_id=op.id,
         nome="Cliente Portal",
@@ -113,8 +121,8 @@ def test_public_portal_cards(client, db_session):
     assert data[0]["last_four_digits"] == "4242"
 
 
-def test_portal_link_requires_auth(client, db_session, dono_user):
-    _, cob = _seed_received_cobranca(db_session)
+def test_portal_link_requires_auth(client, db_session, dono_user, operacao_a):
+    _, cob = _seed_received_cobranca(db_session, operacao_a)
     token = login(client, dono_user.email, "donodono")["access_token"]
     r = client.post(
         f"/api/v1/cobrancas/{cob.id}/portal-link",

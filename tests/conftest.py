@@ -26,6 +26,9 @@ def _ensure_test_env() -> None:
     os.environ["JWT_SECRET"] = "test-jwt-secret-not-for-production"
     os.environ["REDIS_URL"] = os.getenv("TEST_REDIS_URL", "redis://localhost:6379/15")
     os.environ["MERCADOPAGO_WEBHOOK_SECRET"] = ""
+    os.environ["MERCADOPAGO_CREDENTIALS_MODE"] = "test"
+    os.environ["MERCADOPAGO_ACCESS_TOKEN_TEST"] = "TEST-token"
+    os.environ["MERCADOPAGO_PUBLIC_KEY_TEST"] = "TEST-pk"
     os.environ["ENVIRONMENT"] = "development"
     os.environ["LOGIN_RATE_LIMIT_ENABLED"] = "false"
     get_settings.cache_clear()

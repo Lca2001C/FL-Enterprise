@@ -1,11 +1,18 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from unittest.mock import patch
 
-from motopay.domain.enums import CobrancaStatus
-from motopay.infrastructure.db.models import Cobranca, EventoDominio, Operacao
+from motopay.domain.enums import CicloCobranca, CobrancaStatus, ContratoStatus
+from motopay.infrastructure.db.models import (
+    Cliente,
+    Cobranca,
+    Contrato,
+    EventoDominio,
+    Moto,
+    Operacao,
+)
 from motopay.services.mercadopago_token_service import ensure_valid_mp_token
 
 
@@ -44,11 +51,35 @@ def test_refund_emits_domain_event(db_session):
     op = Operacao(nome="Ev Op")
     db_session.add(op)
     db_session.flush()
+    cl = Cliente(
+        operacao_id=op.id,
+        nome="Cliente",
+        cpf="99988877766",
+        telefone="11988887777",
+        email="cliente@test.local",
+    )
+    db_session.add(cl)
+    db_session.flush()
+    m = Moto(operacao_id=op.id, placa="EV1O001", modelo="Biz", status="alugada")
+    db_session.add(m)
+    db_session.flush()
+    ct = Contrato(
+        operacao_id=op.id,
+        cliente_id=cl.id,
+        moto_id=m.id,
+        valor_recorrente=Decimal("100"),
+        ciclo=CicloCobranca.MENSAL.value,
+        status=ContratoStatus.ATIVO.value,
+        data_inicio=date(2025, 1, 1),
+        proximo_vencimento=date(2025, 2, 1),
+    )
+    db_session.add(ct)
+    db_session.flush()
     cob = Cobranca(
         operacao_id=op.id,
-        contrato_id=1,
+        contrato_id=ct.id,
         valor=Decimal("100"),
-        vencimento=datetime.now(UTC).date(),
+        vencimento=date(2025, 2, 1),
         mercadopago_payment_id="pay-ev-1",
         status=CobrancaStatus.RECEBIDO.value,
     )

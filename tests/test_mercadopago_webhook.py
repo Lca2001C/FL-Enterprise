@@ -48,12 +48,14 @@ def test_mercadopago_webhook_confirms_payment(client, db_session):
     db_session.commit()
 
     with (
-        patch(
-            "motopay.interfaces.api.routers.webhooks._payment_confirmed_in_mercadopago",
-            return_value=(True, Decimal("100")),
-        ),
+        patch("motopay.interfaces.api.routers.webhooks.MercadoPagoClient") as mock_cls,
         patch("motopay.interfaces.api.routers.webhooks.handle_domain_event") as mock_task,
     ):
+        mock_cls.return_value.get_payment.return_value = {
+            "id": "999888",
+            "status": "approved",
+            "transaction_amount": 100.0,
+        }
         mock_task.delay = MagicMock()
         r = client.post("/webhooks/mercadopago", json={"type": "payment", "data": {"id": "999888"}})
         assert r.status_code == 200
