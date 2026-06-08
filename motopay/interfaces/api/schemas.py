@@ -109,6 +109,8 @@ class OperacaoUpdate(BaseModel):
     telegram_owner_notify_id: str | None = None
     telegram_owner_notify_enabled: bool | None = None
     mercadopago_access_token: str | None = None
+    mercadopago_public_key: str | None = None
+    mercadopago_webhook_secret: str | None = None
 
 
 class TelegramTemplatePreviewRequest(BaseModel):
@@ -177,12 +179,14 @@ class ClienteCreate(BaseModel):
     nome: str
     cpf: str
     telefone: str
+    email: str | None = None
     telegram_id: str | None = None
 
 
 class ClienteUpdate(BaseModel):
     nome: str | None = None
     telefone: str | None = None
+    email: str | None = None
     telegram_id: str | None = None
 
 
@@ -194,6 +198,8 @@ class ClienteOut(BaseModel):
     nome: str
     cpf: str
     telefone: str
+    email: str | None = None
+    mercadopago_customer_id: str | None = None
     telegram_id: str | None
     score: int
     moto_placa: str | None = None
@@ -222,6 +228,7 @@ class ContratoCreate(BaseModel):
 class ContratoUpdate(BaseModel):
     status: ContratoStatus | None = None
     valor_recorrente: Decimal | None = None
+    ciclo: CicloCobranca | None = None
     data_fim_vigencia: date | None = None
     proximo_vencimento: date | None = None
 
@@ -245,6 +252,7 @@ class ContratoOut(BaseModel):
     promessa_pagamento_em: date | None
     promessa_notas: str | None
     mercadopago_subscription_id: str | None = None
+    mercadopago_subscription_status: str | None = None
 
 
 class FinanceiroCreate(BaseModel):
@@ -276,13 +284,18 @@ class CobrancaOut(BaseModel):
     valor: Decimal
     vencimento: date
     mercadopago_payment_id: str | None = None
+    mercadopago_order_id: str | None = None
     payment_gateway: str = "mercadopago"
+    payment_method_type: str | None = None
     pix_copia_cola: str | None
     status: str
     dias_atraso: int = 0
     multa: Decimal = Decimal(0)
     juros: Decimal = Decimal(0)
     valor_total: Decimal = Decimal(0)
+    valor_estornado: Decimal = Decimal(0)
+    mercadopago_dispute_status: str | None = None
+    mercadopago_payment_status: str | None = None
 
 
 class CreateChargeRequest(BaseModel):
@@ -318,3 +331,98 @@ class RecentActivityRow(BaseModel):
     descricao: str
     data: date
     valor: Decimal
+
+
+class PaymentsConfigOut(BaseModel):
+    mercadopago_configured: bool
+    mercadopago_public_key: str | None = None
+    webhook_configured: bool
+    credentials_mode: str = "production"
+    mercadopago_credentials_source: str = "none"
+    mercadopago_credentials_complete: bool = False
+    mercadopago_has_operacao_token: bool = False
+    mercadopago_oauth_available: bool = False
+    mercadopago_oauth_connected: bool = False
+    mercadopago_webhook_ready: bool = False
+    webhook_url: str | None = None
+
+
+class ClienteMpCardOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    cliente_id: int
+    operacao_id: int
+    mp_card_id: str
+    payment_method_id: str
+    last_four_digits: str
+    cardholder_name: str | None = None
+    expiration_month: int | None = None
+    expiration_year: int | None = None
+    is_default: bool = False
+
+
+class SaveMpCardRequest(BaseModel):
+    token: str = Field(min_length=1)
+
+
+class CardPaymentRequest(BaseModel):
+    token: str = Field(min_length=1)
+    payment_method_id: str = Field(min_length=1)
+    payment_method_kind: str = "credit_card"
+    saved_card_id: int | None = None
+    installments: int = 1
+
+
+class ThreeDsInfoOut(BaseModel):
+    external_resource_url: str | None = None
+    creq: str | None = None
+
+
+class CardPaymentOut(BaseModel):
+    cobranca: CobrancaOut
+    order_id: str
+    payment_id: str
+    status: str
+    requires_3ds: bool = False
+    three_ds_info: ThreeDsInfoOut | None = None
+
+
+class MpSubscriptionOut(BaseModel):
+    contrato_id: int
+    mercadopago_subscription_id: str
+    init_point: str | None = None
+    status: str | None = None
+
+
+class PortalLinkOut(BaseModel):
+    token: str
+    url: str
+
+
+class PayerPortalOut(BaseModel):
+    cobranca: CobrancaOut
+    cliente_nome: str
+    cliente_id: int
+    cliente_email: str | None = None
+    cliente_cpf: str
+    mercadopago_public_key: str | None = None
+    credentials_mode: str = "production"
+    payable: bool = True
+
+
+class PortalCardPaymentRequest(BaseModel):
+    token: str = Field(min_length=1)
+    payment_method_id: str = Field(min_length=1)
+    payment_method_kind: str = "credit_card"
+    saved_card_id: int | None = None
+    installments: int = 1
+
+
+class RefundRequest(BaseModel):
+    amount: Decimal | None = Field(default=None, gt=0)
+
+
+class MpOAuthStartOut(BaseModel):
+    authorization_url: str
+    redirect_uri: str

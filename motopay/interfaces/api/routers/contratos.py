@@ -6,13 +6,20 @@ from motopay.domain.enums import ContratoStatus
 from motopay.infrastructure.db.session import get_db
 from motopay.interfaces.api.deps import CurrentUser, require_operacional, resolve_operacao_id
 from motopay.interfaces.api.pagination import clamp_limit, clamp_offset
-from motopay.interfaces.api.schemas import ContratoCreate, ContratoOut, ContratoUpdate, Paginated
+from motopay.interfaces.api.schemas import (
+    ContratoCreate,
+    ContratoOut,
+    ContratoUpdate,
+    MpSubscriptionOut,
+    Paginated,
+)
 from motopay.services.contrato_document_service import generate_contrato_pdf
 from motopay.services.fleet_service import (
     create_contrato,
     get_contrato,
     update_contrato,
 )
+from motopay.services.billing_service import get_mercadopago_subscription_link
 from motopay.services.fleet_service import (
     list_contratos as list_contratos_service,
 )
@@ -77,6 +84,17 @@ def patch(
     operacao_id: int | None = Depends(resolve_operacao_id),
 ) -> ContratoOut:
     return update_contrato(db, user, operacao_id, contrato_id, body)
+
+
+@router.get("/{contrato_id}/assinatura-mercadopago", response_model=MpSubscriptionOut)
+def subscription_link(
+    contrato_id: int,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_operacional),
+    operacao_id: int | None = Depends(resolve_operacao_id),
+) -> MpSubscriptionOut:
+    data = get_mercadopago_subscription_link(db, user, operacao_id, contrato_id)
+    return MpSubscriptionOut.model_validate(data)
 
 
 @router.get("/{contrato_id}/documento")

@@ -15,32 +15,46 @@ branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
 
+def _has_column(table: str, column: str) -> bool:
+    bind = op.get_bind()
+    insp = sa.inspect(bind)
+    return column in {c["name"] for c in insp.get_columns(table)}
+
+
 def upgrade() -> None:
-    op.alter_column(
-        "operacoes",
-        "payment_provider",
-        server_default="mercadopago",
-        existing_type=sa.String(32),
-    )
-    op.alter_column(
-        "cobrancas",
-        "payment_gateway",
-        server_default="mercadopago",
-        existing_type=sa.String(32),
-    )
-    op.execute("UPDATE operacoes SET payment_provider = 'mercadopago' WHERE payment_provider = 'asaas'")
+    # 011_remove_asaas pode já ter removido payment_provider; branch idempotente.
+    if _has_column("operacoes", "payment_provider"):
+        op.alter_column(
+            "operacoes",
+            "payment_provider",
+            server_default="mercadopago",
+            existing_type=sa.String(32),
+        )
+        op.execute(
+            "UPDATE operacoes SET payment_provider = 'mercadopago' "
+            "WHERE payment_provider = 'asaas'"
+        )
+    if _has_column("cobrancas", "payment_gateway"):
+        op.alter_column(
+            "cobrancas",
+            "payment_gateway",
+            server_default="mercadopago",
+            existing_type=sa.String(32),
+        )
 
 
 def downgrade() -> None:
-    op.alter_column(
-        "operacoes",
-        "payment_provider",
-        server_default="asaas",
-        existing_type=sa.String(32),
-    )
-    op.alter_column(
-        "cobrancas",
-        "payment_gateway",
-        server_default="asaas",
-        existing_type=sa.String(32),
-    )
+    if _has_column("operacoes", "payment_provider"):
+        op.alter_column(
+            "operacoes",
+            "payment_provider",
+            server_default="asaas",
+            existing_type=sa.String(32),
+        )
+    if _has_column("cobrancas", "payment_gateway"):
+        op.alter_column(
+            "cobrancas",
+            "payment_gateway",
+            server_default="asaas",
+            existing_type=sa.String(32),
+        )

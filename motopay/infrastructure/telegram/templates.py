@@ -76,6 +76,15 @@ DEFAULT_TELEGRAM_TEMPLATES: dict[str, str] = {
         "Não localizamos seu cadastro com este Telegram. Peça ao operador para informar seu ID."
     ),
     "bot_pix": "Pix pendente — vencimento {vencimento}\nTotal: {valor_total}\n\n{pix_copia_cola}",
+    "bot_pix_portal": (
+        "Pagamento pendente — vencimento {vencimento}\nTotal: {valor_total}\n\n"
+        "Pague online: {portal_url}\n\n{pix_block}"
+    ),
+    "estorno_confirmado": (
+        "Confirmamos o estorno de R$ {delta} referente à cobrança #{cobranca_id}. "
+        "O valor pode levar alguns dias para aparecer na fatura."
+    ),
+    "overdue_portal_link": "Pague online pelo link: {portal_url}",
     "bot_status": (
         "Contrato: vencimento {proximo_vencimento}. Inadimplente: {inadimplente}. "
         "Promessa: {promessa_pagamento_em}."
@@ -399,6 +408,7 @@ def build_overdue_html(
     juros = Decimal(str(payload.get("juros", 0)))
     valor_total = Decimal(str(payload.get("valor_total", 0)))
     pix = payload.get("pix_copia_cola") or ""
+    portal_url = payload.get("portal_url") or ""
 
     intro = html.escape(templates[intro_key])
     body = render_template(
@@ -413,6 +423,14 @@ def build_overdue_html(
     )
 
     lines = [intro, ""] + body.split("\n")
+    if portal_url:
+        portal_line = render_template(
+            "overdue_portal_link",
+            templates=templates,
+            escape_html=True,
+            portal_url=portal_url,
+        )
+        lines.extend(["", portal_line])
     if pix:
         lines.extend(
             [

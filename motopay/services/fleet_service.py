@@ -208,6 +208,7 @@ def create_cliente(
         nome=body.nome.strip(),
         cpf=cpf,
         telefone=body.telefone.strip(),
+        email=body.email.strip().lower() if body.email else None,
         telegram_id=body.telegram_id.strip() if body.telegram_id else None,
     )
     db.add(c)
@@ -224,6 +225,8 @@ def update_cliente(
         c.nome = body.nome.strip()
     if body.telefone is not None:
         c.telefone = body.telefone.strip()
+    if body.email is not None:
+        c.email = body.email.strip().lower() if body.email else None
     if body.telegram_id is not None:
         c.telegram_id = body.telegram_id.strip() if body.telegram_id else None
     db.add(c)
@@ -323,11 +326,27 @@ def update_contrato(
     contrato_id: int,
     body: ContratoUpdate,
 ) -> Contrato:
+    from motopay.domain.enums import ContratoStatus as CS
+    from motopay.services.billing_service import cancel_mercadopago_subscription_for_contract
+
+    from motopay.services.billing_service import sync_mercadopago_subscription_amount
+
     ct = get_contrato(db, user, operacao_scope, contrato_id)
+    ending = (
+        body.status is not None
+        and body.status.value in (CS.FINALIZADO.value, CS.CANCELADO.value)
+        and ct.status == CS.ATIVO.value
+    )
+    valor_changed = False
+    ciclo_changed = False
     if body.status is not None:
         ct.status = body.status.value
     if body.valor_recorrente is not None:
+        valor_changed = body.valor_recorrente != ct.valor_recorrente
         ct.valor_recorrente = body.valor_recorrente
+    if body.ciclo is not None:
+        ciclo_changed = body.ciclo.value != ct.ciclo
+        ct.ciclo = body.ciclo.value
     if body.data_fim_vigencia is not None:
         if body.data_fim_vigencia < ct.data_inicio:
             raise ConflictError("data_fim_vigencia deve ser igual ou posterior a data_inicio")
@@ -336,7 +355,15 @@ def update_contrato(
         if body.proximo_vencimento < ct.data_inicio:
             raise ConflictError("proximo_vencimento deve ser igual ou posterior a data_inicio")
         ct.proximo_vencimento = body.proximo_vencimento
+    if ending:
+        cancel_mercadopago_subscription_for_contract(db, ct)
+        moto = db.get(Moto, ct.moto_id)
+        if moto:
+            moto.status = MotoStatus.DISPONIVEL.value
+            db.add(moto)
     db.add(ct)
     db.commit()
     db.refresh(ct)
+    if (valor_changed or ciclo_changed) and ct.mercadopago_subscription_id and not ending:
+        sync_mercadopago_subscription_amount(db, ct)
     return ct

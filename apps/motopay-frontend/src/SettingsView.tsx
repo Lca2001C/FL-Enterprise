@@ -45,6 +45,18 @@ const SettingsView = () => {
     telegram_owner_notify_enabled: false,
   });
   const [mpToken, setMpToken] = useState('');
+  const [mpPublicKey, setMpPublicKey] = useState('');
+  const [mpWebhookSecret, setMpWebhookSecret] = useState('');
+  const [paymentsConfig, setPaymentsConfig] = useState<{
+    credentials_mode: string;
+    webhook_url: string | null;
+    mercadopago_credentials_complete: boolean;
+    mercadopago_oauth_available?: boolean;
+    mercadopago_oauth_connected?: boolean;
+    mercadopago_webhook_ready?: boolean;
+  } | null>(null);
+  const [oauthLoading, setOauthLoading] = useState(false);
+  const [disconnectLoading, setDisconnectLoading] = useState(false);
   const [templateMeta, setTemplateMeta] = useState<TelegramTemplateMeta[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -60,6 +72,23 @@ const SettingsView = () => {
   const showToast = (msg: string) => {
     setToast(msg);
     setTimeout(() => setToast(''), 4000);
+  };
+
+  const fetchPaymentsConfig = async () => {
+    try {
+      const params =
+        isAdmin && adminTargetId != null ? { operacao_id: adminTargetId } : undefined;
+      const r = await api.get<{
+        credentials_mode: string;
+        webhook_url: string | null;
+        mercadopago_credentials_complete: boolean;
+        mercadopago_oauth_available?: boolean;
+        mercadopago_oauth_connected?: boolean;
+      }>('/api/v1/config/payments', { params });
+      setPaymentsConfig(r.data);
+    } catch {
+      setPaymentsConfig(null);
+    }
   };
 
   const fetchConfig = async () => {
@@ -107,6 +136,7 @@ const SettingsView = () => {
         });
         setMpToken('');
       }
+      await fetchPaymentsConfig();
     } catch (e) {
       setError(parseApiError(e, 'Erro ao carregar configurações'));
     } finally {
@@ -117,6 +147,65 @@ const SettingsView = () => {
   useEffect(() => {
     void fetchConfig();
   }, [user?.tipo, adminTargetId, api]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const oauth = params.get('mp_oauth');
+    if (!oauth) return;
+    if (oauth === 'ok') {
+      showToast('Conta Mercado Pago conectada com sucesso.');
+      void fetchPaymentsConfig();
+    } else {
+      const detail = params.get('detail');
+      setError(detail ? decodeURIComponent(detail) : 'Falha ao conectar Mercado Pago.');
+    }
+    params.delete('mp_oauth');
+    params.delete('detail');
+    const qs = params.toString();
+    const next = `${window.location.pathname}${qs ? `?${qs}` : ''}`;
+    window.history.replaceState({}, '', next);
+  }, []);
+
+  const disconnectMercadoPagoOAuth = async () => {
+    if (!confirm('Desconectar conta Mercado Pago desta operação?')) return;
+    if (isAdmin && adminTargetId == null) {
+      setError('Selecione uma operação no escopo.');
+      return;
+    }
+    setDisconnectLoading(true);
+    setError('');
+    try {
+      const params =
+        isAdmin && adminTargetId != null ? { operacao_id: adminTargetId } : undefined;
+      await api.post('/api/v1/operacoes/mp-oauth/disconnect', null, { params });
+      showToast('Conta Mercado Pago desconectada.');
+      await fetchPaymentsConfig();
+    } catch (e) {
+      setError(parseApiError(e, 'Erro ao desconectar'));
+    } finally {
+      setDisconnectLoading(false);
+    }
+  };
+
+  const connectMercadoPagoOAuth = async () => {
+    if (isAdmin && adminTargetId == null) {
+      setError('Selecione uma operação no escopo antes de conectar o Mercado Pago.');
+      return;
+    }
+    setOauthLoading(true);
+    setError('');
+    try {
+      const params =
+        isAdmin && adminTargetId != null ? { operacao_id: adminTargetId } : undefined;
+      const r = await api.get<{ authorization_url: string }>('/api/v1/operacoes/mp-oauth/start', {
+        params,
+      });
+      window.location.href = r.data.authorization_url;
+    } catch (e) {
+      setError(parseApiError(e, 'Não foi possível iniciar conexão OAuth'));
+      setOauthLoading(false);
+    }
+  };
 
   const buildPatchBody = () => {
     if (isDono) {
@@ -139,9 +228,9 @@ const SettingsView = () => {
       telegram_owner_notify_id: config.telegram_owner_notify_id,
       telegram_owner_notify_enabled: config.telegram_owner_notify_enabled,
     };
-    if (mpToken.trim()) {
-      body.mercadopago_access_token = mpToken.trim();
-    }
+    if (mpToken.trim()) body.mercadopago_access_token = mpToken.trim();
+    if (mpPublicKey.trim()) body.mercadopago_public_key = mpPublicKey.trim();
+    if (mpWebhookSecret.trim()) body.mercadopago_webhook_secret = mpWebhookSecret.trim();
     return body;
   };
 
@@ -300,11 +389,28 @@ const SettingsView = () => {
             </div>
           )}
 
-          {isAdmin && (
+          {(isAdmin || isDono) && (
             <div className="settings-section" style={{ marginTop: 40 }}>
               <h3 style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
                 <CreditCard size={20} color="var(--primary)" /> Mercado Pago
               </h3>
+              {paymentsConfig && (
+                <p className="text-muted" style={{ fontSize: '0.85rem', marginBottom: 12 }}>
+                  Modo: {paymentsConfig.credentials_mode === 'test' ? 'Teste' : 'Produção'}
+                  {paymentsConfig.webhook_url && (
+                    <>
+                      {' '}
+                      · Webhook: <code>{paymentsConfig.webhook_url}</code>
+                    </>
+                  )}
+                  {paymentsConfig.mercadopago_credentials_complete
+                    ? ' · Credenciais completas'
+                    : ' · Configure token, public key e webhook secret'}
+                  {paymentsConfig.mercadopago_oauth_connected &&
+                    !paymentsConfig.mercadopago_webhook_ready &&
+                    ' · OAuth conectado: ainda falta Webhook Secret manual'}
+                </p>
+              )}
               <div className="input-group">
                 <label className="input-label">Access Token</label>
                 <input
@@ -312,13 +418,65 @@ const SettingsView = () => {
                   className="input-field"
                   value={mpToken}
                   onChange={(e) => setMpToken(e.target.value)}
-                  placeholder="Deixe em branco para manter o token atual"
+                  placeholder="Deixe em branco para manter o atual"
                   autoComplete="off"
                 />
-                <small className="text-muted">
-                  O token não é exibido após salvar. Informe novamente apenas para alterar.
-                </small>
               </div>
+              <div className="input-group">
+                <label className="input-label">Public Key</label>
+                <input
+                  type="text"
+                  className="input-field"
+                  value={mpPublicKey}
+                  onChange={(e) => setMpPublicKey(e.target.value)}
+                  placeholder="APP_USR-… ou TEST-…"
+                  autoComplete="off"
+                />
+              </div>
+              <div className="input-group">
+                <label className="input-label">Webhook Secret</label>
+                <input
+                  type="password"
+                  className="input-field"
+                  value={mpWebhookSecret}
+                  onChange={(e) => setMpWebhookSecret(e.target.value)}
+                  placeholder="Secret do painel MP (evento Order)"
+                  autoComplete="off"
+                />
+              </div>
+              {paymentsConfig?.mercadopago_oauth_available && (
+                <div style={{ marginTop: 20 }}>
+                  <p className="text-muted" style={{ fontSize: '0.85rem', marginBottom: 10 }}>
+                    {paymentsConfig.mercadopago_oauth_connected
+                      ? 'Conta Mercado Pago conectada via OAuth.'
+                      : 'Conecte a conta MP da operação sem colar tokens manualmente.'}
+                  </p>
+                  <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      disabled={oauthLoading}
+                      onClick={() => void connectMercadoPagoOAuth()}
+                    >
+                      {oauthLoading
+                        ? 'Redirecionando…'
+                        : paymentsConfig.mercadopago_oauth_connected
+                          ? 'Reconectar Mercado Pago'
+                          : 'Conectar Mercado Pago'}
+                    </button>
+                    {paymentsConfig.mercadopago_oauth_connected && (
+                      <button
+                        type="button"
+                        className="btn-secondary"
+                        disabled={disconnectLoading}
+                        onClick={() => void disconnectMercadoPagoOAuth()}
+                      >
+                        {disconnectLoading ? '…' : 'Desconectar'}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

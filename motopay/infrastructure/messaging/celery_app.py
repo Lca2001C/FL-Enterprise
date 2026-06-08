@@ -30,6 +30,9 @@ celery_app.conf.update(
         "motopay.infrastructure.messaging.tasks.handle_domain_event": {"queue": "telegram"},
         "motopay.infrastructure.messaging.tasks.send_d1_reminder": {"queue": "telegram"},
         "motopay.infrastructure.messaging.tasks.send_d0_reminder": {"queue": "telegram"},
+        "motopay.infrastructure.messaging.tasks.reconcile_mercadopago_payments": {
+            "queue": "default"
+        },
         "motopay.infrastructure.messaging.celery_observability.monitor_queues": {"queue": "default"},
         "motopay.infrastructure.messaging.celery_observability.collect_business_metrics": {
             "queue": "default"
@@ -74,5 +77,9 @@ celery_app.conf.beat_schedule = {
     "collect-business-metrics": {
         "task": "motopay.infrastructure.messaging.celery_observability.collect_business_metrics",
         "schedule": 60.0,
+    },
+    "reconcile-mercadopago-payments": {
+        "task": "motopay.infrastructure.messaging.tasks.reconcile_mercadopago_payments",
+        "schedule": 900.0,
     },
 }
