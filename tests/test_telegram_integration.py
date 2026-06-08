@@ -33,7 +33,7 @@ def test_default_menu_passes_validation() -> None:
 
 
 def test_default_contato_button_matches_label() -> None:
-    cmd = match_button_command("Quero falar com alguém", DEFAULT_BOT_MENU_BUTTONS)
+    cmd = match_button_command("📞 Falar com Atendente", DEFAULT_BOT_MENU_BUTTONS)
     assert cmd == "contato"
 
 
@@ -94,7 +94,7 @@ def test_bot_notify_owner_on_contact_message(db_session, operacao_a) -> None:
             db_session,
             cliente=cliente,
             uid="123456789",
-            user_message="Quero falar com alguém",
+            user_message="📞 Falar com Atendente",
             menu_ctx=menu_ctx,
             button=DEFAULT_BOT_MENU_CONTACT_BUTTON,
         )
@@ -102,7 +102,7 @@ def test_bot_notify_owner_on_contact_message(db_session, operacao_a) -> None:
         body = send_mock.call_args.kwargs["text"]
         assert "Ana Costa" in body
         assert "(21) 98888-7777" in body
-        assert "Quero falar com alguém" in body
+        assert "📞 Falar com Atendente" in body
 
 
 def test_bot_skips_owner_notify_without_cliente(db_session, operacao_a) -> None:
@@ -131,7 +131,7 @@ def test_save_default_menu_with_contato_via_service(db_session, operacao_a) -> N
     )
     assert len(out.telegram_bot_menu_buttons) == 4
     contato = next(b for b in out.telegram_bot_menu_buttons if b.command == "contato")
-    assert contato.label == "Quero falar com alguém"
+    assert contato.label == "📞 Falar com Atendente"
     assert contato.response is not None
 
 
@@ -140,7 +140,7 @@ def test_resolve_saved_menu_from_db(db_session, operacao_a) -> None:
     db_session.add(operacao_a)
     db_session.commit()
     resolved = resolve_bot_menu_buttons(operacao_a.telegram_bot_menu_buttons)
-    assert match_button_command("Quero falar com alguém", resolved) == "contato"
+    assert match_button_command("📞 Falar com Atendente", resolved) == "contato"
 
 
 def test_api_dono_me_returns_default_contato_button(client, dono_user) -> None:
@@ -191,4 +191,4 @@ def test_api_dono_full_telegram_config_roundtrip(client, dono_user) -> None:
     assert data["telegram_owner_notify_enabled"] is True
     assert data["telegram_templates"]["bot_chat_contact"] == "Custom contact reply for {cliente}."
     contato = next(b for b in data["telegram_bot_menu_buttons"] if b["command"] == "contato")
-    assert contato["label"] == "Quero falar com alguém"
+    assert contato["label"] == "📞 Falar com Atendente"

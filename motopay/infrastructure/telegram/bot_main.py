@@ -112,16 +112,26 @@ def _menu_context(db, cliente: Cliente | None, contrato: Contrato | None) -> dic
     }
 
 
+_WIDE_BTN_THRESHOLD = 14  # labels > N chars ficam sozinhos (tap target full-width)
+
+
 def _build_reply_keyboard(buttons: list[dict[str, str]]) -> ReplyKeyboardMarkup:
-    row: list[KeyboardButton] = []
     rows: list[list[KeyboardButton]] = []
+    pending: list[KeyboardButton] = []
     for btn in buttons:
-        row.append(KeyboardButton(btn["label"]))
-        if len(row) == 2:
-            rows.append(row)
-            row = []
-    if row:
-        rows.append(row)
+        key = KeyboardButton(btn["label"])
+        if len(btn["label"]) > _WIDE_BTN_THRESHOLD:
+            if pending:
+                rows.append(pending)
+                pending = []
+            rows.append([key])
+        else:
+            pending.append(key)
+            if len(pending) == 2:
+                rows.append(pending)
+                pending = []
+    if pending:
+        rows.append(pending)
     return ReplyKeyboardMarkup(rows, resize_keyboard=True)
 
 

@@ -8,7 +8,7 @@ import {
 
 describe('pwa.config', () => {
   it('lists all standard icon sizes for manifest', () => {
-    expect(PWA_ICON_SIZES).toEqual([72, 96, 128, 144, 152, 192, 384, 512]);
+    expect(PWA_ICON_SIZES).toEqual([72, 96, 120, 128, 144, 152, 167, 192, 384, 512]);
     for (const size of PWA_ICON_SIZES) {
       expect(PWA_MANIFEST_ICONS).toContainEqual({
         src: `icons/pwa-${size}.png`,

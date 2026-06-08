@@ -20,15 +20,15 @@ RESERVED_BOT_COMMANDS: frozenset[str] = frozenset({"start", *BOT_MENU_BUILTIN_CO
 MAX_BOT_MENU_RESPONSE_LENGTH = 2000
 
 DEFAULT_BOT_MENU_CONTACT_BUTTON: dict[str, str] = {
-    "label": "Quero falar com alguém",
+    "label": "📞 Falar com Atendente",
     "command": "contato",
     "response": "Entendido, {cliente}. Nossa equipe entrará em contato em breve.",
 }
 
 DEFAULT_BOT_MENU_BUTTONS: list[dict[str, str]] = [
-    {"label": "Status", "command": "status"},
-    {"label": "Pix", "command": "pix"},
-    {"label": "Ajuda", "command": "ajuda"},
+    {"label": "💳 Pagar com Pix", "command": "pix"},
+    {"label": "📋 Status", "command": "status"},
+    {"label": "❓ Ajuda", "command": "ajuda"},
     dict(DEFAULT_BOT_MENU_CONTACT_BUTTON),
 ]
 

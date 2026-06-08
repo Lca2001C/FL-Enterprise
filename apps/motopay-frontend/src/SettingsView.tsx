@@ -20,15 +20,15 @@ const GROUP_LABELS: Record<string, string> = {
 
 
 const DEFAULT_BOT_MENU_CONTACT_BUTTON: TelegramBotMenuButton = {
-  label: 'Quero falar com alguém',
+  label: '📞 Falar com Atendente',
   command: 'contato',
   response: 'Entendido, {cliente}. Nossa equipe entrará em contato em breve.',
 };
 
 const DEFAULT_BOT_MENU_BUTTONS: TelegramBotMenuButton[] = [
-  { label: 'Status', command: 'status' },
-  { label: 'Pix', command: 'pix' },
-  { label: 'Ajuda', command: 'ajuda' },
+  { label: '💳 Pagar com Pix', command: 'pix' },
+  { label: '📋 Status', command: 'status' },
+  { label: '❓ Ajuda', command: 'ajuda' },
   DEFAULT_BOT_MENU_CONTACT_BUTTON,
 ];
 
@@ -738,7 +738,7 @@ const SettingsView = () => {
               <h4 style={{ fontFamily: 'Outfit', margin: '0 0 8px' }}>Notificar dono no Telegram</h4>
               <p className="text-muted" style={{ fontSize: '0.85rem', marginBottom: 16 }}>
                 Receba uma cópia no seu Telegram quando um locatário pedir contato ou tocar em um botão
-                como &quot;Quero falar com alguém&quot;. Use o @userinfobot para descobrir seu ID.
+                como &quot;📞 Falar com Atendente&quot;. Use o @userinfobot para descobrir seu ID.
               </p>
               <label className="checkbox-row" style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
                 <input

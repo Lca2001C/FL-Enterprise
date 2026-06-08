@@ -276,7 +276,16 @@ telegram_circuit_breaker = RedisCircuitBreaker("telegram", failure_threshold=5, 
 def telegram_safe_call(func):
     @wraps(func)
     def wrapper(*args, **kwargs):
-        return telegram_circuit_breaker.call(func, *args, **kwargs)
+        from motopay.infrastructure.telegram.notify import TelegramTransientError
+
+        try:
+            return telegram_circuit_breaker.call(func, *args, **kwargs)
+        except TelegramTransientError:
+            raise
+        except RuntimeError as exc:
+            # RedisCircuitBreaker levanta RuntimeError quando o circuito está OPEN.
+            # Converte para TelegramTransientError para acionar o retry automático das tasks Celery.
+            raise TelegramTransientError(str(exc)) from exc
 
     return wrapper
 

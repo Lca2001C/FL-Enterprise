@@ -26,6 +26,10 @@ bidict==0.23.1
 billiard==4.2.4
     # via celery
 celery==5.6.3
+    # via
+    #   celery-redbeat
+    #   motopay-admin (pyproject.toml)
+celery-redbeat==2.3.3
     # via motopay-admin (pyproject.toml)
 certifi==2026.5.20
     # via
@@ -89,7 +93,9 @@ packaging==26.2
 passlib==1.7.4
     # via motopay-admin (pyproject.toml)
 pillow==12.2.0
-    # via reportlab
+    # via
+    #   qrcode
+    #   reportlab
 prometheus-client==0.25.0
     # via motopay-admin (pyproject.toml)
 prompt-toolkit==3.0.52
@@ -115,6 +121,7 @@ pydantic-settings==2.14.1
 python-dateutil==2.9.0.post0
     # via
     #   celery
+    #   celery-redbeat
     #   motopay-admin (pyproject.toml)
 python-dotenv==1.2.2
     # via
@@ -134,8 +141,11 @@ python-telegram-bot==22.7
     # via motopay-admin (pyproject.toml)
 pyyaml==6.0.3
     # via uvicorn
+qrcode==8.2
+    # via motopay-admin (pyproject.toml)
 redis==6.4.0
     # via
+    #   celery-redbeat
     #   kombu
     #   motopay-admin (pyproject.toml)
 reportlab==4.5.1
@@ -154,6 +164,8 @@ sqlalchemy==2.0.50
     #   motopay-admin (pyproject.toml)
 starlette==1.1.0
     # via fastapi
+tenacity==9.1.4
+    # via celery-redbeat
 typing-extensions==4.15.0
     # via
     #   alembic

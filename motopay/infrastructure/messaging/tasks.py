@@ -375,6 +375,8 @@ def daily_automation_tick(self) -> None:
 
 
 def _process_contract_expiry(db: Session, today: date) -> None:
+    from motopay.services.billing_service import cancel_mercadopago_subscription_for_contract
+
     rows = db.scalars(
         select(Contrato).where(
             Contrato.status == ContratoStatus.ATIVO.value,
@@ -392,6 +394,15 @@ def _process_contract_expiry(db: Session, today: date) -> None:
         if moto and moto.status == MotoStatus.ALUGADA.value:
             moto.status = MotoStatus.DISPONIVEL.value
             db.add(moto)
+        # Cancela assinatura recorrente no MP para não cobrar após fim de vigência
+        if ct.mercadopago_subscription_id:
+            try:
+                cancel_mercadopago_subscription_for_contract(db, ct)
+            except Exception:
+                logger.exception(
+                    "contract_expiry_cancel_subscription_failed contrato_id=%s subscription_id=%s",
+                    ct.id, ct.mercadopago_subscription_id,
+                )
         logger.info(
             "contract_expired contrato_id=%s moto_id=%s vigencia=%s",
             ct.id, ct.moto_id, ct.data_fim_vigencia,
@@ -450,56 +461,63 @@ def _process_delinquency(db: Session, today: date) -> None:
     pending_events: list[int] = []
     cliente_max_days_late: dict[int, int] = {}
     for ct in rows:
-        days_late = (today - ct.proximo_vencimento).days
-        ct.inadimplente = True
-        ct.dias_atraso_acumulado = days_late
-        base_level = _base_escalation(days_late)
-        cliente = db.get(Cliente, ct.cliente_id)
-        score = int(cliente.score) if cliente else 50
-        ct.nivel_escalonamento_cobranca = effective_escalation_level(base_level, score)
-        db.add(ct)
+        try:
+            with db.begin_nested():  # savepoint: falha deste contrato não afeta os demais
+                days_late = (today - ct.proximo_vencimento).days
+                ct.inadimplente = True
+                ct.dias_atraso_acumulado = days_late
+                base_level = _base_escalation(days_late)
+                cliente = db.get(Cliente, ct.cliente_id)
+                score = int(cliente.score) if cliente else 50
+                ct.nivel_escalonamento_cobranca = effective_escalation_level(base_level, score)
+                db.add(ct)
 
-        refresh_overdue_pix(db, contrato=ct, today=today)
-        amounts = late_amounts_for_contrato(db, ct, today)
-        if ct.mercadopago_subscription_id:
-            sync_mercadopago_subscription_amount(db, ct, amount=amounts.valor_total)
+                refresh_overdue_pix(db, contrato=ct, today=today)
+                amounts = late_amounts_for_contrato(db, ct, today)
+                if ct.mercadopago_subscription_id:
+                    sync_mercadopago_subscription_amount(db, ct, amount=amounts.valor_total)
 
-        skip_telegram = False
-        if ct.promessa_pagamento_em and ct.promessa_pagamento_em >= today:
-            skip_telegram = True
-        if ct.ultima_cobranca_telegram_em == today:
-            skip_telegram = True
+                skip_telegram = False
+                if ct.promessa_pagamento_em and ct.promessa_pagamento_em >= today:
+                    skip_telegram = True
+                if ct.ultima_cobranca_telegram_em == today:
+                    skip_telegram = True
 
-        if not skip_telegram:
-            from motopay.services.billing_service import get_open_cobranca
+                if not skip_telegram:
+                    from motopay.services.billing_service import get_open_cobranca
 
-            open_cob = get_open_cobranca(db, ct.id)
-            portal_url = (
-                ensure_portal_url_for_cobranca(db, open_cob) if open_cob else None
+                    open_cob = get_open_cobranca(db, ct.id)
+                    portal_url = (
+                        ensure_portal_url_for_cobranca(db, open_cob) if open_cob else None
+                    )
+                    ev = EventoDominio(
+                        tipo=DomainEventType.CLIENTE_INADIMPLENTE.value,
+                        payload={
+                            "contrato_id": ct.id,
+                            "cliente_id": ct.cliente_id,
+                            "operacao_id": ct.operacao_id,
+                            "nivel_escalonamento": ct.nivel_escalonamento_cobranca,
+                            "dias_atraso": days_late,
+                            "cobranca_id": open_cob.id if open_cob else None,
+                            "valor_base": str(ct.valor_recorrente),
+                            "multa": str(amounts.multa),
+                            "juros": str(amounts.juros),
+                            "valor_total": str(amounts.valor_total),
+                            "pix_copia_cola": open_cob.pix_copia_cola if open_cob else None,
+                            "portal_url": portal_url,
+                        },
+                    )
+                    db.add(ev)
+                    db.flush()
+                    pending_events.append(ev.id)
+
+                cid = ct.cliente_id
+                cliente_max_days_late[cid] = max(cliente_max_days_late.get(cid, 0), days_late)
+        except Exception:
+            logger.exception(
+                "delinquency_contract_failed contrato_id=%s — contrato ignorado, demais processados",
+                ct.id,
             )
-            ev = EventoDominio(
-                tipo=DomainEventType.CLIENTE_INADIMPLENTE.value,
-                payload={
-                    "contrato_id": ct.id,
-                    "cliente_id": ct.cliente_id,
-                    "operacao_id": ct.operacao_id,
-                    "nivel_escalonamento": ct.nivel_escalonamento_cobranca,
-                    "dias_atraso": days_late,
-                    "cobranca_id": open_cob.id if open_cob else None,
-                    "valor_base": str(ct.valor_recorrente),
-                    "multa": str(amounts.multa),
-                    "juros": str(amounts.juros),
-                    "valor_total": str(amounts.valor_total),
-                    "pix_copia_cola": open_cob.pix_copia_cola if open_cob else None,
-                    "portal_url": portal_url,
-                },
-            )
-            db.add(ev)
-            db.flush()
-            pending_events.append(ev.id)
-
-        cid = ct.cliente_id
-        cliente_max_days_late[cid] = max(cliente_max_days_late.get(cid, 0), days_late)
 
     for cid, max_days in cliente_max_days_late.items():
         cliente = db.get(Cliente, cid)

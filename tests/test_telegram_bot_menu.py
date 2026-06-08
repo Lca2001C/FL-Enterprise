@@ -25,7 +25,7 @@ def test_resolve_bot_menu_buttons_uses_defaults_when_null() -> None:
 
 def test_default_menu_includes_contato_button() -> None:
     contato = next(b for b in DEFAULT_BOT_MENU_BUTTONS if b["command"] == "contato")
-    assert contato["label"] == "Quero falar com alguém"
+    assert contato["label"] == "📞 Falar com Atendente"
     assert "{cliente}" in contato["response"]
 
 
@@ -109,7 +109,7 @@ def test_render_bot_start_with_context() -> None:
 def test_operacao_to_out_includes_default_menu_buttons(db_session, operacao_a) -> None:
     out = operacao_to_out(operacao_a)
     assert len(out.telegram_bot_menu_buttons) == 4
-    assert out.telegram_bot_menu_buttons[0].command == "status"
+    assert out.telegram_bot_menu_buttons[0].command == "pix"
     assert any(b.command == "contato" for b in out.telegram_bot_menu_buttons)
 
 

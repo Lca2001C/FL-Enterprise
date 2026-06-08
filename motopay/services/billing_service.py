@@ -318,18 +318,16 @@ def ensure_pix_for_cobranca(
             "Webhook Secret em Ajustes."
         )
 
-    cancel_external_payment(
-        gateway=cob.payment_gateway,
-        payment_id=cob.mercadopago_payment_id,
-        order_id=cob.mercadopago_order_id,
-        op=op,
-        db=db,
-    )
     display_status = (
         CobrancaStatus.ATRASADO.value
         if amounts.dias_atraso > 0
         else cob.status
     )
+    # Cria o novo PIX PRIMEIRO — garante que o cliente sempre tem um código válido.
+    # Só cancela o antigo após commit do novo (mesmo padrão de refresh_overdue_pix).
+    old_gateway = cob.payment_gateway
+    old_payment_id = cob.mercadopago_payment_id
+    old_order_id = cob.mercadopago_order_id
     order_id, payment_id, pix, gw = create_pix_for_cobranca(
         op=op,
         cliente=cliente,
@@ -350,6 +348,14 @@ def ensure_pix_for_cobranca(
     db.add(cob)
     db.commit()
     db.refresh(cob)
+    if old_payment_id or old_order_id:
+        cancel_external_payment(
+            gateway=old_gateway,
+            payment_id=old_payment_id,
+            order_id=old_order_id,
+            op=op,
+            db=db,
+        )
     return _cobranca_to_out(cob, op, today, valor_base=ct.valor_recorrente)
 
 
@@ -963,8 +969,11 @@ def handle_mercadopago_payment_confirmed(
     mercadopago_payment_id: str,
     value: Decimal | None = None,
 ) -> tuple[bool, int | None]:
+    # with_for_update evita duplo-avanço de proximo_vencimento quando o MP reentrega o webhook.
     cob = db.scalars(
-        select(Cobranca).where(Cobranca.mercadopago_payment_id == mercadopago_payment_id)
+        select(Cobranca)
+        .where(Cobranca.mercadopago_payment_id == mercadopago_payment_id)
+        .with_for_update()
     ).first()
     if not cob:
         return False, None
@@ -1083,7 +1092,9 @@ def handle_mercadopago_order_confirmed(
     value: Decimal | None = None,
 ) -> tuple[bool, int | None]:
     cob = db.scalars(
-        select(Cobranca).where(Cobranca.mercadopago_order_id == mercadopago_order_id)
+        select(Cobranca)
+        .where(Cobranca.mercadopago_order_id == mercadopago_order_id)
+        .with_for_update()
     ).first()
     if not cob:
         return False, None
