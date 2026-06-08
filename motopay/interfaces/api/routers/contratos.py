@@ -13,15 +13,13 @@ from motopay.interfaces.api.schemas import (
     MpSubscriptionOut,
     Paginated,
 )
+from motopay.services.billing_service import get_mercadopago_subscription_link
 from motopay.services.contrato_document_service import generate_contrato_pdf
 from motopay.services.fleet_service import (
     create_contrato,
     get_contrato,
-    update_contrato,
-)
-from motopay.services.billing_service import get_mercadopago_subscription_link
-from motopay.services.fleet_service import (
     list_contratos as list_contratos_service,
+    update_contrato,
 )
 
 router = APIRouter(prefix="/contratos", tags=["contratos"])

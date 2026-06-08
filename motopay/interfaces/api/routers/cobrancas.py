@@ -15,7 +15,6 @@ from motopay.interfaces.api.schemas import (
     PortalLinkOut,
     RefundRequest,
 )
-from motopay.services.payer_portal_service import issue_portal_link, revoke_portal_link
 from motopay.services.billing_service import (
     create_mercadopago_subscription_for_contract,
     create_pix_charge_for_contract,
@@ -25,6 +24,7 @@ from motopay.services.billing_service import (
     refund_cobranca_mercadopago,
 )
 from motopay.services.card_payment_service import pay_cobranca_with_card
+from motopay.services.payer_portal_service import issue_portal_link, revoke_portal_link
 
 router = APIRouter(prefix="/cobrancas", tags=["cobrancas"])
 

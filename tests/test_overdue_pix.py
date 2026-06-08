@@ -5,6 +5,8 @@ from decimal import Decimal
 from unittest.mock import MagicMock, patch
 
 import pytest
+from sqlalchemy import select
+
 from motopay.domain.enums import (
     CicloCobranca,
     CobrancaStatus,
@@ -20,11 +22,10 @@ from motopay.infrastructure.db.models import (
     Operacao,
 )
 from motopay.infrastructure.messaging import tasks as messaging_tasks
+from motopay.infrastructure.payments.order_utils import MercadoPagoOrderResult
 from motopay.infrastructure.telegram.templates import build_overdue_html
 from motopay.services.billing_service import refresh_overdue_pix
 from motopay.services.late_fee import calculate_late_amounts
-from motopay.infrastructure.payments.order_utils import MercadoPagoOrderResult
-from sqlalchemy import select
 
 
 @pytest.fixture

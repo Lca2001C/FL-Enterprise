@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from decimal import Decimal
 from typing import Literal
 
 from sqlalchemy import select
@@ -20,21 +19,19 @@ from motopay.infrastructure.payments.mercadopago_client import (
     payer_email_for_mercadopago,
 )
 from motopay.infrastructure.payments.payment_method_utils import (
-    installments_for_payment_method,
     mp_payment_method_type,
     resolve_payment_method_type,
 )
 from motopay.interfaces.api.deps import CurrentUser
 from motopay.interfaces.api.schemas import CardPaymentOut, ClienteMpCardOut, ThreeDsInfoOut
-from motopay.services.mercadopago_token_service import ensure_valid_mp_token
 from motopay.services.billing_service import (
     _OPEN_COBRANCA_STATUSES,
     _cobranca_to_out,
     _effective_operacao,
     _finalize_payment,
     charge_amounts_for_cobranca,
-    get_open_cobranca,
 )
+from motopay.services.mercadopago_token_service import ensure_valid_mp_token
 
 
 def list_cliente_mp_cards(db: Session, cliente_id: int, operacao_id: int) -> list[ClienteMpCardOut]:

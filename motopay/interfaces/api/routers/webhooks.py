@@ -20,7 +20,6 @@ from motopay.infrastructure.payments.mercadopago_client import (
     mp_webhook_secret_for_operacao,
     verify_webhook_signature,
 )
-from motopay.services.mercadopago_token_service import ensure_valid_mp_token
 from motopay.infrastructure.payments.order_utils import is_order_paid, order_total_amount
 from motopay.infrastructure.security.client_ip import get_client_ip
 from motopay.infrastructure.security.rate_limit import (
@@ -36,6 +35,7 @@ from motopay.services.billing_service import (
     handle_mercadopago_subscription_payment,
     sync_refund_from_mercadopago_payment,
 )
+from motopay.services.mercadopago_token_service import ensure_valid_mp_token
 
 logger = logging.getLogger(__name__)
 

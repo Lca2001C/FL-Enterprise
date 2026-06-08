@@ -6,7 +6,13 @@ from decimal import Decimal
 from sqlalchemy import select
 
 from motopay.domain.enums import CicloCobranca, CobrancaStatus, ContratoStatus
-from motopay.infrastructure.db.models import Cliente, Cobranca, Contrato, Moto, Operacao
+from motopay.infrastructure.db.models import (
+    Cliente,
+    Cobranca,
+    Contrato,
+    Moto,
+    Operacao,
+)
 from motopay.services.billing_service import handle_mercadopago_subscription_payment
 
 

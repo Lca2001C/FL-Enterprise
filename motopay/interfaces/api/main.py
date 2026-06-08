@@ -184,8 +184,8 @@ def _translate_pydantic_error(err: dict) -> str:
         "datetime_parsing": f"O campo '{field}' deve ser uma data/hora válida.",
         "decimal_parsing": f"O campo '{field}' deve ser um valor decimal válido.",
         "url_parsing": f"O campo '{field}' deve ser uma URL válida.",
-        "json_invalid": f"O corpo da requisição contém JSON inválido.",
-        "json_type": f"O corpo da requisição deve ser um objeto JSON.",
+        "json_invalid": "O corpo da requisição contém JSON inválido.",
+        "json_type": "O corpo da requisição deve ser um objeto JSON.",
         "extra_forbidden": f"O campo '{field}' não é permitido.",
         "model_type": f"Estrutura de dados inválida no campo '{field}'.",
     }

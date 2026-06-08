@@ -16,10 +16,10 @@ from motopay.infrastructure.db.models import (
     Moto,
     Operacao,
 )
-from motopay.services.billing_service import handle_mercadopago_subscription_payment
 from motopay.services.billing_service import (
     handle_mercadopago_chargeback,
     handle_mercadopago_refund_confirmed,
+    handle_mercadopago_subscription_payment,
     sync_refund_from_mercadopago_payment,
 )
 from tests.conftest import auth_header, login

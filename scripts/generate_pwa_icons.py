@@ -257,7 +257,7 @@ def main() -> None:
     # iPad-specific touch icons
     _write_png(ICONS / "apple-touch-icon-120.png", 120, _render_icon(120))
     _write_png(ICONS / "apple-touch-icon-167.png", 167, _render_icon(167))
-    print(f"Wrote apple-touch-icon-120.png and apple-touch-icon-167.png")
+    print("Wrote apple-touch-icon-120.png and apple-touch-icon-167.png")
 
     maskable = ICONS / "pwa-512-maskable.png"
     _write_png(maskable, 512, _render_icon_maskable(512))

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from motopay.config import get_settings
+
 from tests.test_mercadopago_client import _signature_headers
 
 

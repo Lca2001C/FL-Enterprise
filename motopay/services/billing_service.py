@@ -643,7 +643,7 @@ def get_cobranca(
     operacao_scope: int | None,
     cobranca_id: int,
 ) -> CobrancaOut:
-    operacao_id = _effective_operacao(user, operacao_scope)
+    _effective_operacao(user, operacao_scope)
     cob = db.get(Cobranca, cobranca_id)
     if not cob:
         raise NotFoundError("Cobrança não encontrada")

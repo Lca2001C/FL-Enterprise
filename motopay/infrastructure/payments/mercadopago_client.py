@@ -10,13 +10,13 @@ from typing import Any, Literal
 import httpx
 
 from motopay.config import get_settings
-from motopay.domain.enums import CicloCobranca
 from motopay.config.mercadopago_credentials import (
     effective_mercadopago_access_token,
     effective_mercadopago_credentials_mode,
     effective_mercadopago_public_key,
     effective_mercadopago_webhook_secret,
 )
+from motopay.domain.enums import CicloCobranca
 from motopay.infrastructure.db.models import Cliente, Operacao
 from motopay.infrastructure.payments.order_utils import (
     MercadoPagoOrderResult,

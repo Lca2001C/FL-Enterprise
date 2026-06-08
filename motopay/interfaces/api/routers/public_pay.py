@@ -3,7 +3,10 @@ from sqlalchemy.orm import Session
 
 from motopay.infrastructure.db.session import get_db
 from motopay.infrastructure.security.client_ip import get_client_ip
-from motopay.infrastructure.security.rate_limit import assert_portal_not_blocked, record_portal_failure
+from motopay.infrastructure.security.rate_limit import (
+    assert_portal_not_blocked,
+    record_portal_failure,
+)
 from motopay.interfaces.api.schemas import (
     CardPaymentOut,
     ClienteMpCardOut,

@@ -18,6 +18,10 @@ from motopay.infrastructure.telegram.notify import (
     send_telegram_html,
     send_telegram_text,
 )
+from motopay.infrastructure.telegram.owner_notify import (
+    notify_owner_chargeback,
+    notify_owner_refund,
+)
 from motopay.infrastructure.telegram.templates import (
     build_overdue_html,
     render_custom_messages_for_trigger,
@@ -25,10 +29,6 @@ from motopay.infrastructure.telegram.templates import (
     should_skip_default_template,
 )
 from motopay.observability.logger import get_logger
-from motopay.infrastructure.telegram.owner_notify import (
-    notify_owner_chargeback,
-    notify_owner_refund,
-)
 from motopay.services.billing_service import (
     late_amounts_for_contrato,
     refresh_overdue_pix,

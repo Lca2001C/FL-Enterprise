@@ -4,12 +4,11 @@ from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 
-from motopay.domain.enums import PaymentGateway, PaymentMethodType
-from motopay.domain.exceptions import ForbiddenError
 from sqlalchemy.orm import Session
 
+from motopay.domain.enums import PaymentGateway
+from motopay.domain.exceptions import ForbiddenError
 from motopay.infrastructure.db.models import Cliente, Operacao
-from motopay.services.mercadopago_token_service import ensure_valid_mp_token
 from motopay.infrastructure.payments.mercadopago_client import (
     MercadoPagoApiError,
     MercadoPagoClient,
@@ -20,6 +19,7 @@ from motopay.infrastructure.payments.mercadopago_client import (
     mp_token_for_operacao,
     payer_email_for_mercadopago,
 )
+from motopay.services.mercadopago_token_service import ensure_valid_mp_token
 
 
 @dataclass

@@ -38,8 +38,8 @@ from motopay.infrastructure.telegram.templates import (
     resolve_bot_menu_buttons,
 )
 from motopay.services.billing_service import charge_amounts_for_cobranca, get_open_cobranca
-from motopay.services.payer_portal_service import ensure_portal_url_for_cobranca
 from motopay.services.negotiation_service import record_promessa_from_telegram_user
+from motopay.services.payer_portal_service import ensure_portal_url_for_cobranca
 
 
 def _make_pix_qr_bytes(pix_code: str) -> bytes | None:

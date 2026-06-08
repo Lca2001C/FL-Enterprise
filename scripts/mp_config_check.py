@@ -51,7 +51,7 @@ def main() -> int:
         errors += 1
 
     if pk:
-        _ok(f"Public key efetiva configurada")
+        _ok("Public key efetiva configurada")
     else:
         _warn("Public key ausente — Payment Brick pode falhar até configurar em Ajustes")
 

@@ -21,7 +21,6 @@ from motopay.services.billing_service import (
     _OPEN_COBRANCA_STATUSES,
     _cobranca_to_out,
     _effective_operacao,
-    charge_amounts_for_cobranca,
     ensure_pix_for_cobranca,
 )
 from motopay.services.card_payment_service import list_cliente_mp_cards, pay_cobranca_with_card

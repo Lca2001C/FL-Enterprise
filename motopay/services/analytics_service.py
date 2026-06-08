@@ -4,13 +4,11 @@ from datetime import date
 from decimal import Decimal
 
 from sqlalchemy import and_, case, func, or_, select
-from sqlalchemy.orm import Session
-
-from sqlalchemy.orm import aliased
+from sqlalchemy.orm import Session, aliased
 
 from motopay.domain.enums import CobrancaStatus, FinanceiroTipo, MotoStatus, UserRole
 from motopay.domain.exceptions import ForbiddenError
-from motopay.infrastructure.db.models import Cobranca, Cliente, Contrato, Financeiro, Moto
+from motopay.infrastructure.db.models import Cliente, Cobranca, Contrato, Financeiro, Moto
 from motopay.interfaces.api.deps import CurrentUser
 from motopay.interfaces.api.schemas import (
     AnalyticsSummary,

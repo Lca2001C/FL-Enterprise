@@ -330,9 +330,10 @@ def update_contrato(
     body: ContratoUpdate,
 ) -> Contrato:
     from motopay.domain.enums import ContratoStatus as CS
-    from motopay.services.billing_service import cancel_mercadopago_subscription_for_contract
-
-    from motopay.services.billing_service import sync_mercadopago_subscription_amount
+    from motopay.services.billing_service import (
+        cancel_mercadopago_subscription_for_contract,
+        sync_mercadopago_subscription_amount,
+    )
 
     ct = get_contrato(db, user, operacao_scope, contrato_id)
     ending = (
