@@ -324,8 +324,14 @@ def create_contrato(
     moto = db.get(Moto, body.moto_id)
     if not moto or moto.operacao_id != operacao_id:
         raise NotFoundError("Veículo inválido para esta operação")
+    max_numero = db.scalar(
+        select(func.coalesce(func.max(Contrato.numero), 0)).where(
+            Contrato.operacao_id == operacao_id
+        )
+    ) or 0
     ct = Contrato(
         operacao_id=operacao_id,
+        numero=max_numero + 1,
         cliente_id=body.cliente_id,
         moto_id=body.moto_id,
         valor_recorrente=body.valor_recorrente,

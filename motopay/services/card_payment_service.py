@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from motopay.domain.enums import CobrancaStatus, PaymentMethodType
 from motopay.domain.exceptions import ForbiddenError, NotFoundError
 from motopay.infrastructure.db.models import Cliente, ClienteMpCard, Cobranca, Contrato, Operacao
+from motopay.config import get_settings
 from motopay.infrastructure.payments.mercadopago_client import (
     MercadoPagoApiError,
     MercadoPagoClient,
@@ -37,6 +38,7 @@ from motopay.services.billing_service import (
     _cobranca_to_out,
     _effective_operacao,
     _finalize_payment,
+    _today,
     charge_amounts_for_cobranca,
 )
 from motopay.services.mercadopago_token_service import ensure_valid_mp_token
@@ -162,8 +164,6 @@ def pay_cobranca_with_card(
     installments: int = 1,
     device_id: str | None = None,
 ) -> CardPaymentOut:
-    from datetime import date
-
     operacao_id = _effective_operacao(user, operacao_scope)
     cob = db.get(Cobranca, cobranca_id)
     if not cob or cob.operacao_id != operacao_id:
@@ -198,13 +198,13 @@ def pay_cobranca_with_card(
         method_type = resolve_payment_method_type(saved.payment_method_id, method_type)
         customer_id = cliente.mercadopago_customer_id
 
-    today = date.today()
+    today = _today()
     amounts = charge_amounts_for_cobranca(cob, ct, op, today)
     charge_value = amounts.valor_total
-    if cob.valor != charge_value:
-        cob.valor = charge_value
-        if amounts.dias_atraso > 0:
-            cob.status = CobrancaStatus.ATRASADO.value
+    # Atualiza status para ATRASADO se necessário; NÃO muta cob.valor
+    # para não corromper o valor base usado em cálculos de estorno/display.
+    if amounts.dias_atraso > 0 and cob.status != CobrancaStatus.ATRASADO.value:
+        cob.status = CobrancaStatus.ATRASADO.value
 
     client = MercadoPagoClient(access_token=ensure_valid_mp_token(db, op))
 
@@ -214,13 +214,16 @@ def pay_cobranca_with_card(
             cliente, fallback_email=payer_email_for_mercadopago(cliente)
         )
         items = build_items_for_contrato(ct, moto=ct.moto, total_value=charge_value)
-        add_info = build_additional_info(cliente, items=items)
+        add_info = build_additional_info(cliente)
     except MercadoPagoDataError as exc:
         raise ForbiddenError(str(exc)) from exc
     statement_descriptor = build_statement_descriptor(op.nome)
     description = items[0]["description"] if items else None
     payer_email = payer_obj.pop("email", payer_email_for_mercadopago(cliente))
 
+    notification_url = (
+        f"{get_settings().api_public_base_url.rstrip('/')}/webhooks/mercadopago"
+    )
     try:
         order = client.create_online_order(
             external_reference=f"cobranca-{cob.id}",
@@ -238,6 +241,7 @@ def pay_cobranca_with_card(
             statement_descriptor=statement_descriptor,
             device_id=device_id,
             description=description,
+            notification_url=notification_url,
         )
     except MercadoPagoApiError as exc:
         raise ForbiddenError(
@@ -277,8 +281,10 @@ def pay_cobranca_with_card(
             external_resource_url=order.three_ds_info.external_resource_url,
             creq=order.three_ds_info.creq,
         )
+    ct_ref = db.get(Contrato, cob.contrato_id)
+    valor_base_out = ct_ref.valor_recorrente if ct_ref else cob.valor
     return CardPaymentOut(
-        cobranca=_cobranca_to_out(cob, op, date.today(), valor_base=cob.valor),
+        cobranca=_cobranca_to_out(cob, op, today, valor_base=valor_base_out),
         order_id=order.order_id,
         payment_id=order.payment_id,
         status=order.order_status,

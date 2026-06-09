@@ -151,7 +151,7 @@ def build_mp_payer(
     require_email: bool = True,
     fallback_email: str | None = None,
 ) -> dict[str, Any]:
-    """Monta o objeto payer com first_name, last_name, identification, phone."""
+    """Monta o objeto payer com first_name, last_name e identification para Orders API v2."""
     first, last = split_full_name(cliente.nome, cliente.sobrenome)
     payer: dict[str, Any] = {
         "first_name": first[:255],
@@ -170,28 +170,22 @@ def build_mp_payer(
             "Cliente sem e-mail. Cadastre um e-mail para pagamentos Mercado Pago."
         )
 
-    phone_parts = validate_phone(cliente.telefone)
-    if phone_parts:
-        area, number = phone_parts
-        payer["phone"] = {"area_code": area, "number": number}
     return payer
 
 
 def build_additional_info_payer(cliente: Cliente) -> dict[str, Any]:
-    first, last = split_full_name(cliente.nome, cliente.sobrenome)
-    info: dict[str, Any] = {
-        "first_name": first[:255],
-        "last_name": last[:255],
-    }
+    """Campos de additional_info.payer aceitos pela Orders API v2.
+
+    Apenas registration_date é suportado neste objeto.
+    Campos como first_name, last_name e phone pertencem à Payments API
+    e causam 422 na Orders API.
+    """
+    info: dict[str, Any] = {}
     reg = getattr(cliente, "created_at", None)
     if isinstance(reg, datetime):
         if reg.tzinfo is None:
             reg = reg.replace(tzinfo=UTC)
         info["registration_date"] = reg.isoformat(timespec="milliseconds")
-    phone_parts = validate_phone(cliente.telefone)
-    if phone_parts:
-        area, number = phone_parts
-        info["phone"] = {"area_code": area, "number": number}
     return info
 
 
@@ -211,7 +205,8 @@ def build_additional_info_shipments(cliente: Cliente) -> dict[str, Any] | None:
     if cliente.endereco_numero:
         digits = _digits_only(cliente.endereco_numero)
         address["street_number"] = digits or cliente.endereco_numero[:32]
-    return {"receiver_address": address}
+    # Orders API v2 usa "receivers_address" (plural)
+    return {"receivers_address": address}
 
 
 def build_mp_item(
@@ -227,12 +222,14 @@ def build_mp_item(
     if quantity < 1:
         raise MercadoPagoDataError("Quantidade do item deve ser maior que zero.")
     price = validate_amount(unit_price)
+    price_str = str(price.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+    total_str = str((price * quantity).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
     item: dict[str, Any] = {
         "title": title_clean[:255],
         "quantity": quantity,
-        "unit_price": float(price),
+        "unit_price": price_str,
+        "total_amount": total_str,
         "category_id": category_id,
-        "currency_id": "BRL",
     }
     if description:
         item["description"] = description[:255]
@@ -282,25 +279,16 @@ def build_items_for_contrato(
 
 def build_additional_info(
     cliente: Cliente,
-    *,
-    items: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
+    """Monta additional_info compatível com Orders API v2.
+
+    Campos suportados: payer.registration_date e shipments.receivers_address.*
+    O campo additional_info.items pertence à Payments API — não enviar na Orders API.
+    """
     info: dict[str, Any] = {"payer": build_additional_info_payer(cliente)}
     shipments = build_additional_info_shipments(cliente)
     if shipments:
         info["shipments"] = shipments
-    if items:
-        info["items"] = [
-            {
-                "id": it.get("id") or f"item-{i}",
-                "title": it["title"],
-                "description": it.get("description", it["title"]),
-                "quantity": str(it["quantity"]),
-                "unit_price": str(it["unit_price"]),
-                "category_id": it.get("category_id", DEFAULT_VEHICLE_RENTAL_CATEGORY),
-            }
-            for i, it in enumerate(items, start=1)
-        ]
     return info
 
 

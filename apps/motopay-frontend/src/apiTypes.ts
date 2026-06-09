@@ -87,6 +87,7 @@ export type MpSubscriptionOut = {
 
 export type ContratoOut = {
   id: number;
+  numero: number | null;
   operacao_id: number;
   cliente_id: number;
   moto_id: number;
@@ -187,6 +188,7 @@ export type PaymentsConfig = {
   mercadopago_oauth_connected?: boolean;
   mercadopago_webhook_ready?: boolean;
   webhook_url: string | null;
+  mercadopago_oauth_user_id?: string | null;
 };
 
 export type ClienteMpCardOut = {

@@ -6,14 +6,14 @@ from decimal import Decimal
 
 from sqlalchemy.orm import Session
 
+from motopay.config import get_settings
 from motopay.domain.enums import PaymentGateway
-from motopay.domain.exceptions import ForbiddenError
+from motopay.domain.exceptions import MotoPayError
 from motopay.infrastructure.db.models import Cliente, Contrato, Operacao
 from motopay.infrastructure.payments.mercadopago_client import (
     MercadoPagoApiError,
     MercadoPagoClient,
     assert_payer_email_ready,
-    mercadopago_api_error_message,
     mp_configured_for_operacao,
     mp_credentials_complete,
     mp_token_for_operacao,
@@ -53,6 +53,11 @@ def _access_token(db: Session | None, op: Operacao) -> str:
     return mp_token_for_operacao(op)
 
 
+def _webhook_notification_url() -> str:
+    base = get_settings().api_public_base_url.rstrip("/")
+    return f"{base}/webhooks/mercadopago"
+
+
 def _build_mp_enrichment(
     *,
     op: Operacao,
@@ -74,7 +79,7 @@ def _build_mp_enrichment(
         moto=getattr(contrato, "moto", None) if contrato else None,
         total_value=valor_total,
     )
-    add_info = build_additional_info(cliente, items=items)
+    add_info = build_additional_info(cliente)
     return {
         "payer_extra": payer,
         "payer_email": payer_email,
@@ -94,12 +99,13 @@ def create_pix_for_cobranca(
     due_date: date,
     db: Session | None = None,
     contrato: Contrato | None = None,
+    device_id: str | None = None,
 ) -> tuple[str, str, str | None, str]:
     """Retorna (order_id, payment_id, pix_copia_cola, gateway)."""
     del due_date
     if not mp_credentials_complete(op):
         if mp_configured_for_operacao(op):
-            raise ForbiddenError(
+            raise MotoPayError(
                 "Credenciais Mercado Pago incompletas. Configure Access Token, Public Key e "
                 "Webhook Secret em Ajustes."
             )
@@ -110,25 +116,22 @@ def create_pix_for_cobranca(
                 op=op, cliente=cliente, valor_total=valor_total, contrato=contrato
             )
         except MercadoPagoDataError as exc:
-            raise ForbiddenError(str(exc)) from exc
-        try:
-            order = MercadoPagoClient(access_token=_access_token(db, op)).create_online_order(
-                external_reference=f"cobranca-{cobranca_id}",
-                value=valor_total,
-                payer_email=extra["payer_email"],  # type: ignore[arg-type]
-                payer_cpf=cliente.cpf,
-                payment_method_id="pix",
-                payment_method_type="bank_transfer",
-                payer_extra=extra["payer_extra"],  # type: ignore[arg-type]
-                items=extra["items"],  # type: ignore[arg-type]
-                additional_info=extra["additional_info"],  # type: ignore[arg-type]
-                statement_descriptor=extra["statement_descriptor"],  # type: ignore[arg-type]
-                description=extra["description"],  # type: ignore[arg-type]
-            )
-        except MercadoPagoApiError as exc:
-            raise ForbiddenError(
-                f"Falha ao criar Pix no Mercado Pago: {mercadopago_api_error_message(exc)}"
-            ) from exc
+            raise MotoPayError(str(exc)) from exc
+        order = MercadoPagoClient(access_token=_access_token(db, op)).create_online_order(
+            external_reference=f"cobranca-{cobranca_id}",
+            value=valor_total,
+            payer_email=extra["payer_email"],  # type: ignore[arg-type]
+            payer_cpf=cliente.cpf,
+            payment_method_id="pix",
+            payment_method_type="bank_transfer",
+            payer_extra=extra["payer_extra"],  # type: ignore[arg-type]
+            items=extra["items"],  # type: ignore[arg-type]
+            additional_info=extra["additional_info"],  # type: ignore[arg-type]
+            statement_descriptor=extra["statement_descriptor"],  # type: ignore[arg-type]
+            description=extra["description"],  # type: ignore[arg-type]
+            device_id=device_id,
+            notification_url=_webhook_notification_url(),
+        )
         return (
             order.order_id,
             order.payment_id,
@@ -148,6 +151,7 @@ def create_pix_for_contrato(
     due_date: date,
     db: Session | None = None,
     contrato: Contrato | None = None,
+    device_id: str | None = None,
 ) -> tuple[str, str, str | None, str]:
     """Compat: Pix por contrato (usa cobranca-{contrato_id} como referência externa)."""
     del due_date
@@ -158,25 +162,22 @@ def create_pix_for_contrato(
                 op=op, cliente=cliente, valor_total=valor_total, contrato=contrato
             )
         except MercadoPagoDataError as exc:
-            raise ForbiddenError(str(exc)) from exc
-        try:
-            order = MercadoPagoClient(access_token=_access_token(db, op)).create_online_order(
-                external_reference=f"contrato-{contrato_id}",
-                value=valor_total,
-                payer_email=extra["payer_email"],  # type: ignore[arg-type]
-                payer_cpf=cliente.cpf,
-                payment_method_id="pix",
-                payment_method_type="bank_transfer",
-                payer_extra=extra["payer_extra"],  # type: ignore[arg-type]
-                items=extra["items"],  # type: ignore[arg-type]
-                additional_info=extra["additional_info"],  # type: ignore[arg-type]
-                statement_descriptor=extra["statement_descriptor"],  # type: ignore[arg-type]
-                description=extra["description"],  # type: ignore[arg-type]
-            )
-        except MercadoPagoApiError as exc:
-            raise ForbiddenError(
-                f"Falha ao criar Pix no Mercado Pago: {mercadopago_api_error_message(exc)}"
-            ) from exc
+            raise MotoPayError(str(exc)) from exc
+        order = MercadoPagoClient(access_token=_access_token(db, op)).create_online_order(
+            external_reference=f"contrato-{contrato_id}",
+            value=valor_total,
+            payer_email=extra["payer_email"],  # type: ignore[arg-type]
+            payer_cpf=cliente.cpf,
+            payment_method_id="pix",
+            payment_method_type="bank_transfer",
+            payer_extra=extra["payer_extra"],  # type: ignore[arg-type]
+            items=extra["items"],  # type: ignore[arg-type]
+            additional_info=extra["additional_info"],  # type: ignore[arg-type]
+            statement_descriptor=extra["statement_descriptor"],  # type: ignore[arg-type]
+            description=extra["description"],  # type: ignore[arg-type]
+            device_id=device_id,
+            notification_url=_webhook_notification_url(),
+        )
         return (
             order.order_id,
             order.payment_id,

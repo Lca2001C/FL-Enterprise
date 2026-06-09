@@ -35,6 +35,7 @@ import {
 } from './utils/format';
 import { parseApiError } from './utils/apiError';
 import { fetchAllPaginated, offsetAfterDelete } from './utils/fetchPaginated';
+import { getMercadoPagoDeviceId } from './integrations/mercadopago/deviceId';
 import EmptyState from './components/EmptyState';
 import ErrorBanner from './components/ErrorBanner';
 import AdminScopeBanner from './components/AdminScopeBanner';
@@ -259,7 +260,7 @@ const ContractsView = () => {
       }
       const res = await api.post<ContratoOut>('/api/v1/contratos', body);
       if (form.gerar_pix) {
-        await api.post('/api/v1/cobrancas/pix', { contrato_id: res.data.id });
+        await api.post('/api/v1/cobrancas/pix', { contrato_id: res.data.id, device_id: getMercadoPagoDeviceId() });
       }
       setShowModal(false);
       resetForm();
@@ -314,7 +315,7 @@ const ContractsView = () => {
     setActionLoading(contratoId);
     setError('');
     try {
-      await api.post('/api/v1/cobrancas/pix', { contrato_id: contratoId });
+      await api.post('/api/v1/cobrancas/pix', { contrato_id: contratoId, device_id: getMercadoPagoDeviceId() });
       await fetchContratos(offset);
       await fetchMeta();
     } catch (err) {
@@ -455,6 +456,7 @@ const ContractsView = () => {
           <table className="custom-table">
             <thead>
               <tr>
+                <th>Nº</th>
                 <th>Cliente</th>
                 <th>Moto</th>
                 <th>Valor</th>
@@ -475,6 +477,9 @@ const ContractsView = () => {
                 const busy = actionLoading === ct.id;
                 return (
                   <tr key={ct.id}>
+                    <td style={{ fontWeight: 600, color: 'var(--accent)', whiteSpace: 'nowrap' }}>
+                      #{ct.numero ?? ct.id}
+                    </td>
                     <td>
                       <div style={{ fontWeight: 600 }}>{cl?.nome ?? `#${ct.cliente_id}`}</div>
                       {ct.inadimplente && (
@@ -634,7 +639,7 @@ const ContractsView = () => {
       {editCt && (
         <div className="modal-overlay" onClick={() => setEditCt(null)}>
           <div className="modal glass" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 420 }}>
-            <h3>Editar contrato #{editCt.id}</h3>
+            <h3>Editar contrato #{editCt.numero ?? editCt.id}</h3>
             <div className="input-group">
               <label className="input-label">Valor recorrente</label>
               <input

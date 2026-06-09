@@ -1,5 +1,5 @@
-import { useState, useEffect, type FormEvent } from 'react';
-import { MessageSquare, RotateCcw, Save, Percent, ShieldCheck, Eye, CreditCard, Plus, Trash2 } from 'lucide-react';
+import { useState, useEffect, useCallback, type FormEvent } from 'react';
+import { MessageSquare, RotateCcw, Save, Percent, ShieldCheck, Eye, CreditCard, Plus, Trash2, Copy, CheckCircle, AlertCircle, Wifi } from 'lucide-react';
 import { useAuth } from './AuthContext';
 import {
   BOT_MENU_BUILTIN_COMMANDS,
@@ -81,7 +81,9 @@ const SettingsView = () => {
     mercadopago_oauth_available?: boolean;
     mercadopago_oauth_connected?: boolean;
     mercadopago_webhook_ready?: boolean;
+    mercadopago_oauth_user_id?: string | null;
   } | null>(null);
+  const [webhookCopied, setWebhookCopied] = useState(false);
   const [oauthLoading, setOauthLoading] = useState(false);
   const [disconnectLoading, setDisconnectLoading] = useState(false);
   const [templateMeta, setTemplateMeta] = useState<TelegramTemplateMeta[]>([]);
@@ -174,6 +176,18 @@ const SettingsView = () => {
     const next = `${window.location.pathname}${qs ? `?${qs}` : ''}`;
     window.history.replaceState({}, '', next);
   }, []);
+
+  const copyWebhookUrl = useCallback(async () => {
+    const url = paymentsConfig?.webhook_url;
+    if (!url) return;
+    try {
+      await navigator.clipboard.writeText(url);
+      setWebhookCopied(true);
+      setTimeout(() => setWebhookCopied(false), 2500);
+    } catch {
+      setWebhookCopied(false);
+    }
+  }, [paymentsConfig?.webhook_url]);
 
   const disconnectMercadoPagoOAuth = async () => {
     if (!confirm('Desconectar conta Mercado Pago desta operação?')) return;
@@ -416,23 +430,68 @@ const SettingsView = () => {
               <h3 style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
                 <CreditCard size={20} color="var(--primary)" /> Mercado Pago
               </h3>
+
+              {/* Status badges */}
               {paymentsConfig && (
-                <p className="text-muted" style={{ fontSize: '0.85rem', marginBottom: 12 }}>
-                  Modo: {paymentsConfig.credentials_mode === 'test' ? 'Teste' : 'Produção'}
-                  {paymentsConfig.webhook_url && (
-                    <>
-                      {' '}
-                      · Webhook: <code>{paymentsConfig.webhook_url}</code>
-                    </>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 20 }}>
+                  <span className={`mp-badge ${paymentsConfig.mercadopago_credentials_complete ? 'badge-ok' : 'badge-warn'}`}>
+                    {paymentsConfig.mercadopago_credentials_complete
+                      ? <><CheckCircle size={13} /> Credenciais OK</>
+                      : <><AlertCircle size={13} /> Credenciais incompletas</>}
+                  </span>
+                  <span className={`mp-badge ${paymentsConfig.mercadopago_webhook_ready ? 'badge-ok' : 'badge-warn'}`}>
+                    {paymentsConfig.mercadopago_webhook_ready
+                      ? <><Wifi size={13} /> Webhook configurado</>
+                      : <><Wifi size={13} /> Webhook secret pendente</>}
+                  </span>
+                  <span className={`mp-badge ${paymentsConfig.credentials_mode === 'test' ? 'badge-info' : 'badge-ok'}`}>
+                    {paymentsConfig.credentials_mode === 'test' ? 'Modo Teste' : 'Produção'}
+                  </span>
+                  {paymentsConfig.mercadopago_oauth_connected && (
+                    <span className="mp-badge badge-ok">
+                      <CheckCircle size={13} /> OAuth conectado
+                      {paymentsConfig.mercadopago_oauth_user_id && (
+                        <> · ID {paymentsConfig.mercadopago_oauth_user_id}</>
+                      )}
+                    </span>
                   )}
-                  {paymentsConfig.mercadopago_credentials_complete
-                    ? ' · Credenciais completas'
-                    : ' · Configure token, public key e webhook secret'}
-                  {paymentsConfig.mercadopago_oauth_connected &&
-                    !paymentsConfig.mercadopago_webhook_ready &&
-                    ' · OAuth conectado: ainda falta Webhook Secret manual'}
-                </p>
+                </div>
               )}
+
+              {/* Webhook URL com botão de cópia */}
+              {paymentsConfig?.webhook_url && (
+                <div className="settings-card" style={{ marginBottom: 20 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 8 }}>
+                    <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>URL do Webhook</span>
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      style={{ fontSize: '0.8rem', padding: '4px 10px', display: 'flex', alignItems: 'center', gap: 6 }}
+                      onClick={() => void copyWebhookUrl()}
+                    >
+                      {webhookCopied ? <><CheckCircle size={13} /> Copiado!</> : <><Copy size={13} /> Copiar</>}
+                    </button>
+                  </div>
+                  <code style={{ fontSize: '0.78rem', wordBreak: 'break-all', display: 'block', color: 'var(--primary)' }}>
+                    {paymentsConfig.webhook_url}
+                  </code>
+                  {!paymentsConfig.mercadopago_webhook_ready && (
+                    <div style={{ marginTop: 12 }}>
+                      <p className="text-muted" style={{ fontSize: '0.82rem', marginBottom: 6 }}>
+                        <strong>Como configurar o Webhook no Mercado Pago:</strong>
+                      </p>
+                      <ol className="webhook-steps">
+                        <li>Acesse <strong>Painel MP → Seu negócio → Configurações → Notificações</strong></li>
+                        <li>Cole a URL acima no campo <em>URL para notificações</em></li>
+                        <li>Selecione o tópico <strong>Pagamentos</strong> e <strong>Pedidos</strong></li>
+                        <li>Copie o <strong>Webhook Secret</strong> gerado e cole no campo abaixo</li>
+                      </ol>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Credenciais manuais */}
               <div className="input-group">
                 <label className="input-label">Access Token</label>
                 <input
@@ -465,13 +524,21 @@ const SettingsView = () => {
                   placeholder="Secret do painel MP (evento Order)"
                   autoComplete="off"
                 />
+                <small className="text-muted">
+                  Obtido no painel MP após registrar a URL de webhook acima.
+                </small>
               </div>
+
+              {/* OAuth */}
               {paymentsConfig?.mercadopago_oauth_available && (
-                <div style={{ marginTop: 20 }}>
-                  <p className="text-muted" style={{ fontSize: '0.85rem', marginBottom: 10 }}>
+                <div className="settings-card" style={{ marginTop: 20 }}>
+                  <p style={{ fontSize: '0.85rem', fontWeight: 600, marginBottom: 6 }}>
+                    Conexão via OAuth
+                  </p>
+                  <p className="text-muted" style={{ fontSize: '0.82rem', marginBottom: 12 }}>
                     {paymentsConfig.mercadopago_oauth_connected
-                      ? 'Conta Mercado Pago conectada via OAuth.'
-                      : 'Conecte a conta MP da operação sem colar tokens manualmente.'}
+                      ? `Conta Mercado Pago conectada${paymentsConfig.mercadopago_oauth_user_id ? ` (ID: ${paymentsConfig.mercadopago_oauth_user_id})` : ''}. O token é renovado automaticamente.`
+                      : 'Autorize o acesso à conta MP da operação sem precisar colar tokens manualmente.'}
                   </p>
                   <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                     <button
@@ -497,6 +564,11 @@ const SettingsView = () => {
                       </button>
                     )}
                   </div>
+                  {paymentsConfig.mercadopago_oauth_connected && !paymentsConfig.mercadopago_webhook_ready && (
+                    <p className="text-muted" style={{ fontSize: '0.8rem', marginTop: 10 }}>
+                      OAuth conectado, mas o Webhook Secret ainda precisa ser configurado manualmente acima.
+                    </p>
+                  )}
                 </div>
               )}
             </div>
@@ -826,6 +898,43 @@ const SettingsView = () => {
         .settings-section h3 {
           font-family: 'Outfit';
           font-size: 1.1rem;
+        }
+        .mp-badge {
+          display: inline-flex;
+          align-items: center;
+          gap: 5px;
+          font-size: 0.78rem;
+          padding: 4px 10px;
+          border-radius: 20px;
+          font-weight: 500;
+        }
+        .badge-ok {
+          background: rgba(16, 185, 129, 0.12);
+          color: var(--accent, #10b981);
+          border: 1px solid rgba(16, 185, 129, 0.25);
+        }
+        .badge-warn {
+          background: rgba(245, 158, 11, 0.12);
+          color: var(--warning, #f59e0b);
+          border: 1px solid rgba(245, 158, 11, 0.25);
+        }
+        .badge-info {
+          background: rgba(99, 102, 241, 0.12);
+          color: var(--primary, #6366f1);
+          border: 1px solid rgba(99, 102, 241, 0.25);
+        }
+        .settings-card {
+          background: rgba(255,255,255,0.03);
+          border: 1px solid var(--glass-border);
+          border-radius: 10px;
+          padding: 14px 16px;
+        }
+        .webhook-steps {
+          margin: 0;
+          padding-left: 18px;
+          font-size: 0.82rem;
+          color: var(--text-muted);
+          line-height: 1.8;
         }
         .input-group {
           margin-bottom: 15px;

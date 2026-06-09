@@ -13,6 +13,7 @@ import PayCobrancaModal from './components/PayCobrancaModal';
 import { PAGE_SIZE } from './apiTypes';
 import { formatBrl, formatDate } from './utils/format';
 import { parseApiError } from './utils/apiError';
+import { getMercadoPagoDeviceId } from './integrations/mercadopago/deviceId';
 import { fetchAllPaginated } from './utils/fetchPaginated';
 import EmptyState from './components/EmptyState';
 import ErrorBanner from './components/ErrorBanner';
@@ -75,7 +76,8 @@ const ChargesView = () => {
     e.preventDefault();
     setError('');
     try {
-      await api.post('/api/v1/cobrancas/pix', { contrato_id: parseInt(contratoId, 10) });
+      const device_id = getMercadoPagoDeviceId();
+      await api.post('/api/v1/cobrancas/pix', { contrato_id: parseInt(contratoId, 10), device_id });
       setShowModal(false);
       setContratoId('');
       await fetchData(offset);

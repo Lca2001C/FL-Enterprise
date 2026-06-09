@@ -135,6 +135,7 @@ class Contrato(Base):
     __tablename__ = "contratos"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    numero: Mapped[int | None] = mapped_column(BigInteger, nullable=True, index=True)
     operacao_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("operacoes.id", ondelete="CASCADE"), nullable=False, index=True
     )

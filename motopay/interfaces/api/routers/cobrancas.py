@@ -61,17 +61,20 @@ def create_pix(
     user: CurrentUser = Depends(require_operacional),
     operacao_id: int | None = Depends(resolve_operacao_id),
 ) -> CobrancaOut:
-    return create_pix_charge_for_contract(db, user, operacao_id, body.contrato_id)
+    return create_pix_charge_for_contract(
+        db, user, operacao_id, body.contrato_id, device_id=body.device_id
+    )
 
 
 @router.post("/{cobranca_id}/pix", response_model=CobrancaOut)
 def generate_pix_for_cobranca(
     cobranca_id: int,
+    device_id: str | None = Query(default=None, description="MP_DEVICE_SESSION_ID do frontend"),
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_operacional),
     operacao_id: int | None = Depends(resolve_operacao_id),
 ) -> CobrancaOut:
-    return ensure_pix_for_cobranca(db, user, operacao_id, cobranca_id)
+    return ensure_pix_for_cobranca(db, user, operacao_id, cobranca_id, device_id=device_id)
 
 
 @router.post("/{cobranca_id}/card", response_model=CardPaymentOut)

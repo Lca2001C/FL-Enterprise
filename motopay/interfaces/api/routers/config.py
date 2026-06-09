@@ -59,4 +59,7 @@ def payments_config(
         mercadopago_oauth_connected=oauth_connected,
         mercadopago_webhook_ready=webhook_ready,
         webhook_url=f"{base}/webhooks/mercadopago",
+        mercadopago_oauth_user_id=(
+            op.mercadopago_oauth_user_id if op else None
+        ),
     )

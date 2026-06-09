@@ -264,6 +264,7 @@ class ContratoOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    numero: int | None = None
     operacao_id: int
     cliente_id: int
     moto_id: int
@@ -328,6 +329,8 @@ class CobrancaOut(BaseModel):
 class CreateChargeRequest(BaseModel):
     contrato_id: int
     """Cria cobrança Pix via Mercado Pago quando configurado."""
+    device_id: str | None = None
+    """Device ID do Mercado Pago (MP_DEVICE_SESSION_ID) para anti-fraude."""
 
 
 class MotoAnalyticsRow(BaseModel):
@@ -380,6 +383,7 @@ class PaymentsConfigOut(BaseModel):
     mercadopago_oauth_connected: bool = False
     mercadopago_webhook_ready: bool = False
     webhook_url: str | None = None
+    mercadopago_oauth_user_id: str | None = None
 
 
 class ClienteMpCardOut(BaseModel):

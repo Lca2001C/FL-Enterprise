@@ -291,6 +291,7 @@ def ensure_pix_for_cobranca(
     user: CurrentUser,
     operacao_scope: int | None,
     cobranca_id: int,
+    device_id: str | None = None,
 ) -> CobrancaOut:
     operacao_id = _effective_operacao(user, operacao_scope)
     cob = db.get(Cobranca, cobranca_id)
@@ -304,12 +305,11 @@ def ensure_pix_for_cobranca(
     if not ct or not op:
         raise NotFoundError("Dados do contrato não encontrados")
     amounts = charge_amounts_for_cobranca(cob, ct, op, today)
-    if (
-        cob.pix_copia_cola
-        and cob.mercadopago_order_id
-        and cob.valor == amounts.valor_total
-    ):
-        return _cobranca_to_out(cob, op, today, valor_base=ct.valor_recorrente)
+    if cob.pix_copia_cola and cob.mercadopago_order_id:
+        # Reusa se o total é exato ou se a diferença é irrelevante (< 1 centavo)
+        # Cobre cobranças em atraso onde juros diário é fracionário.
+        if abs(cob.valor - amounts.valor_total) < Decimal("0.01"):
+            return _cobranca_to_out(cob, op, today, valor_base=ct.valor_recorrente)
 
     cliente = db.get(Cliente, ct.cliente_id)
     if not cliente:
@@ -338,6 +338,7 @@ def ensure_pix_for_cobranca(
         due_date=cob.vencimento,
         db=db,
         contrato=ct,
+        device_id=device_id,
     )
     _apply_pix_to_cobranca(
         cob,
@@ -367,31 +368,45 @@ def create_pix_charge_for_contract(
     user: CurrentUser,
     operacao_scope: int | None,
     contrato_id: int,
+    device_id: str | None = None,
 ) -> CobrancaOut:
     operacao_id = _effective_operacao(user, operacao_scope)
     ct = db.get(Contrato, contrato_id)
     if not ct or ct.operacao_id != operacao_id:
         raise NotFoundError("Contrato não encontrado")
+    if ct.status not in (ContratoStatus.ATIVO.value,):
+        raise ForbiddenError("Não é possível gerar PIX para contrato inativo ou encerrado")
     cliente = db.get(Cliente, ct.cliente_id)
     if not cliente:
         raise NotFoundError("Cliente não encontrado")
     op = db.get(Operacao, operacao_id)
     if not op:
         raise NotFoundError("Operação não encontrada")
+
+    # Verifica credenciais MP antes de chamar a API (falha rápida e clara)
+    if not mp_credentials_complete(op) and mp_configured_for_operacao(op):
+        raise ForbiddenError(
+            "Credenciais Mercado Pago incompletas. Configure Access Token, Public Key e "
+            "Webhook Secret em Ajustes."
+        )
+
     today = _today()
     amounts = charge_amounts_for_contrato(ct, op, today)
 
-    # Reutiliza cobrança aberta se já existe com Pix e valor igual
+    # Reutiliza cobrança aberta se já existe PIX válido com o mesmo total.
+    # Para cobranças em atraso, o total muda diariamente (juros). Considera
+    # reutilizável se o total é igual OU se a cobrança foi atualizada hoje
+    # (evita chamar o MP várias vezes no mesmo dia para o mesmo atraso).
     existing = get_open_cobranca(db, ct.id)
-    if (
-        existing is not None
-        and existing.pix_copia_cola
-        and existing.mercadopago_order_id
-        and existing.valor == amounts.valor_total
-    ):
-        return _cobranca_to_out(existing, op, today, valor_base=ct.valor_recorrente)
+    if existing is not None and existing.pix_copia_cola and existing.mercadopago_order_id:
+        # Mesma data de vencimento e mesmo total → reutiliza sem chamar MP
+        if existing.valor == amounts.valor_total:
+            return _cobranca_to_out(existing, op, today, valor_base=ct.valor_recorrente)
+        # Atraso: regenera apenas se o juros diário mudar o total (>= 1 centavo de diferença)
+        if amounts.dias_atraso > 0 and abs(existing.valor - amounts.valor_total) < Decimal("0.01"):
+            return _cobranca_to_out(existing, op, today, valor_base=ct.valor_recorrente)
 
-    # Cria o novo PIX primeiro para garantir continuidade de pagamento
+    # Cria o novo PIX ANTES de cancelar o antigo para garantir disponibilidade contínua
     order_id, payment_id, pix, gw = create_pix_for_contrato(
         op=op,
         cliente=cliente,
@@ -400,10 +415,18 @@ def create_pix_charge_for_contract(
         due_date=ct.proximo_vencimento,
         db=db,
         contrato=ct,
+        device_id=device_id,
+    )
+
+    new_status = (
+        CobrancaStatus.ATRASADO.value
+        if amounts.dias_atraso > 0
+        else CobrancaStatus.PENDENTE.value
     )
 
     if existing is not None:
-        # Atualiza a cobrança existente e cancela o PIX antigo — evita duplicidade
+        # Guarda referência antes de sobrescrever
+        old_gateway = existing.payment_gateway
         old_order_id = existing.mercadopago_order_id
         _apply_pix_to_cobranca(
             existing,
@@ -412,36 +435,27 @@ def create_pix_charge_for_contract(
             pix=pix,
             gateway=gw,
             valor=amounts.valor_total,
-            status=(
-                CobrancaStatus.ATRASADO.value
-                if amounts.dias_atraso > 0
-                else CobrancaStatus.PENDENTE.value
-            ),
+            status=new_status,
         )
         db.add(existing)
         db.commit()
         db.refresh(existing)
-        cancel_external_payment(
-            gateway=existing.payment_gateway,
-            payment_id=None,
-            order_id=old_order_id,
-            op=op,
-            db=db,
-        )
+        # Cancela o PIX antigo SOMENTE após commit bem-sucedido do novo
+        if old_order_id:
+            cancel_external_payment(
+                gateway=old_gateway,
+                payment_id=None,
+                order_id=old_order_id,
+                op=op,
+                db=db,
+            )
         return _cobranca_to_out(existing, op, today, valor_base=ct.valor_recorrente)
 
-    new_status = (
-        CobrancaStatus.ATRASADO.value
-        if amounts.dias_atraso > 0
-        else CobrancaStatus.PENDENTE.value
-    )
     cob = Cobranca(
         operacao_id=operacao_id,
         contrato_id=ct.id,
         valor=amounts.valor_total,
         vencimento=ct.proximo_vencimento,
-        pix_copia_cola=pix,
-        payment_gateway=gw,
         status=new_status,
     )
     _apply_pix_to_cobranca(

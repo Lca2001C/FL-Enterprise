@@ -7,7 +7,7 @@ export function initMercadoPagoSdk(publicKey: string): void {
   const key = publicKey.trim();
   if (!key) return;
   if (initialized && key === currentPublicKey) return;
-  initMercadoPago(key);
+  initMercadoPago(key, { locale: 'pt-BR' });
   currentPublicKey = key;
   initialized = true;
 }

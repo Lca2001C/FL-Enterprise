@@ -51,13 +51,13 @@ class MercadoPagoApiError(Exception):
 
 
 def assert_payer_email_ready(cliente: Cliente) -> None:
-    from motopay.domain.exceptions import ForbiddenError
+    from motopay.domain.exceptions import MotoPayError
 
     if effective_mercadopago_credentials_mode() == "test":
         return
     email = (cliente.email or "").strip()
     if not email or "@" not in email:
-        raise ForbiddenError(
+        raise MotoPayError(
             "Cadastre o e-mail do cliente para pagamentos Mercado Pago em produção."
         )
 
@@ -80,6 +80,13 @@ def payer_email_for_mercadopago(cliente: Cliente | int) -> str:
 def mercadopago_api_error_message(exc: MercadoPagoApiError) -> str:
     response = exc.response
     if isinstance(response, dict):
+        # Orders API retorna causa detalhada em "cause[].description"
+        cause = response.get("cause")
+        if isinstance(cause, list) and cause:
+            first = cause[0]
+            if isinstance(first, dict) and first.get("description"):
+                return str(first["description"])
+        # Payments API retorna lista em "errors[].message"
         errors = response.get("errors")
         if isinstance(errors, list) and errors:
             first = errors[0]
@@ -293,6 +300,7 @@ class MercadoPagoClient:
         statement_descriptor: str | None = None,
         device_id: str | None = None,
         description: str | None = None,
+        notification_url: str | None = None,
     ) -> MercadoPagoOrderResult:
         # Payer: começa do extra (first_name, last_name, phone, identification)
         payer: dict[str, Any] = dict(payer_extra or {})
@@ -328,13 +336,10 @@ class MercadoPagoClient:
         }
         if items:
             payload["items"] = items
-        if description:
-            payload["description"] = description[:600]
         if additional_info:
             payload["additional_info"] = additional_info
-        if statement_descriptor:
-            # Statement descriptor também no nível raiz da Order
-            payload["statement_descriptor"] = statement_descriptor
+        if notification_url:
+            payload["notification_url"] = notification_url
 
         data = self._request(
             "POST",

@@ -77,10 +77,74 @@ EOF
   esac
 done
 
+ensure_docker_ready() {
+  if ! command -v docker >/dev/null 2>&1; then
+    echo "Docker não encontrado no PATH. Instale o Docker Desktop:" >&2
+    echo "  https://docs.docker.com/desktop/setup/install/windows-install/" >&2
+    exit 1
+  fi
+  if docker info >/dev/null 2>&1; then
+    return 0
+  fi
+  echo "Docker Desktop não está em execução." >&2
+  if [[ "$(uname -s 2>/dev/null || true)" == MINGW* ]] || [[ -n "${MSYSTEM:-}" ]]; then
+    local docker_desktop="/c/Program Files/Docker/Docker/Docker Desktop.exe"
+    if [[ -f "$docker_desktop" ]]; then
+      echo "Iniciando Docker Desktop..." >&2
+      if command -v cygpath >/dev/null 2>&1; then
+        cmd.exe /c start "" "$(cygpath -w "$docker_desktop")" >/dev/null 2>&1 || true
+      else
+        cmd.exe /c start "" "C:\\Program Files\\Docker\\Docker\\Docker Desktop.exe" >/dev/null 2>&1 || true
+      fi
+      local deadline=$((SECONDS + 180))
+      while (( SECONDS < deadline )); do
+        if docker info >/dev/null 2>&1 && docker ps >/dev/null 2>&1; then
+          echo "Docker pronto." >&2
+          return 0
+        fi
+        sleep 3
+      done
+    fi
+  fi
+  echo "Abra o Docker Desktop manualmente, aguarde ficar 'Running' e execute ./scripts/start.sh novamente." >&2
+  echo "Se aparecer erro 500 no engine, reinicie o Docker Desktop ou rode: wsl --shutdown" >&2
+  exit 1
+}
+
+ensure_port_free() {
+  local port="$1"
+  local label="$2"
+  local compose_service="${3:-}"
+  local container_port="${4:-$port}"
+
+  if ! command -v netstat >/dev/null 2>&1; then
+    return 0
+  fi
+  if ! netstat -ano 2>/dev/null | grep -qE "[.:]${port}[[:space:]].*LISTENING"; then
+    return 0
+  fi
+
+  if [[ -n "$compose_service" ]]; then
+    local mapped
+    mapped=$("${COMPOSE[@]}" port "$compose_service" "$container_port" 2>/dev/null | sed 's/.*://' | tr -d '\r' || true)
+    if [[ "$mapped" == "$port" ]]; then
+      echo "Porta ${port} (${label}) já em uso pela stack MotoPay — continuando."
+      return 0
+    fi
+  fi
+
+  echo "Porta ${port} (${label}) já está em uso por outro processo — o Docker não pode subir." >&2
+  echo "Encerre o processo local (ex.: uvicorn/python na porta ${port}) ou rode: ./scripts/start.sh --down" >&2
+  echo "No PowerShell: Get-NetTCPConnection -LocalPort ${port} | Select OwningProcess" >&2
+  exit 1
+}
+
 COMPOSE=(docker compose -f docker-compose.yml)
 if [[ "$USE_DEV" -eq 1 ]]; then
   COMPOSE+=(-f docker-compose.dev.yml)
 fi
+
+ensure_docker_ready
 
 if [[ "$ACTION" == "down" ]]; then
   "${COMPOSE[@]}" down
@@ -135,6 +199,9 @@ if grep -qE '^TELEGRAM_BOT_TOKEN=.+' .env 2>/dev/null; then
 else
   echo "TELEGRAM_BOT_TOKEN vazio — bot omitido."
 fi
+
+ensure_port_free 8000 "API" api 8000
+ensure_port_free 5173 "Frontend" frontend 80
 
 echo "Subindo serviços: ${SERVICES[*]}"
 "${COMPOSE[@]}" up --build -d "${SERVICES[@]}"
