@@ -45,7 +45,8 @@ describe('pwa.config', () => {
     expect(IOS_SPLASH_LINKS.length).toBeGreaterThanOrEqual(6);
     for (const link of IOS_SPLASH_LINKS) {
       expect(link.href).toMatch(/^\/splash\/apple-splash-/);
-      expect(link.media).toContain('orientation: portrait');
+      // Setup iOS completo inclui portrait (iPhone/iPad) e landscape (iPad).
+      expect(link.media).toMatch(/orientation: (portrait|landscape)/);
     }
   });
 });

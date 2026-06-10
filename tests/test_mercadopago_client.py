@@ -14,7 +14,10 @@ from motopay.infrastructure.payments.mercadopago_client import (
     payer_email_for_mercadopago,
     verify_webhook_signature,
 )
-from motopay.infrastructure.payments.order_utils import normalize_webhook_data_id, parse_order_response
+from motopay.infrastructure.payments.order_utils import (
+    normalize_webhook_data_id,
+    parse_order_response,
+)
 
 
 def _signature_headers(

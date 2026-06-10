@@ -13,8 +13,8 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 
-from motopay.infrastructure.db.models import Operacao
-from motopay.infrastructure.db.session import SessionLocal
+from motopay.infrastructure.db.models import Operacao  # noqa: E402
+from motopay.infrastructure.db.session import SessionLocal  # noqa: E402
 
 
 def _load_dotenv(path: Path) -> dict[str, str]:

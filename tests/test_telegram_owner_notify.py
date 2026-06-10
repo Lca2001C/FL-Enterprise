@@ -3,6 +3,7 @@ from __future__ import annotations
 from unittest.mock import patch
 
 from motopay.domain.enums import UserRole
+from motopay.domain.exceptions import MotoPayError
 from motopay.infrastructure.db.models import Cliente
 from motopay.infrastructure.telegram.conversation import is_contact_request
 from motopay.infrastructure.telegram.owner_notify import (
@@ -10,7 +11,6 @@ from motopay.infrastructure.telegram.owner_notify import (
     notify_owner_contact_request,
 )
 from motopay.interfaces.api.schemas import OperacaoUpdate
-from motopay.domain.exceptions import MotoPayError
 from motopay.services.operacao_service import send_telegram_owner_notify_test, update_operacao
 
 

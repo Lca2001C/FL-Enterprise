@@ -8,8 +8,6 @@ import uuid
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any, Literal
 
-_log = logging.getLogger(__name__)
-
 import httpx
 
 from motopay.config import get_settings
@@ -25,6 +23,8 @@ from motopay.infrastructure.payments.order_utils import (
     MercadoPagoOrderResult,
     parse_order_response,
 )
+
+_log = logging.getLogger(__name__)
 
 __all__ = [
     "MercadoPagoApiError",

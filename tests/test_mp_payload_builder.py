@@ -8,7 +8,6 @@ from types import SimpleNamespace
 
 import pytest
 from motopay.infrastructure.payments.mp_payload_builder import (
-    DEFAULT_VEHICLE_RENTAL_CATEGORY,
     MercadoPagoDataError,
     build_additional_info,
     build_additional_info_payer,
