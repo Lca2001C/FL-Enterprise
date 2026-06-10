@@ -143,6 +143,24 @@ def _find_menu_button_by_label(text: str, buttons: list[dict[str, str]]) -> dict
     return None
 
 
+def _operacoes_for_owner_contact_notify(
+    db,
+    *,
+    cliente: Cliente | None,
+) -> list[Operacao]:
+    if cliente:
+        operacao = db.get(Operacao, cliente.operacao_id)
+        return [operacao] if operacao else []
+    return list(
+        db.scalars(
+            select(Operacao).where(
+                Operacao.telegram_owner_notify_enabled.is_(True),
+                Operacao.telegram_owner_notify_id.isnot(None),
+            )
+        ).all()
+    )
+
+
 def _notify_owner_contact(
     db,
     *,
@@ -154,18 +172,14 @@ def _notify_owner_contact(
 ) -> None:
     if not is_contact_request(user_message, button=button):
         return
-    if not cliente:
-        return
-    operacao = db.get(Operacao, cliente.operacao_id)
-    if not operacao:
-        return
-    notify_owner_contact_request(
-        operacao=operacao,
-        cliente=cliente,
-        telegram_user_id=uid,
-        user_message=user_message,
-        menu_ctx=menu_ctx,
-    )
+    for operacao in _operacoes_for_owner_contact_notify(db, cliente=cliente):
+        notify_owner_contact_request(
+            operacao=operacao,
+            cliente=cliente,
+            telegram_user_id=uid,
+            user_message=user_message,
+            menu_ctx=menu_ctx,
+        )
 
 
 def _resolve_user_state(

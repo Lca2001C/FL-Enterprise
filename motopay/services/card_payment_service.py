@@ -6,9 +6,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from motopay.domain.enums import CobrancaStatus, PaymentMethodType
-from motopay.domain.exceptions import ForbiddenError, NotFoundError
+from motopay.domain.exceptions import ForbiddenError, MotoPayError, NotFoundError
 from motopay.infrastructure.db.models import Cliente, ClienteMpCard, Cobranca, Contrato, Operacao
-from motopay.config import get_settings
 from motopay.infrastructure.payments.mercadopago_client import (
     MercadoPagoApiError,
     MercadoPagoClient,
@@ -21,9 +20,7 @@ from motopay.infrastructure.payments.mercadopago_client import (
 )
 from motopay.infrastructure.payments.mp_payload_builder import (
     MercadoPagoDataError,
-    build_additional_info,
     build_items_for_contrato,
-    build_mp_payer,
     build_statement_descriptor,
     split_full_name,
 )
@@ -187,16 +184,20 @@ def pay_cobranca_with_card(
     mp_type = mp_payment_method_type(payment_method_kind)
     inst = installments if method_type == PaymentMethodType.CREDIT_CARD.value else 1
 
+    _MP_PAYMENT_TOKEN_MIN_LEN = 32
     customer_id: str | None = None
+    saved: ClienteMpCard | None = None
     if saved_card_id is not None:
         saved = db.get(ClienteMpCard, saved_card_id)
         if not saved or saved.cliente_id != cliente.id:
             raise NotFoundError("Cartão salvo não encontrado")
         if not token.strip():
-            raise ForbiddenError("Informe o CVV (token) para pagar com cartão salvo")
+            raise ForbiddenError("Informe o CVV para pagar com cartão salvo")
         payment_method_id = saved.payment_method_id
         method_type = resolve_payment_method_type(saved.payment_method_id, method_type)
         customer_id = cliente.mercadopago_customer_id
+        if not customer_id:
+            raise ForbiddenError("Cliente sem cadastro Mercado Pago para cartão salvo")
 
     today = _today()
     amounts = charge_amounts_for_cobranca(cob, ct, op, today)
@@ -208,22 +209,26 @@ def pay_cobranca_with_card(
 
     client = MercadoPagoClient(access_token=ensure_valid_mp_token(db, op))
 
+    payment_token = token.strip()
+    if saved is not None and len(payment_token) < _MP_PAYMENT_TOKEN_MIN_LEN:
+        payment_token = client.create_saved_card_payment_token(
+            customer_id=customer_id or "",
+            card_id=saved.mp_card_id,
+            security_code=payment_token,
+        )
+    elif len(payment_token) < _MP_PAYMENT_TOKEN_MIN_LEN:
+        raise MotoPayError(
+            "Token do cartão inválido. Feche o modal e tente novamente ou use outro cartão."
+        )
+
     # Monta payload completo seguindo recomendações MP (boost de aprovação)
     try:
-        payer_obj = build_mp_payer(
-            cliente, fallback_email=payer_email_for_mercadopago(cliente)
-        )
+        payer_email = payer_email_for_mercadopago(cliente)
         items = build_items_for_contrato(ct, moto=ct.moto, total_value=charge_value)
-        add_info = build_additional_info(cliente)
     except MercadoPagoDataError as exc:
         raise ForbiddenError(str(exc)) from exc
     statement_descriptor = build_statement_descriptor(op.nome)
-    description = items[0]["description"] if items else None
-    payer_email = payer_obj.pop("email", payer_email_for_mercadopago(cliente))
 
-    notification_url = (
-        f"{get_settings().api_public_base_url.rstrip('/')}/webhooks/mercadopago"
-    )
     try:
         order = client.create_online_order(
             external_reference=f"cobranca-{cob.id}",
@@ -232,19 +237,15 @@ def pay_cobranca_with_card(
             payer_cpf=cliente.cpf,
             payment_method_id=payment_method_id,
             payment_method_type=mp_type,
-            token=token,
+            token=payment_token,
             installments=inst,
             customer_id=customer_id,
-            payer_extra=payer_obj,
             items=items,
-            additional_info=add_info,
             statement_descriptor=statement_descriptor,
             device_id=device_id,
-            description=description,
-            notification_url=notification_url,
         )
     except MercadoPagoApiError as exc:
-        raise ForbiddenError(
+        raise MotoPayError(
             f"Falha ao processar cartão: {mercadopago_api_error_message(exc)}"
         ) from exc
 
@@ -288,6 +289,7 @@ def pay_cobranca_with_card(
         order_id=order.order_id,
         payment_id=order.payment_id,
         status=order.order_status,
+        status_detail=order.status_detail or None,
         requires_3ds=order.requires_3ds,
         three_ds_info=three_ds,
     )

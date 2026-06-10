@@ -1,6 +1,11 @@
 import { useEffect, useCallback, useState } from 'react';
+import axios from 'axios';
 import { useAuth } from '../AuthContext';
 import { useAlerts, type Alert } from '../stores/AlertContext';
+
+function isNetworkError(err: unknown): boolean {
+  return axios.isAxiosError(err) && err.response == null;
+}
 
 interface UseAlertsHookOptions {
   pollInterval?: number;
@@ -34,6 +39,7 @@ export const useAlertsPolling = (options: UseAlertsHookOptions = {}) => {
         }
       });
     } catch (err) {
+      if (isNetworkError(err)) return;
       setError(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);

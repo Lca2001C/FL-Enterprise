@@ -124,9 +124,9 @@ def test_build_mp_item_required_fields():
     item = build_mp_item(title="Locacao moto Honda", quantity=1, unit_price=Decimal("199.90"))
     assert item["title"] == "Locacao moto Honda"
     assert item["quantity"] == 1
-    assert item["unit_price"] == 199.90
-    assert item["category_id"] == DEFAULT_VEHICLE_RENTAL_CATEGORY
-    assert item["currency_id"] == "BRL"
+    assert item["unit_price"] == "199.90"
+    assert "category_id" not in item  # categoria é da Preferences API, não da Orders API v2
+    assert "total_amount" not in item
 
 
 def test_build_mp_item_rejects_zero_quantity():
@@ -147,10 +147,11 @@ def test_build_items_for_contrato_with_moto():
     item = items[0]
     assert "Locacao" in item["title"]
     assert "Honda" in item["title"]
-    assert item["description"] and "ABC1D23" in item["description"]
-    assert item["id"] == "contrato-42"
+    assert "description" not in item  # removido — campo não documentado na Orders API v2
+    assert "id" not in item
+    assert "total_amount" not in item
     assert item["quantity"] == 1
-    assert item["unit_price"] == 499.90
+    assert item["unit_price"] == "499.90"
 
 
 def test_build_items_for_contrato_without_moto_fallback():
@@ -189,7 +190,6 @@ def test_build_mp_payer_full():
     assert payer["last_name"] == "Souza Lima"
     assert payer["identification"] == {"type": "CPF", "number": "52998224725"}
     assert payer["email"] == "maria@example.com"
-    assert payer["phone"] == {"area_code": "11", "number": "998765432"}
 
 
 def test_build_mp_payer_email_required_raises_without_email():
@@ -206,15 +206,13 @@ def test_build_mp_payer_email_fallback_when_email_missing():
 
 def test_additional_info_payer_has_registration_date():
     info = build_additional_info_payer(_fake_cliente())
-    assert info["first_name"] == "Maria"
-    assert info["last_name"] == "Souza Lima"
     assert info["registration_date"].startswith("2025-01-15T10:30:00")
 
 
 def test_additional_info_shipments_complete():
     shipments = build_additional_info_shipments(_fake_cliente())
     assert shipments is not None
-    addr = shipments["receiver_address"]
+    addr = shipments["receivers_address"]
     assert addr["zip_code"] == "01310200"
     assert addr["city_name"] == "São Paulo"
     assert addr["state_name"] == "SP"
@@ -227,16 +225,6 @@ def test_additional_info_shipments_none_when_incomplete():
     assert build_additional_info_shipments(cliente) is None
 
 
-def test_build_additional_info_includes_items():
-    cliente = _fake_cliente()
-    items = build_items_for_contrato(
-        SimpleNamespace(id=1, moto=None),
-        moto=None,
-        total_value=Decimal("99.90"),
-    )
-    info = build_additional_info(cliente, items=items)
-    assert "payer" in info
-    assert "shipments" in info
-    assert "items" in info
-    assert info["items"][0]["quantity"] == "1"  # MP exige string em additional_info.items
-    assert info["items"][0]["category_id"] == DEFAULT_VEHICLE_RENTAL_CATEGORY
+def test_build_additional_info_empty_for_orders_api():
+    info = build_additional_info(_fake_cliente())
+    assert info == {}

@@ -384,6 +384,11 @@ class PaymentsConfigOut(BaseModel):
     mercadopago_webhook_ready: bool = False
     webhook_url: str | None = None
     mercadopago_oauth_user_id: str | None = None
+    # Reflete o que está salvo NA OPERAÇÃO (não o fallback global), para a tela de Ajustes
+    # confirmar persistência. Public Key não é segredo (vai ao browser); token/secret vêm mascarados.
+    mercadopago_public_key_saved: str | None = None
+    mercadopago_access_token_preview: str | None = None
+    mercadopago_webhook_secret_preview: str | None = None
 
 
 class ClienteMpCardOut(BaseModel):
@@ -424,6 +429,7 @@ class CardPaymentOut(BaseModel):
     order_id: str
     payment_id: str
     status: str
+    status_detail: str | None = None
     requires_3ds: bool = False
     three_ds_info: ThreeDsInfoOut | None = None
 

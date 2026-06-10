@@ -18,7 +18,7 @@
         },
         {
           "key": "Content-Security-Policy",
-          "value": "default-src 'self'; worker-src 'self' blob:; manifest-src 'self'; script-src 'self' https://sdk.mercadopago.com https://http2.mlstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob: https://*.mlstatic.com https://*.mercadopago.com; connect-src 'self' ws: wss: https://api.mercadopago.com https://*.mercadopago.com https://*.mercadolibre.com; font-src 'self' data: https://fonts.gstatic.com; frame-src https://www.mercadopago.com https://mercadopago.com https://*.mercadopago.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+          "value": "default-src 'self'; worker-src 'self' blob:; manifest-src 'self'; script-src 'self' https://sdk.mercadopago.com https://http2.mlstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob: https://*.mlstatic.com https://*.mercadopago.com https://*.mercadolibre.com https://*.mercadolivre.com https://*.mercadolivre.com.br; connect-src 'self' ws: wss: https://api.mercadopago.com https://*.mercadopago.com https://*.mercadolibre.com https://*.mercadolivre.com https://*.mercadolivre.com.br; font-src 'self' data: https://fonts.gstatic.com; frame-src https://www.mercadopago.com https://mercadopago.com https://*.mercadopago.com https://www.mercadolibre.com https://*.mercadolibre.com https://www.mercadolivre.com.br https://*.mercadolivre.com.br https://*.mercadolivre.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
         }
       ]
     },

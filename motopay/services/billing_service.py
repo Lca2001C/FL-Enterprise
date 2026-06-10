@@ -19,7 +19,7 @@ from motopay.domain.enums import (
     PaymentMethodType,
     UserRole,
 )
-from motopay.domain.exceptions import ForbiddenError, NotFoundError
+from motopay.domain.exceptions import ForbiddenError, MotoPayError, NotFoundError
 from motopay.infrastructure.db.models import (
     Cliente,
     Cobranca,
@@ -383,13 +383,6 @@ def create_pix_charge_for_contract(
     if not op:
         raise NotFoundError("Operação não encontrada")
 
-    # Verifica credenciais MP antes de chamar a API (falha rápida e clara)
-    if not mp_credentials_complete(op) and mp_configured_for_operacao(op):
-        raise ForbiddenError(
-            "Credenciais Mercado Pago incompletas. Configure Access Token, Public Key e "
-            "Webhook Secret em Ajustes."
-        )
-
     today = _today()
     amounts = charge_amounts_for_contrato(ct, op, today)
 
@@ -650,10 +643,22 @@ def refund_cobranca_mercadopago(
     if refund_amount > remaining:
         raise ForbiddenError(f"Valor máximo estornável: {remaining}")
     client = MercadoPagoClient(access_token=ensure_valid_mp_token(db, op))
+    order_id = (cob.mercadopago_order_id or "").strip() or None
     try:
-        refund_data = client.create_refund(payment_id, amount=refund_amount)
+        if order_id:
+            # Estorno total: corpo vazio na Orders API quando não houve estorno parcial anterior.
+            if refund_amount == remaining and already <= 0:
+                refund_data = client.create_order_refund(order_id)
+            else:
+                refund_data = client.create_order_refund(
+                    order_id,
+                    payment_id=payment_id,
+                    amount=refund_amount,
+                )
+        else:
+            refund_data = client.create_refund(payment_id, amount=refund_amount)
     except MercadoPagoApiError as exc:
-        raise ForbiddenError(
+        raise MotoPayError(
             f"Falha ao estornar no Mercado Pago: {mercadopago_api_error_message(exc)}"
         ) from exc
     _, ev_id = handle_mercadopago_refund_confirmed(

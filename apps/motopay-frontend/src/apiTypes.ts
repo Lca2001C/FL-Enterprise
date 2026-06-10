@@ -189,6 +189,9 @@ export type PaymentsConfig = {
   mercadopago_webhook_ready?: boolean;
   webhook_url: string | null;
   mercadopago_oauth_user_id?: string | null;
+  mercadopago_public_key_saved?: string | null;
+  mercadopago_access_token_preview?: string | null;
+  mercadopago_webhook_secret_preview?: string | null;
 };
 
 export type ClienteMpCardOut = {
@@ -214,6 +217,7 @@ export type CardPaymentOut = {
   order_id: string;
   payment_id: string;
   status: string;
+  status_detail: string | null;
   requires_3ds: boolean;
   three_ds_info: ThreeDsInfoOut | null;
 };

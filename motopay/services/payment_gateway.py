@@ -6,7 +6,6 @@ from decimal import Decimal
 
 from sqlalchemy.orm import Session
 
-from motopay.config import get_settings
 from motopay.domain.enums import PaymentGateway
 from motopay.domain.exceptions import MotoPayError
 from motopay.infrastructure.db.models import Cliente, Contrato, Operacao
@@ -53,11 +52,6 @@ def _access_token(db: Session | None, op: Operacao) -> str:
     return mp_token_for_operacao(op)
 
 
-def _webhook_notification_url() -> str:
-    base = get_settings().api_public_base_url.rstrip("/")
-    return f"{base}/webhooks/mercadopago"
-
-
 def _build_mp_enrichment(
     *,
     op: Operacao,
@@ -70,10 +64,9 @@ def _build_mp_enrichment(
     Em caso de dados incompletos do cliente (sem endereço, etc.), os campos
     opcionais são omitidos mas os obrigatórios (items, payer) seguem.
     """
-    payer = build_mp_payer(
-        cliente, fallback_email=payer_email_for_mercadopago(cliente)
-    )
-    payer_email = payer.pop("email", payer_email_for_mercadopago(cliente))
+    payer_email = payer_email_for_mercadopago(cliente)
+    payer = build_mp_payer(cliente, fallback_email=payer_email)
+    payer.pop("email", None)
     items = build_items_for_contrato(
         contrato,
         moto=getattr(contrato, "moto", None) if contrato else None,
@@ -124,13 +117,8 @@ def create_pix_for_cobranca(
             payer_cpf=cliente.cpf,
             payment_method_id="pix",
             payment_method_type="bank_transfer",
-            payer_extra=extra["payer_extra"],  # type: ignore[arg-type]
             items=extra["items"],  # type: ignore[arg-type]
-            additional_info=extra["additional_info"],  # type: ignore[arg-type]
-            statement_descriptor=extra["statement_descriptor"],  # type: ignore[arg-type]
-            description=extra["description"],  # type: ignore[arg-type]
             device_id=device_id,
-            notification_url=_webhook_notification_url(),
         )
         return (
             order.order_id,
@@ -170,13 +158,8 @@ def create_pix_for_contrato(
             payer_cpf=cliente.cpf,
             payment_method_id="pix",
             payment_method_type="bank_transfer",
-            payer_extra=extra["payer_extra"],  # type: ignore[arg-type]
             items=extra["items"],  # type: ignore[arg-type]
-            additional_info=extra["additional_info"],  # type: ignore[arg-type]
-            statement_descriptor=extra["statement_descriptor"],  # type: ignore[arg-type]
-            description=extra["description"],  # type: ignore[arg-type]
             device_id=device_id,
-            notification_url=_webhook_notification_url(),
         )
         return (
             order.order_id,

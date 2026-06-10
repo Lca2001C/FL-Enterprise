@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import logging
 import re
 import uuid
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any, Literal
+
+_log = logging.getLogger(__name__)
 
 import httpx
 
@@ -77,21 +80,106 @@ def payer_email_for_mercadopago(cliente: Cliente | int) -> str:
     return f"cliente{cliente_id}@motopay.local"
 
 
+_STATUS_DETAIL_PT: dict[str, str] = {
+    "rejected_by_issuer": (
+        "Cartão recusado pelo banco emissor. No sandbox, use cartão de teste aprovado "
+        "(ex.: Visa 4509 9535 6623 3704, titular APRO, CVV 123)."
+    ),
+    "cc_rejected_insufficient_amount": "Saldo ou limite insuficiente no cartão.",
+    "cc_rejected_bad_filled_security_code": "CVV inválido.",
+    "cc_rejected_bad_filled_date": "Data de validade inválida.",
+    "cc_rejected_bad_filled_card_number": "Número do cartão inválido.",
+    "cc_rejected_call_for_authorize": "Pagamento requer autorização do banco — ligue para o emissor.",
+    "cc_rejected_card_disabled": "Cartão desabilitado.",
+    "cc_rejected_high_risk": "Pagamento recusado por análise de risco.",
+}
+
+
+def mercadopago_status_detail_message(status_detail: str) -> str:
+    code = (status_detail or "").strip()
+    if not code:
+        return "Pagamento recusado. Tente outro cartão ou forma de pagamento."
+    if code in _STATUS_DETAIL_PT:
+        return _STATUS_DETAIL_PT[code]
+    if code.startswith("cc_rejected"):
+        return "Pagamento recusado pelo emissor do cartão."
+    return f"Pagamento não aprovado ({code})."
+
+
+def _status_detail_from_mp_response(response: dict[str, Any]) -> str | None:
+    order_data = response.get("data")
+    if isinstance(order_data, dict):
+        payment = (order_data.get("transactions") or {}).get("payments")
+        if isinstance(payment, list) and payment:
+            detail = payment[0].get("status_detail")
+            if detail:
+                return str(detail)
+        detail = order_data.get("status_detail")
+        if detail:
+            return str(detail)
+    errors = response.get("errors")
+    if isinstance(errors, list) and errors:
+        first = errors[0]
+        if isinstance(first, dict):
+            details = first.get("details")
+            if isinstance(details, list):
+                for item in details:
+                    text = str(item)
+                    if ": " in text:
+                        return text.split(": ", 1)[1].strip()
+                    if text.strip():
+                        return text.strip()
+    return None
+
+
+def _order_data_from_mp_error(exc: MercadoPagoApiError) -> dict[str, Any] | None:
+    """Orders API returns HTTP 402 with failed order payload in `data`."""
+    if exc.status_code != 402:
+        return None
+    response = exc.response
+    if not isinstance(response, dict):
+        return None
+    order_data = response.get("data")
+    if isinstance(order_data, dict) and order_data.get("id"):
+        return order_data
+    return None
+
+
 def mercadopago_api_error_message(exc: MercadoPagoApiError) -> str:
     response = exc.response
     if isinstance(response, dict):
-        # Orders API retorna causa detalhada em "cause[].description"
+        status_detail = _status_detail_from_mp_response(response)
+        if status_detail:
+            return mercadopago_status_detail_message(status_detail)
+        # Orders API retorna causa detalhada em "cause[].description" e "cause[].data" (campo rejeitado)
         cause = response.get("cause")
         if isinstance(cause, list) and cause:
             first = cause[0]
-            if isinstance(first, dict) and first.get("description"):
-                return str(first["description"])
+            if isinstance(first, dict):
+                desc = str(first.get("description") or "")
+                data_field = str(first.get("data") or "")
+                if desc and data_field:
+                    return f"{desc} (campo: {data_field})"
+                if desc:
+                    return desc
         # Payments API retorna lista em "errors[].message"
         errors = response.get("errors")
         if isinstance(errors, list) and errors:
             first = errors[0]
-            if isinstance(first, dict) and first.get("message"):
-                return str(first["message"])
+            if isinstance(first, dict):
+                details = first.get("details")
+                if isinstance(details, list):
+                    for item in details:
+                        text = str(item)
+                        if "payment_method.token" in text and "length must be" in text:
+                            return (
+                                "Token do cartão inválido. Se estiver usando cartão salvo, "
+                                "informe o CVV no formulário e tente novamente."
+                            )
+                if first.get("message"):
+                    return str(first["message"])
+        if response.get("error") == "resource not found":
+            return "Recurso não encontrado no Mercado Pago. Verifique se o pagamento foi criado pela API de Orders."
         message = response.get("message")
         if message:
             return str(message)
@@ -274,6 +362,7 @@ class MercadoPagoClient:
                 body = r.json()
             except Exception:
                 body = r.text
+            _log.warning("MercadoPago API error %s %s: %s", method, path, r.text[:2000])
             raise MercadoPagoApiError(r.status_code, r.text, body)
         if not r.content:
             return {}
@@ -300,14 +389,16 @@ class MercadoPagoClient:
         statement_descriptor: str | None = None,
         device_id: str | None = None,
         description: str | None = None,
-        notification_url: str | None = None,
     ) -> MercadoPagoOrderResult:
-        # Payer: começa do extra (first_name, last_name, phone, identification)
-        payer: dict[str, Any] = dict(payer_extra or {})
+        # Payer: Orders API v2 aceita apenas email, identification e customer_id.
+        # first_name/last_name pertencem à Payments API e causam "Properties not supported".
+        payer: dict[str, Any] = {}
         payer["email"] = payer_email
         cpf = _normalize_cpf(payer_cpf)
         if cpf:
             payer["identification"] = {"type": "CPF", "number": cpf}
+        elif payer_extra and isinstance(payer_extra.get("identification"), dict):
+            payer["identification"] = payer_extra["identification"]
         if customer_id:
             payer["customer_id"] = customer_id
 
@@ -316,7 +407,8 @@ class MercadoPagoClient:
             pm["token"] = token
         if payment_method_type == "credit_card":
             pm["installments"] = installments
-        if statement_descriptor:
+        # statement_descriptor: válido em payment_method apenas para cartão (não PIX/bank_transfer)
+        if statement_descriptor and payment_method_type in ("credit_card", "debit_card"):
             pm["statement_descriptor"] = statement_descriptor
 
         payload: dict[str, Any] = {
@@ -338,16 +430,20 @@ class MercadoPagoClient:
             payload["items"] = items
         if additional_info:
             payload["additional_info"] = additional_info
-        if notification_url:
-            payload["notification_url"] = notification_url
 
-        data = self._request(
-            "POST",
-            "/v1/orders",
-            json=payload,
-            idempotency_key=str(uuid.uuid4()),
-            device_id=device_id,
-        )
+        try:
+            data = self._request(
+                "POST",
+                "/v1/orders",
+                json=payload,
+                idempotency_key=str(uuid.uuid4()),
+                device_id=device_id,
+            )
+        except MercadoPagoApiError as exc:
+            order_data = _order_data_from_mp_error(exc)
+            if order_data is not None:
+                return parse_order_response(order_data)
+            raise
         return parse_order_response(data)
 
     def get_order(self, order_id: str) -> dict[str, Any]:
@@ -393,6 +489,29 @@ class MercadoPagoClient:
             f"/v1/customers/{customer_id}/cards",
             json={"token": token},
         )
+
+    def create_saved_card_payment_token(
+        self,
+        *,
+        customer_id: str,
+        card_id: str,
+        security_code: str,
+    ) -> str:
+        """Gera token de pagamento a partir do CVV de um cartão salvo no customer MP."""
+        data = self._request(
+            "POST",
+            "/v1/card_tokens",
+            json={
+                "customer_id": customer_id,
+                "card_id": card_id,
+                "security_code": security_code,
+            },
+            idempotency_key=str(uuid.uuid4()),
+        )
+        token_id = data.get("id")
+        if not token_id:
+            raise MercadoPagoApiError(422, "card token missing id", data)
+        return str(token_id)
 
     def list_cards(self, customer_id: str) -> list[dict[str, Any]]:
         data = self._request("GET", f"/v1/customers/{customer_id}/cards", timeout=30.0)
@@ -472,7 +591,47 @@ class MercadoPagoClient:
     def get_chargeback(self, chargeback_id: str) -> dict[str, Any]:
         return self._request("GET", f"/v1/chargebacks/{chargeback_id}", timeout=30.0)
 
-    def create_refund(self, payment_id: str, *, amount: Decimal | None = None) -> dict[str, Any]:
+    def create_order_refund(
+        self,
+        order_id: str,
+        *,
+        payment_id: str | None = None,
+        amount: Decimal | None = None,
+    ) -> dict[str, Any]:
+        """Estorno via Orders API (pagamentos PAY01/ORD01). Corpo vazio = estorno total."""
+        payload: dict[str, Any] = {}
+        if amount is not None and payment_id:
+            payload = {
+                "transactions": [
+                    {
+                        "id": payment_id,
+                        "amount": _format_amount(amount),
+                    }
+                ]
+            }
+        return self._request(
+            "POST",
+            f"/v1/orders/{order_id}/refund",
+            json=payload,
+            idempotency_key=str(uuid.uuid4()),
+            timeout=60.0,
+        )
+
+    def create_refund(
+        self,
+        payment_id: str,
+        *,
+        amount: Decimal | None = None,
+        order_id: str | None = None,
+    ) -> dict[str, Any]:
+        if order_id or str(payment_id).upper().startswith("PAY01"):
+            if not order_id:
+                raise ValueError("order_id é obrigatório para estornar pagamentos da Orders API")
+            return self.create_order_refund(
+                order_id,
+                payment_id=payment_id,
+                amount=amount,
+            )
         payload: dict[str, Any] = {}
         if amount is not None:
             payload["amount"] = float(amount)

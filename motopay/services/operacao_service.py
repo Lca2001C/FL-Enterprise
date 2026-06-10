@@ -4,7 +4,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from motopay.domain.enums import UserRole
-from motopay.domain.exceptions import ConflictError, ForbiddenError
+from motopay.domain.exceptions import ConflictError, ForbiddenError, MotoPayError, NotFoundError
 from motopay.infrastructure.db.models import Operacao, Usuario
 from motopay.infrastructure.telegram.templates import (
     list_custom_message_triggers,
@@ -158,6 +158,37 @@ def preview_telegram_template(
     return render_template(key, overrides=overrides, **ctx)
 
 
+def _validate_owner_notify_settings(op: Operacao) -> None:
+    if op.telegram_owner_notify_enabled and not (op.telegram_owner_notify_id or "").strip():
+        raise MotoPayError("Informe o Telegram ID para ativar notificações ao dono.")
+
+
+def send_telegram_owner_notify_test(db: Session, operacao_id: int) -> None:
+    from motopay.infrastructure.telegram.notify import (
+        TelegramPermanentError,
+        send_telegram_text,
+    )
+
+    op = db.get(Operacao, operacao_id)
+    if not op:
+        raise NotFoundError("Operação não encontrada")
+    _validate_owner_notify_settings(op)
+    if not op.telegram_owner_notify_enabled:
+        raise MotoPayError("Ative as notificações ao dono antes de enviar o teste.")
+    chat_id = (op.telegram_owner_notify_id or "").strip()
+    try:
+        send_telegram_text(
+            chat_id=chat_id,
+            text=(
+                "✅ Teste MotoPay\n"
+                f"Operação: {op.nome}\n"
+                "Notificações ao dono estão configuradas corretamente."
+            ),
+        )
+    except TelegramPermanentError as exc:
+        raise MotoPayError(f"Não foi possível enviar ao Telegram: {exc}") from exc
+
+
 def _apply_dono_restrictions(body: OperacaoUpdate) -> OperacaoUpdate:
     return OperacaoUpdate(
         multa_fixa_percentual=body.multa_fixa_percentual,
@@ -175,14 +206,13 @@ def _apply_dono_restrictions(body: OperacaoUpdate) -> OperacaoUpdate:
 def update_operacao(
     db: Session, operacao_id: int, body: OperacaoUpdate, *, role: UserRole | None = None
 ) -> OperacaoOut:
-    from motopay.domain.exceptions import NotFoundError
-
     if role == UserRole.DONO:
         body = _apply_dono_restrictions(body)
 
     op = db.get(Operacao, operacao_id)
     if not op:
         raise NotFoundError("Operação não encontrada")
+    fields_set = body.model_fields_set
     if body.nome is not None:
         op.nome = body.nome
     if body.multa_fixa_percentual is not None:
@@ -202,10 +232,11 @@ def update_operacao(
         op.telegram_bot_menu_buttons = validate_bot_menu_buttons(
             [b.model_dump() for b in body.telegram_bot_menu_buttons]
         )
-    if body.telegram_owner_notify_id is not None:
-        op.telegram_owner_notify_id = body.telegram_owner_notify_id.strip() or None
-    if body.telegram_owner_notify_enabled is not None:
-        op.telegram_owner_notify_enabled = body.telegram_owner_notify_enabled
+    if "telegram_owner_notify_id" in fields_set:
+        op.telegram_owner_notify_id = (body.telegram_owner_notify_id or "").strip() or None
+    if "telegram_owner_notify_enabled" in fields_set:
+        op.telegram_owner_notify_enabled = bool(body.telegram_owner_notify_enabled)
+    _validate_owner_notify_settings(op)
     if body.mercadopago_access_token is not None:
         op.mercadopago_access_token = body.mercadopago_access_token.strip() or None
     if body.mercadopago_public_key is not None:

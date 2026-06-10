@@ -1,4 +1,5 @@
 import { CardPayment } from '@mercadopago/sdk-react';
+import { buildMercadoPagoBrickPayer } from '../../utils/mercadopagoPayer';
 
 type Payer = {
   email: string;
@@ -13,8 +14,8 @@ type Props = {
 export default function CardBrickSave({ payer, onToken }: Props) {
   return (
     <CardPayment
-      initialization={{ amount: 1, payer }}
-      customization={{ visual: { style: { theme: 'dark' } } }}
+      initialization={{ amount: 1, payer: buildMercadoPagoBrickPayer(payer) }}
+      customization={{}}
       onSubmit={async (formData) => {
         if (formData.token) await onToken(formData.token);
       }}

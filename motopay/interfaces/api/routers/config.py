@@ -21,6 +21,16 @@ from motopay.interfaces.api.schemas import PaymentsConfigOut
 router = APIRouter(prefix="/config", tags=["config"])
 
 
+def _mask_secret(value: str | None) -> str | None:
+    """Mascara um segredo para exibição (confirma persistência sem expor o valor)."""
+    v = (value or "").strip()
+    if not v:
+        return None
+    if len(v) <= 8:
+        return "••••"
+    return f"{v[:8]}…{v[-4:]}"
+
+
 @router.get("/payments", response_model=PaymentsConfigOut)
 def payments_config(
     db: Session = Depends(get_db),
@@ -61,5 +71,13 @@ def payments_config(
         webhook_url=f"{base}/webhooks/mercadopago",
         mercadopago_oauth_user_id=(
             op.mercadopago_oauth_user_id if op else None
+        ),
+        # Valores salvos NA OPERAÇÃO (não fallback global) para a tela de Ajustes confirmar persistência
+        mercadopago_public_key_saved=(op.mercadopago_public_key if op else None),
+        mercadopago_access_token_preview=_mask_secret(
+            op.mercadopago_access_token if op else None
+        ),
+        mercadopago_webhook_secret_preview=_mask_secret(
+            op.mercadopago_webhook_secret if op else None
         ),
     )

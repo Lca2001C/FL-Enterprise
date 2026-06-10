@@ -1,4 +1,5 @@
 import axios, { type AxiosInstance, type InternalAxiosRequestConfig } from 'axios';
+import { sanitizeApiBase } from './utils/apiBase';
 
 export function normalizeBase(url: string): string {
   return url.replace(/\/$/, '');
@@ -24,7 +25,7 @@ export function createApiClient(
   getEffectiveOperacaoId: () => number | null,
   callbacks?: ApiClientCallbacks
 ): AxiosInstance {
-  const client = axios.create({ baseURL: normalizeBase(baseURL) });
+  const client = axios.create({ baseURL: sanitizeApiBase(normalizeBase(baseURL)) });
   let refreshPromise: Promise<string | null> | null = null;
 
   const doRefresh = async (): Promise<string | null> => {
@@ -33,7 +34,7 @@ export function createApiClient(
     if (!rt) return null;
     try {
       const res = await axios.post<{ access_token: string; refresh_token: string }>(
-        `${normalizeBase(baseURL)}/api/v1/auth/refresh`,
+        `${sanitizeApiBase(normalizeBase(baseURL))}/api/v1/auth/refresh`,
         { refresh_token: rt }
       );
       callbacks.onTokenRefreshed(res.data.access_token, res.data.refresh_token);
@@ -45,6 +46,10 @@ export function createApiClient(
   };
 
   client.interceptors.request.use((config) => {
+    if (config.baseURL) {
+      config.baseURL = sanitizeApiBase(normalizeBase(config.baseURL));
+    }
+
     const t = getToken();
     if (t) {
       config.headers.Authorization = `Bearer ${t}`;

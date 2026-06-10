@@ -1,61 +1,114 @@
-import { Payment } from '@mercadopago/sdk-react';
-import type { IPaymentBrickCustomization } from '@mercadopago/sdk-react/esm/bricks/payment/type';
-
-type Payer = {
-  email: string;
-  identification: { type: string; number: string };
-  customerId?: string;
-};
-
-type Props = {
-  amount: number;
-  payer: Payer;
-  mode: 'credit_card' | 'debit_card';
-  savedMpCardId?: string;
-  onSubmit: (data: {
-    token: string;
-    payment_method_id: string;
-    installments: number;
-  }) => void | Promise<void>;
-};
-
-export default function PaymentBrickCheckout({
-  amount,
-  payer,
-  mode,
-  savedMpCardId,
-  onSubmit,
-}: Props) {
-  const customization: IPaymentBrickCustomization = {
-    paymentMethods: {
-      creditCard: mode === 'credit_card' ? 'all' : [],
-      debitCard: mode === 'debit_card' ? 'all' : [],
-      maxInstallments: mode === 'credit_card' ? 12 : 1,
-    },
-  };
-
-  const initialization: {
-    amount: number;
-    payer: Payer & { cardsIds?: string[] };
-  } = {
-    amount,
-    payer: { ...payer },
-  };
-  if (savedMpCardId && payer.customerId) {
-    initialization.payer.cardsIds = [savedMpCardId];
-  }
-
-  return (
-    <Payment
-      initialization={initialization}
-      customization={customization}
-      onSubmit={async ({ formData }) => {
-        const raw = formData as unknown as Record<string, unknown>;
-        const token = String(raw.token ?? '');
-        const paymentMethodId = String(raw.payment_method_id ?? '');
-        const installments = Number(raw.installments ?? 1);
-        await onSubmit({ token, payment_method_id: paymentMethodId, installments });
-      }}
-    />
-  );
-}
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Payment } from '@mercadopago/sdk-react';
+import type { IPaymentBrickCustomization } from '@mercadopago/sdk-react/esm/bricks/payment/type';
+import {
+  buildMercadoPagoBrickPayer,
+  normalizeBrickAmount,
+  type MercadoPagoBrickPayer,
+} from '../../utils/mercadopagoPayer';
+import { getMercadoPagoSdkPublicKey, subscribeMercadoPagoSdkReady } from './init';
+
+type Payer = Omit<MercadoPagoBrickPayer, 'entityType' | 'cardsIds'> & {
+  identification: { type: string; number: string };
+};
+
+type SubmitPayload = {
+  token: string;
+  payment_method_id: string;
+  installments: number;
+};
+
+type Props = {
+  amount: number | string;
+  payer: Payer;
+  mode: 'credit_card' | 'debit_card';
+  savedMpCardId?: string;
+  onSubmit: (data: SubmitPayload) => void | Promise<void>;
+};
+
+function PaymentBrickCheckoutInner({
+  amount,
+  payer,
+  mode,
+  savedMpCardId,
+  onSubmit,
+}: Props) {
+  const [sdkReady, setSdkReady] = useState(getMercadoPagoSdkPublicKey);
+  const onSubmitRef = useRef(onSubmit);
+  onSubmitRef.current = onSubmit;
+
+  const brickAmount = useMemo(() => normalizeBrickAmount(amount), [amount]);
+  const payerEmail = payer.email;
+  const payerIdType = payer.identification.type;
+  const payerIdNumber = payer.identification.number;
+  const customerId = payer.customerId;
+
+  useEffect(() => subscribeMercadoPagoSdkReady(() => setSdkReady(true)), []);
+
+  const initialization = useMemo(
+    () => ({
+      amount: brickAmount,
+      payer: buildMercadoPagoBrickPayer({
+        email: payerEmail,
+        identification: { type: payerIdType, number: payerIdNumber },
+        customerId,
+        cardsIds:
+          savedMpCardId && customerId ? [savedMpCardId] : undefined,
+      }),
+    }),
+    [brickAmount, payerEmail, payerIdType, payerIdNumber, customerId, savedMpCardId]
+  );
+
+  const customization: IPaymentBrickCustomization = useMemo(
+    () => ({
+      paymentMethods: {
+        creditCard: mode === 'credit_card' ? 'all' : [],
+        debitCard: mode === 'debit_card' ? 'all' : [],
+        maxInstallments: mode === 'credit_card' ? 12 : 1,
+      },
+    }),
+    [mode]
+  );
+
+  const handleSubmit = useCallback(async ({ formData }: { formData: unknown }) => {
+    const raw = formData as Record<string, unknown>;
+    const token = String(raw.token ?? '');
+    const paymentMethodId = String(raw.payment_method_id ?? '');
+    const installments = Number(raw.installments ?? 1);
+    await onSubmitRef.current({
+      token,
+      payment_method_id: paymentMethodId,
+      installments,
+    });
+  }, []);
+
+  if (!sdkReady) {
+    return (
+      <p className="text-muted mp-brick-status">
+        Carregando Mercado Pago…
+      </p>
+    );
+  }
+
+  if (brickAmount <= 0) {
+    return (
+      <p className="text-muted mp-brick-status">
+        Valor inválido para pagamento.
+      </p>
+    );
+  }
+
+  return (
+    <div className="mp-brick-container">
+      <Payment
+        locale="pt-BR"
+        initialization={initialization}
+        customization={customization}
+        onSubmit={handleSubmit}
+      />
+    </div>
+  );
+}
+
+const PaymentBrickCheckout = memo(PaymentBrickCheckoutInner);
+export default PaymentBrickCheckout;

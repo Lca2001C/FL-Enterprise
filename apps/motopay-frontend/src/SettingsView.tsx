@@ -5,6 +5,7 @@ import {
   BOT_MENU_BUILTIN_COMMANDS,
   isBuiltinBotMenuCommand,
   type OperacaoConfig,
+  type PaymentsConfig,
   type TelegramBotMenuButton,
   type TelegramTemplateMeta,
   type TelegramTemplatePreviewOut,
@@ -74,21 +75,14 @@ const SettingsView = () => {
   const [mpToken, setMpToken] = useState('');
   const [mpPublicKey, setMpPublicKey] = useState('');
   const [mpWebhookSecret, setMpWebhookSecret] = useState('');
-  const [paymentsConfig, setPaymentsConfig] = useState<{
-    credentials_mode: string;
-    webhook_url: string | null;
-    mercadopago_credentials_complete: boolean;
-    mercadopago_oauth_available?: boolean;
-    mercadopago_oauth_connected?: boolean;
-    mercadopago_webhook_ready?: boolean;
-    mercadopago_oauth_user_id?: string | null;
-  } | null>(null);
+  const [paymentsConfig, setPaymentsConfig] = useState<PaymentsConfig | null>(null);
   const [webhookCopied, setWebhookCopied] = useState(false);
   const [oauthLoading, setOauthLoading] = useState(false);
   const [disconnectLoading, setDisconnectLoading] = useState(false);
   const [templateMeta, setTemplateMeta] = useState<TelegramTemplateMeta[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [testingOwnerNotify, setTestingOwnerNotify] = useState(false);
   const [previewing, setPreviewing] = useState<string | null>(null);
   const [previewResult, setPreviewResult] = useState<{ key: string; text: string } | null>(null);
   const [error, setError] = useState('');
@@ -107,14 +101,10 @@ const SettingsView = () => {
     try {
       const params =
         isAdmin && adminTargetId != null ? { operacao_id: adminTargetId } : undefined;
-      const r = await api.get<{
-        credentials_mode: string;
-        webhook_url: string | null;
-        mercadopago_credentials_complete: boolean;
-        mercadopago_oauth_available?: boolean;
-        mercadopago_oauth_connected?: boolean;
-      }>('/api/v1/config/payments', { params });
+      const r = await api.get<PaymentsConfig>('/api/v1/config/payments', { params });
       setPaymentsConfig(r.data);
+      // Public Key não é segredo: preenche o campo com o valor salvo para confirmar persistência.
+      setMpPublicKey(r.data.mercadopago_public_key_saved ?? '');
     } catch {
       setPaymentsConfig(null);
     }
@@ -264,8 +254,37 @@ const SettingsView = () => {
     };
   };
 
+  const testOwnerNotify = async () => {
+    if (config.telegram_owner_notify_enabled && !(config.telegram_owner_notify_id ?? '').trim()) {
+      setError('Informe seu Telegram ID antes de enviar o teste.');
+      return;
+    }
+    setTestingOwnerNotify(true);
+    setError('');
+    try {
+      if (isAdmin) {
+        if (adminTargetId == null) {
+          setError('Selecione uma operação no escopo.');
+          return;
+        }
+        await api.post(`/api/v1/operacoes/${adminTargetId}/telegram-owner-notify-test`);
+      } else {
+        await api.post('/api/v1/operacoes/me/telegram-owner-notify-test');
+      }
+      showToast('Mensagem de teste enviada ao seu Telegram.');
+    } catch (e) {
+      setError(parseApiError(e, 'Não foi possível enviar o teste. Salve as alterações e tente novamente.'));
+    } finally {
+      setTestingOwnerNotify(false);
+    }
+  };
+
   const handleSave = async (e: FormEvent) => {
     e.preventDefault();
+    if (config.telegram_owner_notify_enabled && !(config.telegram_owner_notify_id ?? '').trim()) {
+      setError('Informe seu Telegram ID para ativar notificações ao dono.');
+      return;
+    }
     setSaving(true);
     setError('');
     try {
@@ -273,7 +292,7 @@ const SettingsView = () => {
       let saved: OperacaoConfig;
       if (isAdmin) {
         if (adminTargetId == null) {
-          showToast('Selecione uma operação no topo da página.');
+          setError('Selecione uma operação no topo da página.');
           return;
         }
         const r = await api.patch<OperacaoConfig>(`/api/v1/operacoes/${adminTargetId}`, body);
@@ -283,6 +302,10 @@ const SettingsView = () => {
         saved = r.data;
       }
       setConfig(applyOperacaoConfig(saved));
+      // Segredos voltam a ficar em branco (mostrados via preview mascarado).
+      // A Public Key é repopulada por fetchPaymentsConfig com o valor salvo.
+      setMpToken('');
+      setMpWebhookSecret('');
       await fetchPaymentsConfig();
       showToast('Configurações salvas com sucesso!');
     } catch (e) {
@@ -499,9 +522,18 @@ const SettingsView = () => {
                   className="input-field"
                   value={mpToken}
                   onChange={(e) => setMpToken(e.target.value)}
-                  placeholder="Deixe em branco para manter o atual"
+                  placeholder={
+                    paymentsConfig?.mercadopago_access_token_preview
+                      ? 'Deixe em branco para manter o atual'
+                      : 'APP_USR-… (cole o Access Token)'
+                  }
                   autoComplete="off"
                 />
+                {paymentsConfig?.mercadopago_access_token_preview && (
+                  <small className="mp-saved-hint">
+                    <CheckCircle size={12} /> Salvo: {paymentsConfig.mercadopago_access_token_preview}
+                  </small>
+                )}
               </div>
               <div className="input-group">
                 <label className="input-label">Public Key</label>
@@ -513,6 +545,11 @@ const SettingsView = () => {
                   placeholder="APP_USR-… ou TEST-…"
                   autoComplete="off"
                 />
+                {paymentsConfig?.mercadopago_public_key_saved && (
+                  <small className="mp-saved-hint">
+                    <CheckCircle size={12} /> Salvo nesta operação
+                  </small>
+                )}
               </div>
               <div className="input-group">
                 <label className="input-label">Webhook Secret</label>
@@ -521,9 +558,18 @@ const SettingsView = () => {
                   className="input-field"
                   value={mpWebhookSecret}
                   onChange={(e) => setMpWebhookSecret(e.target.value)}
-                  placeholder="Secret do painel MP (evento Order)"
+                  placeholder={
+                    paymentsConfig?.mercadopago_webhook_secret_preview
+                      ? 'Deixe em branco para manter o atual'
+                      : 'Secret do painel MP (evento Order)'
+                  }
                   autoComplete="off"
                 />
+                {paymentsConfig?.mercadopago_webhook_secret_preview && (
+                  <small className="mp-saved-hint">
+                    <CheckCircle size={12} /> Salvo: {paymentsConfig.mercadopago_webhook_secret_preview}
+                  </small>
+                )}
                 <small className="text-muted">
                   Obtido no painel MP após registrar a URL de webhook acima.
                 </small>
@@ -869,6 +915,23 @@ const SettingsView = () => {
                   }
                 />
               </div>
+              <div style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  disabled={
+                    testingOwnerNotify ||
+                    !config.telegram_owner_notify_enabled ||
+                    !(config.telegram_owner_notify_id ?? '').trim()
+                  }
+                  onClick={() => void testOwnerNotify()}
+                >
+                  {testingOwnerNotify ? 'Enviando teste…' : 'Enviar teste no Telegram'}
+                </button>
+                <span className="text-muted" style={{ fontSize: '0.8rem', alignSelf: 'center' }}>
+                  Salve antes se acabou de alterar o ID.
+                </span>
+              </div>
             </div>
           </div>
 
@@ -928,6 +991,15 @@ const SettingsView = () => {
           border: 1px solid var(--glass-border);
           border-radius: 10px;
           padding: 14px 16px;
+        }
+        .mp-saved-hint {
+          display: inline-flex;
+          align-items: center;
+          gap: 5px;
+          margin-top: 6px;
+          color: var(--accent, #10b981);
+          font-size: 0.78rem;
+          font-weight: 500;
         }
         .webhook-steps {
           margin: 0;

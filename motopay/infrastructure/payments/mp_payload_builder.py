@@ -223,19 +223,14 @@ def build_mp_item(
         raise MercadoPagoDataError("Quantidade do item deve ser maior que zero.")
     price = validate_amount(unit_price)
     price_str = str(price.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
-    total_str = str((price * quantity).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
-    item: dict[str, Any] = {
+    del item_id  # Orders API não aceita id em items[]
+    del category_id  # category_id é da Preferences API — inválido na Orders API v2
+    # Apenas campos documentados pela Orders API v2: title, quantity, unit_price
+    return {
         "title": title_clean[:255],
         "quantity": quantity,
         "unit_price": price_str,
-        "total_amount": total_str,
-        "category_id": category_id,
     }
-    if description:
-        item["description"] = description[:255]
-    if item_id:
-        item["id"] = item_id[:64]
-    return item
 
 
 def build_items_for_contrato(
@@ -280,16 +275,12 @@ def build_items_for_contrato(
 def build_additional_info(
     cliente: Cliente,
 ) -> dict[str, Any]:
-    """Monta additional_info compatível com Orders API v2.
+    """Orders API v1 não aceita additional_info no payload da order (payer/shipments rejeitados).
 
-    Campos suportados: payer.registration_date e shipments.receivers_address.*
-    O campo additional_info.items pertence à Payments API — não enviar na Orders API.
+    Mantido para compatibilidade de chamadas; retorna vazio até o MP documentar campos suportados.
     """
-    info: dict[str, Any] = {"payer": build_additional_info_payer(cliente)}
-    shipments = build_additional_info_shipments(cliente)
-    if shipments:
-        info["shipments"] = shipments
-    return info
+    del cliente
+    return {}
 
 
 # --- Helpers para preapproval (assinatura) ----------------------------------

@@ -146,6 +146,10 @@ fi
 
 ensure_docker_ready
 
+# Evita crash do BuildKit no Windows (grpc server closed) e builds paralelos pesados.
+export BUILDX_NO_DEFAULT_ATTESTATIONS=1
+export COMPOSE_BAKE=false
+
 if [[ "$ACTION" == "down" ]]; then
   "${COMPOSE[@]}" down
   echo "Stack parada."
@@ -204,7 +208,16 @@ ensure_port_free 8000 "API" api 8000
 ensure_port_free 5173 "Frontend" frontend 80
 
 echo "Subindo serviços: ${SERVICES[*]}"
+# Build do frontend isolado: falhas do BuildKit em bake paralelo não cancelam toda a stack.
+if printf '%s\n' "${SERVICES[@]}" | grep -qx frontend; then
+  echo "Build da imagem frontend..."
+  "${COMPOSE[@]}" build frontend
+fi
 "${COMPOSE[@]}" up --build -d "${SERVICES[@]}"
+# Nginx cacheia IP do serviço api no boot; recriar o front após a API evita 502 até o DNS expirar.
+if printf '%s\n' "${SERVICES[@]}" | grep -qx api && printf '%s\n' "${SERVICES[@]}" | grep -qx frontend; then
+  "${COMPOSE[@]}" up -d --force-recreate frontend 2>/dev/null || true
+fi
 
 echo "Aguardando API em http://localhost:8000/health ..."
 deadline=$((SECONDS + 120))

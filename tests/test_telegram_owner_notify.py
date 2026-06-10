@@ -10,7 +10,8 @@ from motopay.infrastructure.telegram.owner_notify import (
     notify_owner_contact_request,
 )
 from motopay.interfaces.api.schemas import OperacaoUpdate
-from motopay.services.operacao_service import update_operacao
+from motopay.domain.exceptions import MotoPayError
+from motopay.services.operacao_service import send_telegram_owner_notify_test, update_operacao
 
 
 def test_is_contact_request_from_text() -> None:
@@ -82,6 +83,43 @@ def test_notify_owner_sends_when_enabled(db_session, operacao_a) -> None:
         )
         send_mock.assert_called_once()
         assert send_mock.call_args.kwargs["chat_id"] == "888777666"
+
+
+def test_dono_cannot_enable_owner_notify_without_id(db_session, operacao_a) -> None:
+    import pytest
+
+    with pytest.raises(MotoPayError, match="Telegram ID"):
+        update_operacao(
+            db_session,
+            operacao_a.id,
+            OperacaoUpdate(telegram_owner_notify_enabled=True, telegram_owner_notify_id=None),
+            role=UserRole.DONO,
+        )
+
+
+def test_dono_can_clear_owner_notify_id(db_session, operacao_a) -> None:
+    operacao_a.telegram_owner_notify_enabled = False
+    operacao_a.telegram_owner_notify_id = "999"
+    db_session.add(operacao_a)
+    db_session.commit()
+    out = update_operacao(
+        db_session,
+        operacao_a.id,
+        OperacaoUpdate(telegram_owner_notify_id=None),
+        role=UserRole.DONO,
+    )
+    assert out.telegram_owner_notify_id is None
+
+
+def test_send_telegram_owner_notify_test_sends(db_session, operacao_a) -> None:
+    operacao_a.telegram_owner_notify_enabled = True
+    operacao_a.telegram_owner_notify_id = "555444333"
+    db_session.add(operacao_a)
+    db_session.commit()
+    with patch("motopay.services.operacao_service.send_telegram_text") as send_mock:
+        send_telegram_owner_notify_test(db_session, operacao_a.id)
+        send_mock.assert_called_once()
+        assert send_mock.call_args.kwargs["chat_id"] == "555444333"
 
 
 def test_dono_can_save_owner_notify_settings(db_session, operacao_a) -> None:

@@ -2,6 +2,17 @@ import { initMercadoPago } from '@mercadopago/sdk-react';
 
 let initialized = false;
 let currentPublicKey = '';
+const readyListeners = new Set<() => void>();
+
+function notifySdkReady(): void {
+  readyListeners.forEach((listener) => listener());
+}
+
+export function subscribeMercadoPagoSdkReady(listener: () => void): () => void {
+  readyListeners.add(listener);
+  if (initialized) listener();
+  return () => readyListeners.delete(listener);
+}
 
 export function initMercadoPagoSdk(publicKey: string): void {
   const key = publicKey.trim();
@@ -10,6 +21,7 @@ export function initMercadoPagoSdk(publicKey: string): void {
   initMercadoPago(key, { locale: 'pt-BR' });
   currentPublicKey = key;
   initialized = true;
+  notifySdkReady();
 }
 
 export function getMercadoPagoSdkPublicKey(): boolean {

@@ -108,9 +108,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   const setApiBase = (v: string) => {
-    const n = v.replace(/\/$/, '');
-    setApiBaseState(n);
-    localStorage.setItem(LS_API_BASE, n);
+    const resolved = resolveApiBase(import.meta.env.VITE_API_BASE_URL as string | undefined, v);
+    setApiBaseState(resolved);
+    localStorage.setItem(LS_API_BASE, resolved);
   };
 
   const setOperacaoScopeId = (id: number | null) => {
@@ -223,13 +223,21 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, [refreshOperacoes]);
 
   useEffect(() => {
+    const stored = localStorage.getItem(LS_API_BASE);
     const resolved = defaultApiBase();
     setApiBaseState(resolved);
-    localStorage.setItem(LS_API_BASE, resolved);
+    if (stored !== resolved) {
+      localStorage.setItem(LS_API_BASE, resolved);
+    }
   }, []);
 
   useEffect(() => {
-    localStorage.setItem(LS_API_BASE, apiBase);
+    const safe = resolveApiBase(import.meta.env.VITE_API_BASE_URL as string | undefined, apiBase);
+    if (safe !== apiBase) {
+      setApiBaseState(safe);
+      return;
+    }
+    localStorage.setItem(LS_API_BASE, safe);
   }, [apiBase]);
 
   const login = async (email: string, password: string) => {

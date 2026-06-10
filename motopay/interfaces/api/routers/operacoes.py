@@ -34,6 +34,7 @@ from motopay.services.operacao_service import (
     list_operacoes,
     operacao_to_out,
     preview_telegram_template,
+    send_telegram_owner_notify_test,
     update_operacao,
 )
 
@@ -155,6 +156,29 @@ def update_my_op(
     if not user.operacao_id:
         raise ForbiddenError("Usuário sem operação vinculada")
     return update_operacao(db, user.operacao_id, body, role=user.role)
+
+
+@router.post("/me/telegram-owner-notify-test")
+def test_my_owner_notify(
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_settings_access),
+) -> dict[str, bool]:
+    if not user.operacao_id:
+        raise ForbiddenError("Usuário sem operação vinculada")
+    send_telegram_owner_notify_test(db, user.operacao_id)
+    return {"ok": True}
+
+
+@router.post("/{operacao_id:int}/telegram-owner-notify-test")
+def test_owner_notify_admin(
+    operacao_id: int,
+    db: Session = Depends(get_db),
+    _: CurrentUser = Depends(require_admin),
+) -> dict[str, bool]:
+    if not get_operacao_or_404(db, operacao_id):
+        raise NotFoundError("Operação não encontrada")
+    send_telegram_owner_notify_test(db, operacao_id)
+    return {"ok": True}
 
 
 @router.get("/{operacao_id:int}", response_model=OperacaoOut)

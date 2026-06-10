@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Copy, Check, CreditCard } from 'lucide-react';
 import type { AxiosInstance } from 'axios';
 import PaymentBrickCheckout from '../integrations/mercadopago/PaymentBrickCheckout';
@@ -14,6 +14,7 @@ import type {
 import { formatBrl } from '../utils/format';
 import { parseApiError } from '../utils/apiError';
 import { mercadoPagoPayerEmail } from '../utils/mercadopagoPayer';
+import { formatMercadoPagoStatusDetail } from '../utils/mercadopagoStatusDetail';
 
 type PaymentMethodKind = 'pix' | 'credit_card' | 'debit_card';
 
@@ -50,10 +51,9 @@ export default function PayCobrancaModal({
   const [payLoading, setPayLoading] = useState(false);
   const [cardResult, setCardResult] = useState<CardPaymentOut | null>(null);
   const [copied, setCopied] = useState(false);
-  const [credentialsMode, setCredentialsMode] = useState<'test' | 'production'>('production');
+  const [credentialsMode, setCredentialsMode] = useState<'test' | 'production' | null>(null);
   const defaultCard = savedCards.find((c) => c.is_default) ?? savedCards[0];
   const [selectedSavedId, setSelectedSavedId] = useState<number | null>(null);
-  const [cardChoiceInit, setCardChoiceInit] = useState(false);
   const [polling, setPolling] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -67,13 +67,6 @@ export default function PayCobrancaModal({
       }
     })();
   }, [api]);
-
-  useEffect(() => {
-    if (!cardChoiceInit && defaultCard && method !== 'pix') {
-      setSelectedSavedId(defaultCard.id);
-      setCardChoiceInit(true);
-    }
-  }, [cardChoiceInit, defaultCard, method]);
 
   useEffect(() => {
     return () => {
@@ -100,15 +93,24 @@ export default function PayCobrancaModal({
     }, 4000);
   };
 
-  const cpfDigits = (cpf: string) => cpf.replace(/\D/g, '');
-  const payerEmail = mercadoPagoPayerEmail(cliente.id, credentialsMode, cliente.email);
-  const payer = {
-    email: payerEmail,
-    identification: { type: 'CPF', number: cpfDigits(cliente.cpf) },
-    ...(cliente.mercadopago_customer_id
-      ? { customerId: cliente.mercadopago_customer_id }
-      : {}),
-  };
+  const cpfDigits = useMemo(() => cliente.cpf.replace(/\D/g, ''), [cliente.cpf]);
+  const payer = useMemo(() => {
+    const mode = credentialsMode ?? 'production';
+    return {
+      email: mercadoPagoPayerEmail(cliente.id, mode, cliente.email),
+      identification: { type: 'CPF', number: cpfDigits },
+      ...(cliente.mercadopago_customer_id
+        ? { customerId: cliente.mercadopago_customer_id }
+        : {}),
+    };
+  }, [
+    cliente.cpf,
+    cliente.email,
+    cliente.id,
+    cliente.mercadopago_customer_id,
+    cpfDigits,
+    credentialsMode,
+  ]);
 
   const selectedCard = savedCards.find((c) => c.id === selectedSavedId);
 
@@ -145,38 +147,52 @@ export default function PayCobrancaModal({
     if (!pollRef.current) startPixPolling();
   };
 
-  const payWithCard = async (data: {
-    token: string;
-    payment_method_id: string;
-    installments: number;
-  }) => {
-    setPayLoading(true);
-    onError('');
-    try {
-      const deviceId = await ensureMercadoPagoDeviceId();
-      const body: Record<string, unknown> = {
-        token: data.token,
-        payment_method_id: data.payment_method_id,
-        payment_method_kind: method,
-        installments: data.installments,
-        device_id: deviceId,
-      };
-      if (selectedSavedId != null) {
-        body.saved_card_id = selectedSavedId;
+  const methodRef = useRef(method);
+  methodRef.current = method;
+  const selectedSavedIdRef = useRef(selectedSavedId);
+  selectedSavedIdRef.current = selectedSavedId;
+
+  const payWithCard = useCallback(
+    async (data: {
+      token: string;
+      payment_method_id: string;
+      installments: number;
+    }) => {
+      setPayLoading(true);
+      onError('');
+      try {
+        const deviceId = await ensureMercadoPagoDeviceId();
+        const body: Record<string, unknown> = {
+          token: data.token,
+          payment_method_id: data.payment_method_id,
+          payment_method_kind: methodRef.current,
+          installments: data.installments,
+          device_id: deviceId,
+        };
+        const savedId = selectedSavedIdRef.current;
+        if (savedId != null) {
+          body.saved_card_id = savedId;
+        }
+        const r = await api.post<CardPaymentOut>(`/api/v1/cobrancas/${cob.id}/card`, body);
+        if (r.data.cobranca.status === 'recebido') {
+          setCardResult(r.data);
+          onPaid();
+        } else if (r.data.requires_3ds && r.data.payment_id) {
+          setCardResult(r.data);
+        } else if (r.data.status === 'failed') {
+          setCardResult(null);
+          onError(formatMercadoPagoStatusDetail(r.data.status_detail));
+        } else {
+          setCardResult(r.data);
+        }
+      } catch (e) {
+        onError(parseApiError(e, 'Erro ao processar cartão'));
+      } finally {
+        setPayLoading(false);
       }
-      const r = await api.post<CardPaymentOut>(`/api/v1/cobrancas/${cob.id}/card`, body);
-      setCardResult(r.data);
-      if (r.data.cobranca.status === 'recebido') {
-        onPaid();
-      } else if (r.data.requires_3ds && r.data.payment_id) {
-        /* Status Screen assume confirmação */
-      }
-    } catch (e) {
-      onError(parseApiError(e, 'Erro ao processar cartão'));
-    } finally {
-      setPayLoading(false);
-    }
-  };
+    },
+    [api, cob.id, onError, onPaid]
+  );
 
   const on3dsComplete = async () => {
     try {
@@ -188,13 +204,17 @@ export default function PayCobrancaModal({
   };
 
   const showBrick =
+    credentialsMode != null &&
     (method === 'credit_card' || method === 'debit_card') &&
     !cardResult?.requires_3ds &&
     !(cardResult && cardResult.cobranca.status === 'recebido');
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal glass" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 520 }}>
+      <div
+        className="modal glass modal--payment"
+        onClick={(e) => e.stopPropagation()}
+      >
         <h3>Pagar cobrança #{cob.id}</h3>
         <p className="text-muted">Valor: {formatBrl(displayValor)}</p>
 
@@ -206,8 +226,14 @@ export default function PayCobrancaModal({
               className={`tab ${method === m ? 'active' : ''}`}
               onClick={() => {
                 setMethod(m);
-                setSelectedSavedId(null);
                 setCardResult(null);
+                if (m === 'pix') {
+                  setSelectedSavedId(null);
+                } else if (defaultCard) {
+                  setSelectedSavedId(defaultCard.id);
+                } else {
+                  setSelectedSavedId(null);
+                }
               }}
             >
               {METHOD_LABELS[m]}

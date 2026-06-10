@@ -9,6 +9,7 @@ import { ensureMercadoPagoDeviceId } from './integrations/mercadopago/deviceId';
 import type { CardPaymentOut, ClienteMpCardOut, PayerPortalOut } from './apiTypes';
 import { formatBrl, formatDate } from './utils/format';
 import { parseApiError } from './utils/apiError';
+import { formatMercadoPagoStatusDetail } from './utils/mercadopagoStatusDetail';
 import { mercadoPagoPayerEmail } from './utils/mercadopagoPayer';
 import { resolveApiBase } from './utils/apiBase';
 import ErrorBanner from './components/ErrorBanner';
@@ -213,9 +214,16 @@ export default function PublicPayView() {
       };
       if (selectedSavedId != null) body.saved_card_id = selectedSavedId;
       const r = await api.post<CardPaymentOut>(`/api/v1/public/pay/${token}/card`, body);
-      setCardResult(r.data);
       if (r.data.cobranca.status === 'recebido') {
+        setCardResult(r.data);
         setPaid(true);
+      } else if (r.data.requires_3ds && r.data.payment_id) {
+        setCardResult(r.data);
+      } else if (r.data.status === 'failed') {
+        setCardResult(null);
+        setError(formatMercadoPagoStatusDetail(r.data.status_detail));
+      } else {
+        setCardResult(r.data);
       }
     } catch (e) {
       setError(parseApiError(e, 'Erro ao processar cartão'));

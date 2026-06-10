@@ -357,13 +357,46 @@ h3, h4, h5, h6 {
   inset: 0;
   z-index: 1000;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   padding: 16px;
+  padding-top: max(16px, env(safe-area-inset-top, 0px));
   overflow-y: auto;
   background: rgba(0, 0, 0, 0.8);
   backdrop-filter: blur(4px);
   -webkit-backdrop-filter: blur(4px);
+}
+
+.modal.glass {
+  width: 100%;
+  max-width: 560px;
+  max-height: none;
+  margin: auto;
+  padding: 24px;
+  flex-shrink: 0;
+  overflow: visible;
+}
+
+.modal.glass.modal--payment {
+  max-width: 600px;
+}
+
+.mp-brick-container {
+  width: 100%;
+  min-height: 320px;
+  margin: 12px 0 4px;
+  overflow: visible;
+}
+
+.mp-brick-container > div {
+  width: 100%;
+  min-height: 300px;
+}
+
+.mp-brick-status {
+  font-size: 0.85rem;
+  padding: 12px 0;
+  min-height: 48px;
 }
 
 .modal-content {
