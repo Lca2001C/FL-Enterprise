@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from motopay.domain.enums import UserRole
 from motopay.domain.exceptions import ConflictError, ForbiddenError, MotoPayError, NotFoundError
 from motopay.infrastructure.db.models import Operacao, Usuario
+from motopay.infrastructure.telegram.notify import TelegramPermanentError, send_telegram_text
 from motopay.infrastructure.telegram.templates import (
     list_custom_message_triggers,
     list_template_meta,
@@ -164,11 +165,6 @@ def _validate_owner_notify_settings(op: Operacao) -> None:
 
 
 def send_telegram_owner_notify_test(db: Session, operacao_id: int) -> None:
-    from motopay.infrastructure.telegram.notify import (
-        TelegramPermanentError,
-        send_telegram_text,
-    )
-
     op = db.get(Operacao, operacao_id)
     if not op:
         raise NotFoundError("Operação não encontrada")
