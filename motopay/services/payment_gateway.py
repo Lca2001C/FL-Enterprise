@@ -87,8 +87,9 @@ def create_pix_for_cobranca(
     if not mp_credentials_complete(op):
         if mp_configured_for_operacao(op):
             raise MotoPayError(
-                "Credenciais Mercado Pago incompletas. Configure Access Token, Public Key e "
-                "Webhook Secret em Ajustes."
+                "Configuração Mercado Pago incompleta: Webhook Secret ausente. "
+                "Conecte a conta via OAuth em Ajustes; o Webhook Secret é "
+                "configurado pelo administrador no servidor."
             )
     if mp_configured_for_operacao(op) and mp_credentials_complete(op):
         assert_payer_email_ready(cliente)

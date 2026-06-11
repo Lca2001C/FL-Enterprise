@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from datetime import UTC, datetime, timedelta
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from motopay.infrastructure.db.models import Operacao
@@ -17,7 +18,9 @@ logger = logging.getLogger(__name__)
 _REFRESH_MARGIN = timedelta(minutes=5)
 
 
-def ensure_valid_mp_token(db: Session, op: Operacao | None) -> str:
+def ensure_valid_mp_token(
+    db: Session, op: Operacao | None, *, margin: timedelta = _REFRESH_MARGIN
+) -> str:
     if op is None:
         return mp_token_for_operacao(op)
     refresh = (op.mercadopago_refresh_token or "").strip()
@@ -27,7 +30,7 @@ def ensure_valid_mp_token(db: Session, op: Operacao | None) -> str:
     now = datetime.now(UTC)
     if expires_at.tzinfo is None:
         expires_at = expires_at.replace(tzinfo=UTC)
-    if expires_at > now + _REFRESH_MARGIN:
+    if expires_at > now + margin:
         return mp_token_for_operacao(op)
     try:
         data = refresh_oauth_token(refresh_token=refresh)
@@ -50,6 +53,37 @@ def ensure_valid_mp_token(db: Session, op: Operacao | None) -> str:
     db.commit()
     db.refresh(op)
     return mp_token_for_operacao(op)
+
+
+def refresh_expiring_mp_oauth_tokens(
+    db: Session, *, window: timedelta = timedelta(days=7)
+) -> int:
+    """Renova proativamente tokens OAuth que expiram dentro da janela.
+
+    O refresh token do MP é single-use: a renovação precisa passar pelo mesmo
+    caminho que persiste o token rotacionado (ensure_valid_mp_token).
+    """
+    cutoff = datetime.now(UTC) + window
+    ops = db.scalars(
+        select(Operacao).where(
+            Operacao.mercadopago_refresh_token.isnot(None),
+            Operacao.mercadopago_refresh_token != "",
+            Operacao.mercadopago_oauth_expires_at.isnot(None),
+            Operacao.mercadopago_oauth_expires_at < cutoff,
+        )
+    ).all()
+    refreshed = 0
+    for op in ops:
+        try:
+            ensure_valid_mp_token(db, op, margin=window)
+            refreshed += 1
+        except Exception:  # uma operação com problema não pode abortar o lote
+            logger.exception("proactive_mp_oauth_refresh_failed operacao=%s", op.id)
+    if ops:
+        logger.info(
+            "proactive_mp_oauth_refresh total=%s refreshed=%s", len(ops), refreshed
+        )
+    return refreshed
 
 
 def disconnect_mercadopago_oauth(db: Session, op: Operacao) -> None:

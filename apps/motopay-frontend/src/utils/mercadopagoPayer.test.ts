@@ -54,6 +54,16 @@ describe('buildMercadoPagoBrickPayer', () => {
     expect(payer.entityType).toBeUndefined();
     expect(payer.customerId).toBe('cust-1');
   });
+
+  it('uses entityType individual for new card even when customerId exists', () => {
+    const payer = buildMercadoPagoBrickPayer({
+      email: 'test@example.com',
+      identification: { type: 'CPF', number: '12345678901' },
+      customerId: 'cust-1',
+    });
+    expect(payer.entityType).toBe('individual');
+    expect(payer.customerId).toBeUndefined();
+  });
 });
 
 describe('mercadoPagoPayerEmail', () => {

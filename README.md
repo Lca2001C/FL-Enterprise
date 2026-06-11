@@ -383,6 +383,14 @@ Beat diário configurável: `CELERY_BEAT_HOUR` / `CELERY_BEAT_MINUTE` (padrão 1
 
 * **GET** `/health` — retorno JSON `{"status":"ok"}`. Usado pelo `docker compose` (serviço `api`) e por balanceadores. Base path raiz (não usa prefixo `/api/v1`).
 
+### Deploy em produção (VPS + Docker Compose + HTTPS)
+
+> 📘 **Passo a passo completo: [DEPLOY.md](DEPLOY.md)** — do servidor zerado ao
+> primeiro pagamento real, incluindo Mercado Pago (webhook + OAuth), Telegram,
+> backups automáticos e checklist final. Usa o overlay
+> [`docker-compose.prod.yml`](docker-compose.prod.yml) (Redis autenticado,
+> Caddy com TLS automático, backup diário).
+
 ### Deploy nuvem (Railway · Supabase · Upstash · Vercel)
 
 Referência rápida (detalhes de variáveis: [`.env.example`](.env.example)):

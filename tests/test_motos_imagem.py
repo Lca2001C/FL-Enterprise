@@ -16,6 +16,7 @@ JPEG_BYTES = (
 
 @pytest.fixture
 def upload_dir(tmp_path, monkeypatch):
+    monkeypatch.setenv("STORAGE_BACKEND", "local")
     monkeypatch.setenv("UPLOAD_DIR", str(tmp_path))
     get_settings.cache_clear()
     yield tmp_path

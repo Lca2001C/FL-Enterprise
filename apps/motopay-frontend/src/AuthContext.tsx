@@ -85,7 +85,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [operacaoNome, setOperacaoNome] = useState<string | null>(null);
   const [operacoes, setOperacoes] = useState<OperacaoOut[]>([]);
   const [operacoesLoading, setOperacoesLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<AppTab>('dashboard');
+  // O callback OAuth do Mercado Pago redireciona para /ajustes?mp_oauth=... —
+  // sem isso a SPA (navegação por abas) abriria no dashboard e o retorno se perderia.
+  const [activeTab, setActiveTab] = useState<AppTab>(() =>
+    window.location.pathname.replace(/\/+$/, '') === '/ajustes' ? 'ajustes' : 'dashboard'
+  );
   const [contractsFilter, setContractsFilter] = useState<ContractsFilter>('todos');
   const [contractsClienteId, setContractsClienteId] = useState<number | null>(null);
   const tokenRef = useRef(token);

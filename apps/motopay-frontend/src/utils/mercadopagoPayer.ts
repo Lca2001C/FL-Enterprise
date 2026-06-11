@@ -52,18 +52,15 @@ export function buildMercadoPagoBrickPayer(input: {
           },
         }
       : {};
-  const savedCards =
-    input.customerId && input.cardsIds?.length
-      ? { customerId: input.customerId, cardsIds: input.cardsIds }
-      : input.customerId
-        ? { customerId: input.customerId }
-        : {};
+  const useSavedCard =
+    Boolean(input.customerId?.trim()) && Boolean(input.cardsIds?.length);
 
-  if (input.customerId) {
+  if (useSavedCard) {
     return {
       email: input.email,
       ...identification,
-      ...savedCards,
+      customerId: input.customerId!.trim(),
+      cardsIds: input.cardsIds!,
     } as MercadoPagoBrickPayer;
   }
 

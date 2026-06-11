@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
+import { createPortal } from 'react-dom';
 import { Copy, Check, CreditCard } from 'lucide-react';
 import type { AxiosInstance } from 'axios';
 import PaymentBrickCheckout from '../integrations/mercadopago/PaymentBrickCheckout';
@@ -56,6 +57,16 @@ export default function PayCobrancaModal({
   const [selectedSavedId, setSelectedSavedId] = useState<number | null>(null);
   const [polling, setPolling] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const payLoadingRef = useRef(payLoading);
+  payLoadingRef.current = payLoading;
+
+  useEffect(() => {
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prevOverflow;
+    };
+  }, []);
 
   useEffect(() => {
     void (async () => {
@@ -209,10 +220,23 @@ export default function PayCobrancaModal({
     !cardResult?.requires_3ds &&
     !(cardResult && cardResult.cobranca.status === 'recebido');
 
-  return (
-    <div className="modal-overlay" onClick={onClose}>
+  const overlayLocked = showBrick || payLoading || polling || Boolean(cardResult?.requires_3ds);
+
+  const handleOverlayClick = (e: MouseEvent<HTMLDivElement>) => {
+    if (overlayLocked) return;
+    if (e.target !== e.currentTarget) return;
+    onClose();
+  };
+
+  const modalUi = (
+    <div
+      className={`modal-overlay${overlayLocked ? ' modal-overlay--locked' : ''}`}
+      onClick={overlayLocked ? undefined : handleOverlayClick}
+      role="presentation"
+    >
       <div
-        className="modal glass modal--payment"
+        className="glass modal-content modal-content--wide modal--payment animate-fade"
+        onMouseDown={(e) => e.stopPropagation()}
         onClick={(e) => e.stopPropagation()}
       >
         <h3>Pagar cobrança #{cob.id}</h3>
@@ -329,10 +353,20 @@ export default function PayCobrancaModal({
           </p>
         )}
 
-        <button type="button" className="btn-secondary" style={{ marginTop: 16 }} onClick={onClose}>
-          Fechar
-        </button>
+        {!overlayLocked && (
+          <button
+            type="button"
+            className="btn-secondary"
+            style={{ marginTop: 16 }}
+            disabled={payLoading}
+            onClick={onClose}
+          >
+            Fechar
+          </button>
+        )}
       </div>
     </div>
   );
+
+  return createPortal(modalUi, document.body);
 }

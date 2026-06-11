@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime, timedelta
+from uuid import uuid4
 
+import redis
 from jose import JWTError, jwt
 from sqlalchemy.orm import Session
 
@@ -15,9 +18,15 @@ from motopay.infrastructure.payments.mercadopago_client import (
     exchange_oauth_code,
     mercadopago_api_error_message,
 )
+from motopay.infrastructure.redis_client import get_redis_connection
 from motopay.interfaces.api.deps import CurrentUser
 from motopay.services.billing_service import _effective_operacao
 from motopay.services.mercadopago_token_service import disconnect_mercadopago_oauth
+
+logger = logging.getLogger(__name__)
+
+# Casa com o exp do JWT de state: após expirar o JWT a chave Redis não é mais necessária.
+_STATE_TTL_SECONDS = 15 * 60
 
 
 def _oauth_redirect_uri() -> str:
@@ -33,18 +42,34 @@ def _encode_oauth_state(*, operacao_id: int, user_id: int) -> str:
     payload = {
         "operacao_id": operacao_id,
         "user_id": user_id,
-        "exp": datetime.now(UTC) + timedelta(minutes=15),
+        "jti": uuid4().hex,
+        "exp": datetime.now(UTC) + timedelta(seconds=_STATE_TTL_SECONDS),
     }
     return jwt.encode(payload, s.jwt_secret, algorithm=s.jwt_algorithm)
 
 
-def _decode_oauth_state(state: str) -> tuple[int, int]:
+def _decode_oauth_state(state: str) -> tuple[int, int, str]:
     s = get_settings()
     try:
         data = jwt.decode(state, s.jwt_secret, algorithms=[s.jwt_algorithm])
-        return int(data["operacao_id"]), int(data["user_id"])
+        jti = str(data["jti"])
+        if not jti:
+            raise ValueError("jti vazio")
+        return int(data["operacao_id"]), int(data["user_id"]), jti
     except (JWTError, KeyError, TypeError, ValueError) as exc:
         raise ForbiddenError("State OAuth inválido ou expirado") from exc
+
+
+def _assert_state_not_used(jti: str) -> None:
+    """Garante uso único do state (anti-replay do callback, que é público)."""
+    try:
+        r = get_redis_connection()
+        if not r.set(f"mp_oauth_state_used:{jti}", "1", nx=True, ex=_STATE_TTL_SECONDS):
+            raise ForbiddenError("State OAuth já utilizado")
+    except redis.RedisError as e:
+        # Fail-open deliberado (mesma filosofia de rate_limit.py): Redis fora do ar
+        # não pode bloquear a conexão OAuth, mas a janela sem proteção gera alerta.
+        logger.error("mp_oauth_state_replay_check_failed (fail-open) jti=%s: %s", jti, e)
 
 
 def start_mercadopago_oauth(
@@ -71,7 +96,10 @@ def complete_mercadopago_oauth(
     code: str,
     state: str,
 ) -> Operacao:
-    operacao_id, _user_id = _decode_oauth_state(state)
+    operacao_id, _user_id, jti = _decode_oauth_state(state)
+    # Marca o state como usado ANTES da troca de código: um replay nunca chega ao MP.
+    # Se a troca falhar, o usuário simplesmente clica em "Conectar" de novo (novo state).
+    _assert_state_not_used(jti)
     op = db.get(Operacao, operacao_id)
     if not op:
         raise NotFoundError("Operação não encontrada")

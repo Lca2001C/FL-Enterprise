@@ -69,6 +69,15 @@ class Settings(BaseSettings):
     upload_dir: str = "/data/uploads"
     app_timezone: str = "America/Sao_Paulo"
 
+    # Storage de imagens (motos): "local" (disco em upload_dir) ou "s3" (S3-compatível).
+    # Use "s3" em plataformas de disco efêmero (Render, Railway). Veja DEPLOY.md.
+    storage_backend: str = "local"
+    s3_bucket: str = ""
+    s3_endpoint_url: str = ""  # vazio = AWS S3; preencha p/ R2/B2/Spaces/MinIO
+    s3_region: str = ""
+    s3_access_key_id: str = ""
+    s3_secret_access_key: str = ""
+
     # production: definir APP_CORS_ORIGINS (URLs separadas por vírgula). API usa Bearer; credenciais CORS desligadas.
     environment: str = "development"
     cors_origins: str = ""
@@ -76,6 +85,9 @@ class Settings(BaseSettings):
     # Escape hatches só para staging controlado ou exceções documentadas (.env.example + README).
     allow_production_without_mercadopago: bool = False
     allow_production_without_telegram: bool = False
+    # Redis gerenciado em rede privada e sem senha (ex.: Render Key Value interno):
+    # a conexão não é exposta à internet, então a ausência de senha é aceitável.
+    allow_production_redis_without_auth: bool = False
     allow_webhook_token_in_query: bool = True
 
     mercadopago_access_token: str = ""
@@ -105,9 +117,40 @@ class Settings(BaseSettings):
     ai_bot_enabled: bool = False
 
     @model_validator(mode="after")
+    def validate_storage_backend(self) -> Settings:
+        backend = (self.storage_backend or "local").strip().lower()
+        if backend not in ("local", "s3"):
+            raise RuntimeError(
+                f"STORAGE_BACKEND inválido: {self.storage_backend!r}. Use 'local' ou 's3'."
+            )
+        if backend == "s3":
+            missing = [
+                name
+                for name, value in (
+                    ("S3_BUCKET", self.s3_bucket),
+                    ("S3_ACCESS_KEY_ID", self.s3_access_key_id),
+                    ("S3_SECRET_ACCESS_KEY", self.s3_secret_access_key),
+                )
+                if not value.strip()
+            ]
+            if missing:
+                raise RuntimeError(
+                    "STORAGE_BACKEND=s3 exige: " + ", ".join(missing) + " (veja DEPLOY.md)."
+                )
+        return self
+
+    @model_validator(mode="after")
     def reject_insecure_defaults_in_production(self) -> Settings:
         if self.environment != "production":
             return self
+        if (self.storage_backend or "local").strip().lower() == "local":
+            _logger.warning(
+                "STORAGE_BACKEND=local em production: imagens de motos ficam no disco "
+                "(UPLOAD_DIR=%s). Garanta um volume/disco persistente; em plataformas "
+                "de disco efêmero (Render, Railway) as imagens somem no redeploy — use "
+                "STORAGE_BACKEND=s3 (S3/R2/B2/Spaces). Veja DEPLOY.md.",
+                self.upload_dir,
+            )
         if not self.jwt_secret or self.jwt_secret.startswith("change-me"):
             raise RuntimeError(
                 "JWT_SECRET não foi configurado para produção (use um segredo forte; valores que começam com 'change-me' são recusados)."
@@ -130,8 +173,15 @@ class Settings(BaseSettings):
             )
 
         if not _redis_url_has_password(self.redis_url):
-            raise RuntimeError(
-                "REDIS_URL em produção exige autenticação (ex.: redis://:SENHA@host:6379/0 ou rediss://:SENHA@host:6380/0)."
+            if not self.allow_production_redis_without_auth:
+                raise RuntimeError(
+                    "REDIS_URL em produção exige autenticação (ex.: redis://:SENHA@host:6379/0 ou "
+                    "rediss://:SENHA@host:6380/0). Em Redis gerenciado de rede privada e sem senha "
+                    "(ex.: Render Key Value interno), defina ALLOW_PRODUCTION_REDIS_WITHOUT_AUTH=true."
+                )
+            _logger.warning(
+                "REDIS_URL sem senha aceito em production (ALLOW_PRODUCTION_REDIS_WITHOUT_AUTH=true): "
+                "garanta que o Redis está em rede privada e NÃO exposto à internet."
             )
 
         self.allow_webhook_token_in_query = False

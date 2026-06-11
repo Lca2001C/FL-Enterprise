@@ -49,9 +49,8 @@ function PaymentBrickCheckoutInner({
     const payerInit = buildMercadoPagoBrickPayer({
       email: payerEmail,
       identification: { type: payerIdType, number: payerIdNumber },
-      customerId,
-      cardsIds:
-        savedMpCardId && customerId ? [savedMpCardId] : undefined,
+      customerId: savedMpCardId && customerId ? customerId : undefined,
+      cardsIds: savedMpCardId && customerId ? [savedMpCardId] : undefined,
     });
     return { amount: brickAmount, payer: payerInit };
   }, [brickAmount, payerEmail, payerIdType, payerIdNumber, customerId, savedMpCardId]);
@@ -98,6 +97,7 @@ function PaymentBrickCheckoutInner({
   return (
     <div className="mp-brick-container">
       <Payment
+        key={`${mode}-${savedMpCardId ?? 'new'}`}
         locale="pt-BR"
         initialization={initialization}
         customization={customization}

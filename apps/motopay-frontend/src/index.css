@@ -352,6 +352,10 @@ h3, h4, h5, h6 {
 .badge-danger { color: var(--danger); background: rgba(224, 92, 92, 0.1); }
 
 /* Modals — sempre centralizados na tela */
+.modal-overlay--locked {
+  cursor: default;
+}
+
 .modal-overlay {
   position: fixed;
   inset: 0;

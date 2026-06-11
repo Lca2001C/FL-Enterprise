@@ -244,7 +244,9 @@ const SettingsView = () => {
     if (mpWebhookSecret.trim()) mpFields.mercadopago_webhook_secret = mpWebhookSecret.trim();
 
     if (isDono) {
-      return { ...shared, ...mpFields };
+      // Dono conecta o MP exclusivamente via OAuth — o backend ignora
+      // credenciais manuais no PATCH do dono.
+      return shared;
     }
     return {
       nome: config.nome.trim(),
@@ -481,8 +483,10 @@ const SettingsView = () => {
                 </div>
               )}
 
-              {/* Webhook URL com botão de cópia */}
-              {paymentsConfig?.webhook_url && (
+              {/* Webhook URL com botão de cópia — configuração da aplicação (admin).
+                  O dono não configura webhook: as notificações chegam no webhook
+                  global da aplicação MP. */}
+              {isAdmin && paymentsConfig?.webhook_url && (
                 <div className="settings-card" style={{ marginBottom: 20 }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 8 }}>
                     <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>URL do Webhook</span>
@@ -514,106 +518,131 @@ const SettingsView = () => {
                 </div>
               )}
 
-              {/* Credenciais manuais */}
-              <div className="input-group">
-                <label className="input-label">Access Token</label>
-                <input
-                  type="password"
-                  className="input-field"
-                  value={mpToken}
-                  onChange={(e) => setMpToken(e.target.value)}
-                  placeholder={
-                    paymentsConfig?.mercadopago_access_token_preview
-                      ? 'Deixe em branco para manter o atual'
-                      : 'APP_USR-… (cole o Access Token)'
-                  }
-                  autoComplete="off"
-                />
-                {paymentsConfig?.mercadopago_access_token_preview && (
-                  <small className="mp-saved-hint">
-                    <CheckCircle size={12} /> Salvo: {paymentsConfig.mercadopago_access_token_preview}
-                  </small>
-                )}
-              </div>
-              <div className="input-group">
-                <label className="input-label">Public Key</label>
-                <input
-                  type="text"
-                  className="input-field"
-                  value={mpPublicKey}
-                  onChange={(e) => setMpPublicKey(e.target.value)}
-                  placeholder="APP_USR-… ou TEST-…"
-                  autoComplete="off"
-                />
-                {paymentsConfig?.mercadopago_public_key_saved && (
-                  <small className="mp-saved-hint">
-                    <CheckCircle size={12} /> Salvo nesta operação
-                  </small>
-                )}
-              </div>
-              <div className="input-group">
-                <label className="input-label">Webhook Secret</label>
-                <input
-                  type="password"
-                  className="input-field"
-                  value={mpWebhookSecret}
-                  onChange={(e) => setMpWebhookSecret(e.target.value)}
-                  placeholder={
-                    paymentsConfig?.mercadopago_webhook_secret_preview
-                      ? 'Deixe em branco para manter o atual'
-                      : 'Secret do painel MP (evento Order)'
-                  }
-                  autoComplete="off"
-                />
-                {paymentsConfig?.mercadopago_webhook_secret_preview && (
-                  <small className="mp-saved-hint">
-                    <CheckCircle size={12} /> Salvo: {paymentsConfig.mercadopago_webhook_secret_preview}
-                  </small>
-                )}
-                <small className="text-muted">
-                  Obtido no painel MP após registrar a URL de webhook acima.
-                </small>
-              </div>
-
-              {/* OAuth */}
-              {paymentsConfig?.mercadopago_oauth_available && (
-                <div className="settings-card" style={{ marginTop: 20 }}>
-                  <p style={{ fontSize: '0.85rem', fontWeight: 600, marginBottom: 6 }}>
-                    Conexão via OAuth
-                  </p>
-                  <p className="text-muted" style={{ fontSize: '0.82rem', marginBottom: 12 }}>
-                    {paymentsConfig.mercadopago_oauth_connected
-                      ? `Conta Mercado Pago conectada${paymentsConfig.mercadopago_oauth_user_id ? ` (ID: ${paymentsConfig.mercadopago_oauth_user_id})` : ''}. O token é renovado automaticamente.`
-                      : 'Autorize o acesso à conta MP da operação sem precisar colar tokens manualmente.'}
-                  </p>
-                  <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                    <button
-                      type="button"
-                      className="btn-secondary"
-                      disabled={oauthLoading}
-                      onClick={() => void connectMercadoPagoOAuth()}
-                    >
-                      {oauthLoading
-                        ? 'Redirecionando…'
-                        : paymentsConfig.mercadopago_oauth_connected
-                          ? 'Reconectar Mercado Pago'
-                          : 'Conectar Mercado Pago'}
-                    </button>
-                    {paymentsConfig.mercadopago_oauth_connected && (
-                      <button
-                        type="button"
-                        className="btn-secondary"
-                        disabled={disconnectLoading}
-                        onClick={() => void disconnectMercadoPagoOAuth()}
-                      >
-                        {disconnectLoading ? '…' : 'Desconectar'}
-                      </button>
+              {/* Credenciais manuais — somente admin (fallback/suporte).
+                  Dono conecta exclusivamente via OAuth abaixo. */}
+              {isAdmin && (
+                <>
+                  <div className="input-group">
+                    <label className="input-label">Access Token</label>
+                    <input
+                      type="password"
+                      className="input-field"
+                      value={mpToken}
+                      onChange={(e) => setMpToken(e.target.value)}
+                      placeholder={
+                        paymentsConfig?.mercadopago_access_token_preview
+                          ? 'Deixe em branco para manter o atual'
+                          : 'APP_USR-… (cole o Access Token)'
+                      }
+                      autoComplete="off"
+                    />
+                    {paymentsConfig?.mercadopago_access_token_preview && (
+                      <small className="mp-saved-hint">
+                        <CheckCircle size={12} /> Salvo: {paymentsConfig.mercadopago_access_token_preview}
+                      </small>
                     )}
                   </div>
-                  {paymentsConfig.mercadopago_oauth_connected && !paymentsConfig.mercadopago_webhook_ready && (
-                    <p className="text-muted" style={{ fontSize: '0.8rem', marginTop: 10 }}>
-                      OAuth conectado, mas o Webhook Secret ainda precisa ser configurado manualmente acima.
-                    </p>
+                  <div className="input-group">
+                    <label className="input-label">Public Key</label>
+                    <input
+                      type="text"
+                      className="input-field"
+                      value={mpPublicKey}
+                      onChange={(e) => setMpPublicKey(e.target.value)}
+                      placeholder="APP_USR-… ou TEST-…"
+                      autoComplete="off"
+                    />
+                    {paymentsConfig?.mercadopago_public_key_saved && (
+                      <small className="mp-saved-hint">
+                        <CheckCircle size={12} /> Salvo nesta operação
+                      </small>
+                    )}
+                  </div>
+                  <div className="input-group">
+                    <label className="input-label">Webhook Secret</label>
+                    <input
+                      type="password"
+                      className="input-field"
+                      value={mpWebhookSecret}
+                      onChange={(e) => setMpWebhookSecret(e.target.value)}
+                      placeholder={
+                        paymentsConfig?.mercadopago_webhook_secret_preview
+                          ? 'Deixe em branco para manter o atual'
+                          : 'Secret do painel MP (evento Order)'
+                      }
+                      autoComplete="off"
+                    />
+                    {paymentsConfig?.mercadopago_webhook_secret_preview && (
+                      <small className="mp-saved-hint">
+                        <CheckCircle size={12} /> Salvo: {paymentsConfig.mercadopago_webhook_secret_preview}
+                      </small>
+                    )}
+                    <small className="text-muted">
+                      Obtido no painel MP após registrar a URL de webhook acima.
+                    </small>
+                  </div>
+                </>
+              )}
+
+              {/* OAuth — único método de conexão para o dono */}
+              {paymentsConfig && (
+                <div className="settings-card" style={{ marginTop: 20 }}>
+                  <p style={{ fontSize: '0.85rem', fontWeight: 600, marginBottom: 6 }}>
+                    Conectar conta Mercado Pago
+                  </p>
+                  {!paymentsConfig.mercadopago_oauth_available ? (
+                    <>
+                      <span className="mp-badge badge-warn">
+                        <AlertCircle size={13} /> Não configurado no servidor
+                      </span>
+                      <p className="text-muted" style={{ fontSize: '0.82rem', margin: '10px 0 12px' }}>
+                        {isAdmin
+                          ? 'Para habilitar o login com Mercado Pago, configure MERCADOPAGO_OAUTH_CLIENT_ID e MERCADOPAGO_OAUTH_CLIENT_SECRET no .env do servidor (credenciais da aplicação no painel de desenvolvedor do MP) e reinicie a API.'
+                          : 'A conexão com o Mercado Pago ainda não foi habilitada no servidor. Fale com o administrador.'}
+                      </p>
+                      <button type="button" className="btn-secondary" disabled>
+                        Conectar Mercado Pago
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-muted" style={{ fontSize: '0.82rem', marginBottom: 12 }}>
+                        {paymentsConfig.mercadopago_oauth_connected
+                          ? `Conta Mercado Pago conectada${paymentsConfig.mercadopago_oauth_user_id ? ` (ID: ${paymentsConfig.mercadopago_oauth_user_id})` : ''}. O token é renovado automaticamente.`
+                          : 'Entre com a conta Mercado Pago da operação para receber os pagamentos — sem precisar colar tokens.'}
+                      </p>
+                      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                        <button
+                          type="button"
+                          className="btn-secondary"
+                          disabled={oauthLoading}
+                          onClick={() => void connectMercadoPagoOAuth()}
+                        >
+                          {oauthLoading
+                            ? 'Redirecionando…'
+                            : paymentsConfig.mercadopago_oauth_connected
+                              ? 'Reconectar Mercado Pago'
+                              : 'Conectar Mercado Pago'}
+                        </button>
+                        {paymentsConfig.mercadopago_oauth_connected && (
+                          <button
+                            type="button"
+                            className="btn-secondary"
+                            disabled={disconnectLoading}
+                            onClick={() => void disconnectMercadoPagoOAuth()}
+                          >
+                            {disconnectLoading ? '…' : 'Desconectar'}
+                          </button>
+                        )}
+                      </div>
+                      {paymentsConfig.mercadopago_oauth_connected && !paymentsConfig.mercadopago_webhook_ready && (
+                        <p className="text-muted" style={{ fontSize: '0.8rem', marginTop: 10 }}>
+                          {isAdmin
+                            ? 'OAuth conectado, mas o Webhook Secret ainda precisa ser configurado manualmente acima.'
+                            : 'OAuth conectado, mas o webhook ainda não foi configurado no servidor — fale com o administrador.'}
+                        </p>
+                      )}
+                    </>
                   )}
                 </div>
               )}

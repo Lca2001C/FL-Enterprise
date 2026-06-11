@@ -79,8 +79,22 @@ def test_production_rejects_default_postgres_password(monkeypatch: pytest.Monkey
 def test_production_rejects_redis_without_password(monkeypatch: pytest.MonkeyPatch) -> None:
     _base_production(monkeypatch)
     monkeypatch.setenv("REDIS_URL", "redis://redis.example:6379/0")
+    monkeypatch.delenv("ALLOW_PRODUCTION_REDIS_WITHOUT_AUTH", raising=False)
     with pytest.raises(RuntimeError, match="REDIS_URL"):
         Settings()
+
+
+def test_production_allows_redis_without_password_with_flag(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    # Redis gerenciado de rede privada sem senha (ex.: Render Key Value interno).
+    _base_production(monkeypatch)
+    monkeypatch.setenv("REDIS_URL", "redis://red-abc123:6379")
+    monkeypatch.setenv("ALLOW_PRODUCTION_REDIS_WITHOUT_AUTH", "true")
+    caplog.set_level(logging.WARNING)
+    s = Settings()
+    assert s.allow_production_redis_without_auth is True
+    assert any("ALLOW_PRODUCTION_REDIS_WITHOUT_AUTH" in r.getMessage() for r in caplog.records)
 
 
 def test_production_disables_webhook_query_token(monkeypatch: pytest.MonkeyPatch) -> None:

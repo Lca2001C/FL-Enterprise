@@ -265,10 +265,15 @@ def _operacao_has_any_mp_credential(op: Operacao) -> bool:
 
 
 def operacao_mp_fields_complete(op: Operacao) -> bool:
+    """Token + Public Key válidos NA OPERAÇÃO (via OAuth ou manual).
+
+    O webhook secret NÃO é exigido por operação: no fluxo OAuth as notificações
+    chegam no webhook da APLICAÇÃO e são assinadas com o secret global dela.
+    Um secret por operação é opcional e tem precedência quando definido.
+    """
     return bool(
         is_valid_mp_access_token(op.mercadopago_access_token)
         and is_valid_mp_public_key(op.mercadopago_public_key)
-        and len((op.mercadopago_webhook_secret or "").strip()) >= 8
     )
 
 
@@ -301,11 +306,8 @@ def mp_public_key_for_operacao(op: Operacao | None) -> str:
 
 
 def mp_webhook_secret_for_operacao(op: Operacao | None) -> str:
-    if uses_operacao_mercadopago_credentials(op):
-        assert op is not None
-        if not operacao_mp_fields_complete(op):
-            return ""
-        return op.mercadopago_webhook_secret.strip()  # type: ignore[union-attr]
+    # Secret da operação tem precedência; sem ele, cai para o secret global da
+    # aplicação (fluxo OAuth: notificações são assinadas pelo secret da app).
     if op and (op.mercadopago_webhook_secret or "").strip():
         return op.mercadopago_webhook_secret.strip()
     return effective_mercadopago_webhook_secret()
@@ -313,7 +315,7 @@ def mp_webhook_secret_for_operacao(op: Operacao | None) -> str:
 
 def mp_credentials_complete(op: Operacao | None) -> bool:
     if op and operacao_mp_fields_complete(op):
-        return True
+        return bool(mp_webhook_secret_for_operacao(op))
     return bool(
         effective_mercadopago_access_token()
         and effective_mercadopago_public_key()

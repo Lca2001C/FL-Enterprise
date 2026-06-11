@@ -545,3 +545,23 @@ def reconcile_mercadopago_payments(self) -> int:
         return reconcile_all_mercadopago(db)
     finally:
         db.close()
+
+
+@celery_app.task(
+    bind=True,
+    name="motopay.infrastructure.messaging.tasks.refresh_expiring_mp_oauth_tokens",
+    base=DLQTask,
+    queue="default",
+    soft_time_limit=300,
+    time_limit=360,
+)
+def refresh_expiring_mp_oauth_tokens(self) -> int:
+    from motopay.services.mercadopago_token_service import (
+        refresh_expiring_mp_oauth_tokens as run_refresh,
+    )
+
+    db = SessionLocal()
+    try:
+        return run_refresh(db)
+    finally:
+        db.close()

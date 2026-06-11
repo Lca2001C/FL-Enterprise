@@ -190,6 +190,9 @@ def send_telegram_owner_notify_test(db: Session, operacao_id: int) -> None:
 
 
 def _apply_dono_restrictions(body: OperacaoUpdate) -> OperacaoUpdate:
+    # Credenciais Mercado Pago NÃO são editáveis pelo dono: a conexão da conta
+    # do dono é exclusivamente via OAuth (Ajustes → "Conectar Mercado Pago").
+    # Admin segue podendo configurar manualmente (fallback/suporte).
     return OperacaoUpdate(
         multa_fixa_percentual=body.multa_fixa_percentual,
         juros_diario_percentual=body.juros_diario_percentual,
@@ -197,9 +200,6 @@ def _apply_dono_restrictions(body: OperacaoUpdate) -> OperacaoUpdate:
         telegram_bot_menu_buttons=body.telegram_bot_menu_buttons,
         telegram_owner_notify_id=body.telegram_owner_notify_id,
         telegram_owner_notify_enabled=body.telegram_owner_notify_enabled,
-        mercadopago_access_token=body.mercadopago_access_token,
-        mercadopago_public_key=body.mercadopago_public_key,
-        mercadopago_webhook_secret=body.mercadopago_webhook_secret,
     )
 
 

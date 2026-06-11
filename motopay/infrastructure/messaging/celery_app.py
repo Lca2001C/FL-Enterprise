@@ -34,6 +34,9 @@ celery_app.conf.update(
         "motopay.infrastructure.messaging.tasks.reconcile_mercadopago_payments": {
             "queue": "default"
         },
+        "motopay.infrastructure.messaging.tasks.refresh_expiring_mp_oauth_tokens": {
+            "queue": "default"
+        },
         "motopay.infrastructure.messaging.celery_observability.monitor_queues": {"queue": "default"},
         "motopay.infrastructure.messaging.celery_observability.collect_business_metrics": {
             "queue": "default"
@@ -86,5 +89,11 @@ celery_app.conf.beat_schedule = {
     "reconcile-mercadopago-payments": {
         "task": "motopay.infrastructure.messaging.tasks.reconcile_mercadopago_payments",
         "schedule": 900.0,
+    },
+    # Diário, fora do horário do daily_automation — renova tokens OAuth MP
+    # que expiram nos próximos 7 dias (refresh token MP é single-use).
+    "refresh-expiring-mp-oauth-tokens": {
+        "task": "motopay.infrastructure.messaging.tasks.refresh_expiring_mp_oauth_tokens",
+        "schedule": crontab(hour=4, minute=15),
     },
 }

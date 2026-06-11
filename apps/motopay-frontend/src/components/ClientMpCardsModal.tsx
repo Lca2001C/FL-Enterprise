@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { CreditCard, Trash2 } from 'lucide-react';
 import type { AxiosInstance } from 'axios';
@@ -27,10 +27,16 @@ export default function ClientMpCardsModal({ cliente, api, onClose, onError }: P
   const [formError, setFormError] = useState('');
   const [credentialsMode, setCredentialsMode] = useState<'test' | 'production' | null>(null);
   const [mpConfigured, setMpConfigured] = useState(false);
+  const [formPayer, setFormPayer] = useState<{
+    email: string;
+    identification: { type: string; number: string };
+  } | null>(null);
   const onErrorRef = useRef(onError);
   const showCardFormRef = useRef(showCardForm);
+  const savingRef = useRef(saving);
   onErrorRef.current = onError;
   showCardFormRef.current = showCardForm;
+  savingRef.current = saving;
 
   useEffect(() => {
     const prevOverflow = document.body.style.overflow;
@@ -41,7 +47,8 @@ export default function ClientMpCardsModal({ cliente, api, onClose, onError }: P
   }, []);
 
   const load = useCallback(
-    async (silent = false) => {
+    async (silent = false, force = false) => {
+      if (showCardFormRef.current && !force) return;
       if (!silent) setLoading(true);
       onErrorRef.current('');
       try {
@@ -83,6 +90,12 @@ export default function ClientMpCardsModal({ cliente, api, onClose, onError }: P
     };
   }, [cliente.cpf, cliente.email, cliente.id, credentialsMode]);
 
+  const hideCardForm = useCallback(() => {
+    setShowCardForm(false);
+    setFormPayer(null);
+    setFormError('');
+  }, []);
+
   const saveCard = useCallback(
     async (token: string) => {
       setSaving(true);
@@ -90,15 +103,15 @@ export default function ClientMpCardsModal({ cliente, api, onClose, onError }: P
       setFormError('');
       try {
         await api.post(`/api/v1/clientes/${cliente.id}/mp-cards`, { token });
-        setShowCardForm(false);
-        await load(true);
+        hideCardForm();
+        await load(true, true);
       } catch (e) {
         onErrorRef.current(parseApiError(e, 'Erro ao salvar cartão'));
       } finally {
         setSaving(false);
       }
     },
-    [api, cliente.id, load]
+    [api, cliente.id, hideCardForm, load]
   );
 
   const removeCard = async (cardId: number) => {
@@ -106,7 +119,7 @@ export default function ClientMpCardsModal({ cliente, api, onClose, onError }: P
     onErrorRef.current('');
     try {
       await api.delete(`/api/v1/clientes/${cliente.id}/mp-cards/${cardId}`);
-      await load(showCardFormRef.current);
+      await load(true, showCardFormRef.current);
     } catch (e) {
       onErrorRef.current(parseApiError(e, 'Erro ao remover cartão'));
     }
@@ -130,9 +143,19 @@ export default function ClientMpCardsModal({ cliente, api, onClose, onError }: P
           return;
         }
       }
+      if (!payer) {
+        onErrorRef.current('Aguarde o carregamento do Mercado Pago.');
+        return;
+      }
+      setFormPayer(payer);
       setFormSession((n) => n + 1);
       setShowCardForm(true);
     })();
+  };
+
+  const cancelCardForm = () => {
+    if (!window.confirm('Cancelar o cadastro deste cartão?')) return;
+    hideCardForm();
   };
 
   const retryForm = () => {
@@ -140,15 +163,23 @@ export default function ClientMpCardsModal({ cliente, api, onClose, onError }: P
     setFormSession((n) => n + 1);
   };
 
-  const handleOverlayClick = () => {
-    if (showCardForm || saving) return;
+  const overlayLocked = showCardForm || saving;
+
+  const handleOverlayClick = (e: MouseEvent<HTMLDivElement>) => {
+    if (overlayLocked) return;
+    if (e.target !== e.currentTarget) return;
     onClose();
   };
 
   const modalUi = (
-    <div className="modal-overlay" onClick={handleOverlayClick}>
+    <div
+      className={`modal-overlay${overlayLocked ? ' modal-overlay--locked' : ''}`}
+      onClick={overlayLocked ? undefined : handleOverlayClick}
+      role="presentation"
+    >
       <div
         className={`glass modal-content modal-content--wide modal--payment animate-fade${showCardForm ? ' modal--card-form-open' : ''}`}
+        onMouseDown={(e) => e.stopPropagation()}
         onClick={(e) => e.stopPropagation()}
       >
         <h3>Cartões — {cliente.nome}</h3>
@@ -209,11 +240,11 @@ export default function ClientMpCardsModal({ cliente, api, onClose, onError }: P
           </button>
         )}
 
-        {showCardForm && payer && (
+        {showCardForm && formPayer && (
           <div className="mp-card-form-section">
             <CardSecureFieldsSave
               key={formSession}
-              payer={payer}
+              payer={formPayer}
               onToken={saveCard}
               onFieldError={setFormError}
             />
@@ -232,10 +263,7 @@ export default function ClientMpCardsModal({ cliente, api, onClose, onError }: P
                 type="button"
                 className="btn-secondary"
                 disabled={saving}
-                onClick={() => {
-                  setShowCardForm(false);
-                  setFormError('');
-                }}
+                onClick={cancelCardForm}
               >
                 Cancelar cadastro
               </button>
@@ -243,11 +271,13 @@ export default function ClientMpCardsModal({ cliente, api, onClose, onError }: P
           </div>
         )}
 
-        <div className="mp-card-form-actions" style={{ marginTop: 16 }}>
-          <button type="button" className="btn-secondary" disabled={saving} onClick={onClose}>
-            Fechar
-          </button>
-        </div>
+        {!showCardForm && (
+          <div className="mp-card-form-actions" style={{ marginTop: 16 }}>
+            <button type="button" className="btn-secondary" disabled={saving} onClick={onClose}>
+              Fechar
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

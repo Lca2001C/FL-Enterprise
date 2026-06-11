@@ -1,0 +1,11 @@
+# Proxy HTTPS de produção (TLS automático via Let's Encrypt).
+# DOMAIN vem do .env (docker-compose.prod.yml). Pré-requisitos:
+#   - DNS A/AAAA do domínio apontando para o IP do servidor
+#   - Portas 80 e 443 liberadas no firewall
+#
+# O nginx do serviço frontend já faz o proxy interno de /api, /socket.io e
+# /health para a API — o Caddy só precisa encaminhar tudo para ele.
+{$DOMAIN} {
+	encode gzip zstd
+	reverse_proxy frontend:80
+}
