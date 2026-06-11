@@ -23,6 +23,9 @@
       name="description"
       content="Painel MotoPay — gestão de frotas, cobranças e operação"
     />
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
 
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -89,6 +92,71 @@
       media="(device-width: 1024px) and (device-height: 1366px) and (-webkit-device-pixel-ratio: 2) and (orientation: landscape)" />
 
     <title>MotoPay Painel</title>
+    <script>window.__MOTOPAY_BUILD__ = '2026-06-01-v6';</script>
+    <script>
+      (function () {
+        var host = location.hostname;
+        var isLocal = host === 'localhost' || host === '127.0.0.1' || host === '[::1]';
+        var build = window.__MOTOPAY_BUILD__ || '';
+        try {
+          var prevBuild = sessionStorage.getItem('motopay_build');
+          if (prevBuild && build && prevBuild !== build && !sessionStorage.getItem('motopay_build_reload')) {
+            sessionStorage.setItem('motopay_build_reload', '1');
+            sessionStorage.setItem('motopay_build', build);
+            location.reload();
+            return;
+          }
+          if (build) sessionStorage.setItem('motopay_build', build);
+          sessionStorage.removeItem('motopay_build_reload');
+        } catch (e) {}
+        if (!isLocal) return;
+        var port = location.port || (location.protocol === 'https:' ? '443' : '80');
+        if (port === '80' || port === '443') {
+          var fixed = new URL(location.href);
+          fixed.port = '5173';
+          location.replace(fixed.toString());
+          return;
+        }
+        try {
+          var apiBase = localStorage.getItem('apiBase');
+          if (
+            apiBase &&
+            /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(?::(?:80|443))?\/?$/i.test(
+              apiBase.replace(/\/$/, '')
+            )
+          ) {
+            localStorage.removeItem('apiBase');
+          }
+        } catch (e) {}
+        if ('serviceWorker' in navigator) {
+          var swCleared = sessionStorage.getItem('motopay_sw_cleared_v4');
+          navigator.serviceWorker.getRegistrations().then(function (regs) {
+            var hadSw = regs.length > 0;
+            var work = hadSw
+              ? Promise.all(regs.map(function (r) {
+                  return r.unregister();
+                }))
+              : Promise.resolve();
+            return work.then(function () {
+              if ('caches' in window) {
+                return caches.keys().then(function (keys) {
+                  return Promise.all(keys.map(function (k) {
+                    return caches.delete(k);
+                  }));
+                });
+              }
+            }).then(function () {
+              if (hadSw && !swCleared) {
+                sessionStorage.setItem('motopay_sw_cleared_v4', '1');
+                location.reload();
+              } else if (!swCleared) {
+                sessionStorage.setItem('motopay_sw_cleared_v4', '1');
+              }
+            });
+          });
+        }
+      })();
+    </script>
     <!--
       Mercado Pago Device Fingerprint (MP_DEVICE_SESSION_ID).
       Carregado em todas as páginas para garantir que o checkout tenha o

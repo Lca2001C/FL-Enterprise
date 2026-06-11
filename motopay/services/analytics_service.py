@@ -6,6 +6,7 @@ from decimal import Decimal
 from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.orm import Session, aliased
 
+from motopay.config import app_today
 from motopay.domain.enums import CobrancaStatus, FinanceiroTipo, MotoStatus, UserRole
 from motopay.domain.exceptions import ForbiddenError
 from motopay.infrastructure.db.models import Cliente, Cobranca, Contrato, Financeiro, Moto
@@ -62,7 +63,7 @@ def get_summary(
     operacao_scope: int | None,
 ) -> AnalyticsSummary:
     op = _operacao_filter(user, operacao_scope)
-    today = date.today()
+    today = app_today()
 
     receita_stmt = select(func.coalesce(func.sum(Financeiro.valor), 0)).where(
         Financeiro.tipo == FinanceiroTipo.RECEITA.value

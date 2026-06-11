@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import logging
+from datetime import date, datetime
 from functools import lru_cache
 from urllib.parse import unquote, urlparse
+from zoneinfo import ZoneInfo
 
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -170,3 +172,13 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
+
+
+def app_today() -> date:
+    """Data atual no fuso horário configurado da aplicação (APP_TIMEZONE).
+
+    Usar sempre esta função em vez de date.today(): em servidores UTC,
+    date.today() vira o dia 3h antes do Brasil, deslocando vencimentos,
+    juros e filtros de período.
+    """
+    return datetime.now(ZoneInfo(get_settings().app_timezone)).date()

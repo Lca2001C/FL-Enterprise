@@ -37,6 +37,21 @@ def test_mercadopago_webhook_rejects_bad_signature_in_production(
     get_settings.cache_clear()
 
 
+def test_mercadopago_webhook_rejects_unsigned_when_secret_missing_in_production(
+    client, production_webhook_env, monkeypatch
+):
+    # Fail-closed: sem MERCADOPAGO_WEBHOOK_SECRET configurado, produção deve
+    # recusar o webhook em vez de aceitar qualquer requisição não assinada.
+    monkeypatch.setenv("MERCADOPAGO_WEBHOOK_SECRET", "")
+    get_settings.cache_clear()
+    response = client.post(
+        "/webhooks/mercadopago",
+        json={"type": "payment", "data": {"id": "123"}},
+    )
+    assert response.status_code == 403
+    get_settings.cache_clear()
+
+
 def test_mercadopago_webhook_accepts_signature_in_production(
     client, production_webhook_env, monkeypatch
 ):

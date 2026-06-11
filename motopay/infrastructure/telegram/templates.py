@@ -475,9 +475,9 @@ def list_template_meta() -> list[dict[str, Any]]:
 
 def sample_context_for_key(key: str) -> dict[str, Any]:
     """Contexto de exemplo para pré-visualização no admin."""
-    from datetime import date
+    from motopay.config import app_today
 
-    today = date.today()
+    today = app_today()
     samples: dict[str, dict[str, Any]] = {
         "overdue_intro_0": {},
         "overdue_body": {

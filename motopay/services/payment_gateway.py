@@ -20,10 +20,7 @@ from motopay.infrastructure.payments.mercadopago_client import (
 )
 from motopay.infrastructure.payments.mp_payload_builder import (
     MercadoPagoDataError,
-    build_additional_info,
     build_items_for_contrato,
-    build_mp_payer,
-    build_statement_descriptor,
 )
 from motopay.services.mercadopago_token_service import ensure_valid_mp_token
 
@@ -54,33 +51,24 @@ def _access_token(db: Session | None, op: Operacao) -> str:
 
 def _build_mp_enrichment(
     *,
-    op: Operacao,
     cliente: Cliente,
     valor_total: Decimal,
     contrato: Contrato | None,
 ) -> dict[str, object]:
-    """Constrói payer/items/additional_info/statement_descriptor — todos opcionais.
+    """Constrói payer_email/items para a Orders API v2.
 
-    Em caso de dados incompletos do cliente (sem endereço, etc.), os campos
-    opcionais são omitidos mas os obrigatórios (items, payer) seguem.
+    A Orders API v2 rejeita campos fora do spec ("Properties not supported"):
+    payer aceita só email/identification/customer_id; statement_descriptor só
+    vale para cartão (enviado em card_payment_service); additional_info não
+    é aceito. Por isso o PIX envia apenas payer_email + items.
     """
     payer_email = payer_email_for_mercadopago(cliente)
-    payer = build_mp_payer(cliente, fallback_email=payer_email)
-    payer.pop("email", None)
     items = build_items_for_contrato(
         contrato,
         moto=getattr(contrato, "moto", None) if contrato else None,
         total_value=valor_total,
     )
-    add_info = build_additional_info(cliente)
-    return {
-        "payer_extra": payer,
-        "payer_email": payer_email,
-        "items": items,
-        "additional_info": add_info,
-        "statement_descriptor": build_statement_descriptor(op.nome),
-        "description": items[0]["description"] if items and items[0].get("description") else items[0]["title"],
-    }
+    return {"payer_email": payer_email, "items": items}
 
 
 def create_pix_for_cobranca(
@@ -106,7 +94,7 @@ def create_pix_for_cobranca(
         assert_payer_email_ready(cliente)
         try:
             extra = _build_mp_enrichment(
-                op=op, cliente=cliente, valor_total=valor_total, contrato=contrato
+                cliente=cliente, valor_total=valor_total, contrato=contrato
             )
         except MercadoPagoDataError as exc:
             raise MotoPayError(str(exc)) from exc
@@ -147,7 +135,7 @@ def create_pix_for_contrato(
         assert_payer_email_ready(cliente)
         try:
             extra = _build_mp_enrichment(
-                op=op, cliente=cliente, valor_total=valor_total, contrato=contrato
+                cliente=cliente, valor_total=valor_total, contrato=contrato
             )
         except MercadoPagoDataError as exc:
             raise MotoPayError(str(exc)) from exc

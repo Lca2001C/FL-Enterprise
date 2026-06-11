@@ -11,6 +11,7 @@ import { formatBrl, formatDate } from './utils/format';
 import { parseApiError } from './utils/apiError';
 import { formatMercadoPagoStatusDetail } from './utils/mercadopagoStatusDetail';
 import { mercadoPagoPayerEmail } from './utils/mercadopagoPayer';
+import { resolveClientBaseUrl } from './apiClient';
 import { resolveApiBase } from './utils/apiBase';
 import ErrorBanner from './components/ErrorBanner';
 import ReloadPrompt from './components/ReloadPrompt';
@@ -32,7 +33,7 @@ export default function PublicPayView() {
   const token = portalTokenFromPath();
   const apiBase = resolveApiBase(import.meta.env.VITE_API_BASE_URL);
   // useMemo garante uma única instância estável — novo render não recria o cliente HTTP
-  const api = useMemo(() => axios.create({ baseURL: apiBase }), [apiBase]);
+  const api = useMemo(() => axios.create({ baseURL: resolveClientBaseUrl(apiBase) }), [apiBase]);
 
   const [checkout, setCheckout] = useState<PayerPortalOut | null>(null);
   const [loading, setLoading] = useState(true);

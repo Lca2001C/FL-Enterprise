@@ -1,10 +1,27 @@
 import { useEffect, useCallback, useState } from 'react';
-import axios from 'axios';
-import { useAuth } from '../AuthContext';
+import type { AxiosInstance } from 'axios';
+import { useAuth, type AuthUser } from '../AuthContext';
 import { useAlerts, type Alert } from '../stores/AlertContext';
 
-function isNetworkError(err: unknown): boolean {
-  return axios.isAxiosError(err) && err.response == null;
+function effectiveOperacaoId(user: AuthUser | null, scope: number | null): number | null {
+  if (!user) return null;
+  if (user.tipo === 'admin') {
+    return scope != null && scope > 0 ? scope : null;
+  }
+  return user.operacao_id != null && user.operacao_id > 0 ? user.operacao_id : null;
+}
+
+async function fetchAlertsFromApi(
+  api: AxiosInstance,
+  user: AuthUser | null,
+  operacaoScopeId: number | null,
+  maxAlerts: number
+): Promise<Alert[]> {
+  const params: Record<string, string> = { limit: String(maxAlerts) };
+  const oid = effectiveOperacaoId(user, operacaoScopeId);
+  if (oid != null) params.operacao_id = String(oid);
+  const res = await api.get<Alert[]>('/alerts', { params });
+  return res.data;
 }
 
 interface UseAlertsHookOptions {
@@ -22,36 +39,36 @@ export const useAlertsPolling = (options: UseAlertsHookOptions = {}) => {
     enabled = true,
   } = options;
 
-  const { api, token } = useAuth();
+  const { token, user, operacaoScopeId, api } = useAuth();
   const { addAlert } = useAlerts();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const fetchAlerts = useCallback(async () => {
-    if (!enabled || !token) return;
+    if (!enabled || !token || !user || typeof window === 'undefined') return;
     try {
       setLoading(true);
       setError(null);
-      const r = await api.get<Alert[]>('/alerts', { params: { limit: maxAlerts } });
-      r.data.forEach((alert) => {
+      const data = await fetchAlertsFromApi(api, user, operacaoScopeId, maxAlerts);
+      data.forEach((alert) => {
         if (!autoAcknowledge || alert.severity !== 'info') {
           addAlert(alert);
         }
       });
     } catch (err) {
-      if (isNetworkError(err)) return;
+      if (err instanceof TypeError) return;
       setError(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
-  }, [addAlert, api, autoAcknowledge, enabled, maxAlerts, token]);
+  }, [addAlert, api, autoAcknowledge, enabled, maxAlerts, operacaoScopeId, token, user]);
 
   useEffect(() => {
-    if (!enabled || !token) return;
+    if (!enabled || !token || !user) return;
     void fetchAlerts();
     const interval = setInterval(() => void fetchAlerts(), pollInterval);
     return () => clearInterval(interval);
-  }, [enabled, fetchAlerts, pollInterval, token]);
+  }, [enabled, fetchAlerts, pollInterval, token, user]);
 
   return { loading, error, refetch: fetchAlerts };
 };

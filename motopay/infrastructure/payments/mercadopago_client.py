@@ -32,6 +32,8 @@ __all__ = [
     "MercadoPagoOrderResult",
     "build_webhook_manifest",
     "compute_webhook_signature",
+    "is_valid_mp_access_token",
+    "is_valid_mp_public_key",
     "mercadopago_api_error_message",
     "mp_configured_for_operacao",
     "mp_credentials_complete",
@@ -145,9 +147,30 @@ def _order_data_from_mp_error(exc: MercadoPagoApiError) -> dict[str, Any] | None
     return None
 
 
+def is_valid_mp_access_token(token: str | None) -> bool:
+    value = (token or "").strip()
+    if len(value) < 20:
+        return False
+    return value.startswith("APP_USR-") or value.startswith("TEST-")
+
+
+def is_valid_mp_public_key(key: str | None) -> bool:
+    value = (key or "").strip()
+    if len(value) < 20:
+        return False
+    return value.startswith("APP_USR-") or value.startswith("TEST-")
+
+
 def mercadopago_api_error_message(exc: MercadoPagoApiError) -> str:
     response = exc.response
     if isinstance(response, dict):
+        code = response.get("code")
+        if code == "PA_UNAUTHORIZED_RESULT_FROM_POLICIES":
+            return (
+                "Mercado Pago recusou a operação (política da conta ou token inválido). "
+                "Em Ajustes, confira o Access Token completo (APP_USR-... ou TEST-...) "
+                "e se a conta tem Pix habilitado."
+            )
         status_detail = _status_detail_from_mp_response(response)
         if status_detail:
             return mercadopago_status_detail_message(status_detail)
@@ -243,9 +266,9 @@ def _operacao_has_any_mp_credential(op: Operacao) -> bool:
 
 def operacao_mp_fields_complete(op: Operacao) -> bool:
     return bool(
-        (op.mercadopago_access_token or "").strip()
-        and (op.mercadopago_public_key or "").strip()
-        and (op.mercadopago_webhook_secret or "").strip()
+        is_valid_mp_access_token(op.mercadopago_access_token)
+        and is_valid_mp_public_key(op.mercadopago_public_key)
+        and len((op.mercadopago_webhook_secret or "").strip()) >= 8
     )
 
 
@@ -254,24 +277,26 @@ def uses_operacao_mercadopago_credentials(op: Operacao | None) -> bool:
 
 
 def mp_token_for_operacao(op: Operacao | None) -> str:
-    if uses_operacao_mercadopago_credentials(op):
-        assert op is not None
-        if not operacao_mp_fields_complete(op):
-            return ""
-        return op.mercadopago_access_token.strip()  # type: ignore[union-attr]
-    if op and (op.mercadopago_access_token or "").strip():
-        return op.mercadopago_access_token.strip()
+    if op:
+        token = (op.mercadopago_access_token or "").strip()
+        if is_valid_mp_access_token(token):
+            if uses_operacao_mercadopago_credentials(op):
+                if operacao_mp_fields_complete(op):
+                    return token
+            else:
+                return token
     return effective_mercadopago_access_token()
 
 
 def mp_public_key_for_operacao(op: Operacao | None) -> str:
-    if uses_operacao_mercadopago_credentials(op):
-        assert op is not None
-        if not operacao_mp_fields_complete(op):
-            return ""
-        return op.mercadopago_public_key.strip()  # type: ignore[union-attr]
-    if op and (op.mercadopago_public_key or "").strip():
-        return op.mercadopago_public_key.strip()
+    if op:
+        public_key = (op.mercadopago_public_key or "").strip()
+        if is_valid_mp_public_key(public_key):
+            if uses_operacao_mercadopago_credentials(op):
+                if operacao_mp_fields_complete(op):
+                    return public_key
+            else:
+                return public_key
     return effective_mercadopago_public_key()
 
 
@@ -287,9 +312,8 @@ def mp_webhook_secret_for_operacao(op: Operacao | None) -> str:
 
 
 def mp_credentials_complete(op: Operacao | None) -> bool:
-    if uses_operacao_mercadopago_credentials(op):
-        assert op is not None
-        return operacao_mp_fields_complete(op)
+    if op and operacao_mp_fields_complete(op):
+        return True
     return bool(
         effective_mercadopago_access_token()
         and effective_mercadopago_public_key()

@@ -8,6 +8,7 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
   const proxyTarget = env.VITE_DEV_PROXY_TARGET || 'http://localhost:8000';
   const enablePwaInDev = env.VITE_PWA_DEV === 'true';
+  const disablePwa = env.VITE_DISABLE_PWA === 'true';
 
   return {
     plugins: [
@@ -17,6 +18,7 @@ export default defineConfig(({ mode }) => {
         },
       }),
       VitePWA({
+        disable: disablePwa,
         registerType: 'autoUpdate',
         injectRegister: false,
         strategies: 'generateSW',
@@ -104,7 +106,9 @@ export default defineConfig(({ mode }) => {
     },
     server: {
       host: true,
-      port: 5173,
+      // 5173 = Docker/nginx; dev local usa 5174 para não disputar a porta.
+      port: Number(env.VITE_DEV_PORT) || 5174,
+      strictPort: false,
       proxy: {
         '/api': {
           target: proxyTarget,

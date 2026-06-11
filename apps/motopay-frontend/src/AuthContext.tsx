@@ -9,7 +9,7 @@ import {
   type ReactNode,
 } from 'react';
 import type { AxiosInstance } from 'axios';
-import { createApiClient } from './apiClient';
+import { absoluteApiUrl, createApiClient } from './apiClient';
 import { resolveApiBase } from './utils/apiBase';
 import type { AppTab, ContractsFilter, OperacaoOut } from './apiTypes';
 
@@ -90,6 +90,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [contractsClienteId, setContractsClienteId] = useState<number | null>(null);
   const tokenRef = useRef(token);
   tokenRef.current = token;
+  const authBootstrappedRef = useRef(false);
   const ownerTourRef = useRef<{ start: () => void; reset: () => void }>({
     start: () => undefined,
     reset: () => undefined,
@@ -189,7 +190,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, [api, user]);
 
   const fetchMe = async () => {
-    if (!token) return;
+    if (!tokenRef.current) return;
     const response = await api.get<AuthUser>('/api/v1/auth/me');
     const u = response.data;
     setUser(u);
@@ -199,20 +200,58 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   useEffect(() => {
-    if (token) {
-      localStorage.setItem(LS_TOKEN, token);
-      void fetchMe().catch(() => {
+    if (!token) {
+      localStorage.removeItem(LS_TOKEN);
+      setUser(null);
+      authBootstrappedRef.current = false;
+      return;
+    }
+    localStorage.setItem(LS_TOKEN, token);
+    let cancelled = false;
+    void (async () => {
+      const refreshToken = localStorage.getItem(LS_REFRESH);
+      if (!authBootstrappedRef.current && refreshToken) {
+        authBootstrappedRef.current = true;
+        try {
+          const { default: axios } = await import('axios');
+          const res = await axios.post<{ access_token: string; refresh_token: string }>(
+            absoluteApiUrl('/api/v1/auth/refresh', apiBase),
+            { refresh_token: refreshToken }
+          );
+          if (cancelled) return;
+          localStorage.setItem(LS_TOKEN, res.data.access_token);
+          localStorage.setItem(LS_REFRESH, res.data.refresh_token);
+          tokenRef.current = res.data.access_token;
+          if (res.data.access_token !== token) {
+            setToken(res.data.access_token);
+            return;
+          }
+        } catch {
+          if (cancelled) return;
+          setToken(null);
+          setUser(null);
+          localStorage.removeItem(LS_TOKEN);
+          localStorage.removeItem(LS_REFRESH);
+          return;
+        }
+      } else {
+        authBootstrappedRef.current = true;
+      }
+      try {
+        await fetchMe();
+      } catch {
+        if (cancelled) return;
         setToken(null);
         setUser(null);
         localStorage.removeItem(LS_TOKEN);
         localStorage.removeItem(LS_REFRESH);
-      });
-    } else {
-      localStorage.removeItem(LS_TOKEN);
-      setUser(null);
-    }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token]);
+  }, [token, apiBase]);
 
   useEffect(() => {
     if (user) void fetchOperacaoNome();
@@ -246,6 +285,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       { email, password }
     );
     localStorage.setItem(LS_REFRESH, response.data.refresh_token);
+    localStorage.setItem(LS_TOKEN, response.data.access_token);
     setToken(response.data.access_token);
   };
 
@@ -313,7 +353,7 @@ async function axiosLogout(base: string, accessToken: string, refreshToken: stri
   const { default: axios } = await import('axios');
   await axios
     .post(
-      `${base.replace(/\/$/, '')}/api/v1/auth/logout`,
+      absoluteApiUrl('/api/v1/auth/logout', base),
       { refresh_token: refreshToken },
       { headers: { Authorization: `Bearer ${accessToken}` } }
     )

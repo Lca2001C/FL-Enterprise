@@ -12,6 +12,7 @@ from reportlab.lib.units import cm
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 from sqlalchemy.orm import Session
 
+from motopay.config import app_today
 from motopay.infrastructure.db.models import Cliente, Moto, Operacao
 from motopay.interfaces.api.deps import CurrentUser
 from motopay.services.fleet_service import get_contrato
@@ -115,7 +116,7 @@ def generate_contrato_pdf(
     story.append(Paragraph("Contrato de Locação de Moto", subtitle_style))
     story.append(
         Paragraph(
-            f"Documento nº {ct.id} · Emitido em {date.today().strftime('%d/%m/%Y')}",
+            f"Documento nº {ct.id} · Emitido em {app_today().strftime('%d/%m/%Y')}",
             subtitle_style,
         )
     )

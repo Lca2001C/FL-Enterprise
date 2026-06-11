@@ -189,7 +189,7 @@ def pay_cobranca_with_card(
     saved: ClienteMpCard | None = None
     if saved_card_id is not None:
         saved = db.get(ClienteMpCard, saved_card_id)
-        if not saved or saved.cliente_id != cliente.id:
+        if not saved or saved.cliente_id != cliente.id or saved.operacao_id != operacao_id:
             raise NotFoundError("Cartão salvo não encontrado")
         if not token.strip():
             raise ForbiddenError("Informe o CVV para pagar com cartão salvo")

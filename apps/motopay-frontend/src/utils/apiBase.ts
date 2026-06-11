@@ -6,11 +6,19 @@ const DEFAULT_FRONTEND_PORT =
 
 const LOCAL_DEV_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
 
-function isLocalDevHostname(hostname: string): boolean {
+export function isLocalDevHostname(hostname: string): boolean {
   return LOCAL_DEV_HOSTS.has(hostname);
 }
 
-function isBareLocalDevUrl(url: string): boolean {
+function isPrivateLanHostname(hostname: string): boolean {
+  return (
+    /^192\.168\./.test(hostname) ||
+    /^10\./.test(hostname) ||
+    /^172\.(1[6-9]|2\d|3[0-1])\./.test(hostname)
+  );
+}
+
+export function isBareLocalDevUrl(url: string): boolean {
   try {
     const u = new URL(url.includes('://') ? url : `http://${url}`);
     if (!isLocalDevHostname(u.hostname)) return false;
@@ -47,7 +55,7 @@ function normalizeStoredLocalDev(stored: string | null | undefined): string | un
   return trimmed;
 }
 
-function isSeparateProductionApi(envUrl: string): boolean {
+export function isSeparateProductionApi(envUrl: string): boolean {
   if (!envUrl || envUrl === 'SAME_ORIGIN') return false;
   try {
     const u = new URL(envUrl.includes('://') ? envUrl : `http://${envUrl}`);
@@ -97,4 +105,40 @@ export function resolveApiBase(envUrl?: string, stored?: string | null): string 
   }
 
   return sanitizeApiBase(resolved);
+}
+
+/** Painel Docker/Vite: API em /api e /alerts no mesmo host da página. */
+export function usesSameOriginApiProxy(envUrl?: string): boolean {
+  if (typeof window === 'undefined') return false;
+  const env = (envUrl?.trim() || '').replace(/\/$/, '');
+  if (!env || env === 'SAME_ORIGIN') return true;
+  return !isSeparateProductionApi(env);
+}
+
+/** Navegador em localhost/LAN: sempre /api e /alerts via proxy (nginx ou Vite). */
+export function shouldUseRelativeApiRequests(envUrl?: string): boolean {
+  if (typeof window === 'undefined') return false;
+  const host = window.location.hostname;
+  if (isLocalDevHostname(host) || isPrivateLanHostname(host)) return true;
+  return usesSameOriginApiProxy(envUrl);
+}
+
+/** Origem da API no browser (corrige localhost sem porta → :5173). */
+export function pageOriginApiUrl(path: string): string {
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+  if (typeof window === 'undefined') return normalizedPath;
+  const origin = normalizeLocalDevOrigin(window.location.origin.replace(/\/$/, ''));
+  return `${origin}${normalizedPath}`;
+}
+
+/**
+ * Path para fetch/axios em dev Docker/Vite: relativo à página (porta correta garantida).
+ * Em produção com API separada, retorna URL absoluta.
+ */
+export function sameOriginApiPath(path: string, envUrl?: string): string {
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+  if (typeof window !== 'undefined' && shouldUseRelativeApiRequests(envUrl)) {
+    return normalizedPath;
+  }
+  return pageOriginApiUrl(normalizedPath);
 }

@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 import logging
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 from decimal import Decimal
-from zoneinfo import ZoneInfo
 
 from dateutil.relativedelta import relativedelta
 from sqlalchemy import func, select
@@ -52,9 +51,9 @@ logger = logging.getLogger(__name__)
 
 def _today() -> date:
     """Data atual no fuso horário configurado (America/Sao_Paulo por padrão)."""
-    from motopay.config import get_settings
-    tz = ZoneInfo(get_settings().app_timezone)
-    return datetime.now(tz).date()
+    from motopay.config import app_today
+
+    return app_today()
 
 
 _CHARGEBACK_LOST_STATUSES = frozenset({"lost", "charged_back", "settled", "closed"})
@@ -1083,6 +1082,15 @@ def handle_mercadopago_subscription_payment(
             ct_id = int(ext.split("-", 1)[1])
             ct = db.get(Contrato, ct_id)
         except (IndexError, ValueError):
+            ct = None
+        # O pagamento referencia uma assinatura; se o contrato apontado pelo
+        # external_reference pertence a OUTRA assinatura, não vincular.
+        if (
+            ct
+            and preapproval_id
+            and ct.mercadopago_subscription_id
+            and ct.mercadopago_subscription_id != preapproval_id
+        ):
             ct = None
     if not ct:
         return False, None

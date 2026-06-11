@@ -55,6 +55,7 @@ import { parseApiError } from './utils/apiError';
 import ErrorBanner from './components/ErrorBanner';
 import ReloadPrompt from './components/ReloadPrompt';
 import InstallPrompt from './components/InstallPrompt';
+import { DevBuildBadge } from './components/DevBuildBadge';
 import TourWelcomeBanner from './components/TourWelcomeBanner';
 import { dismissOwnerTourBanner, shouldShowOwnerTourBanner, isOwnerTourEligible } from './guide/ownerTourSteps';
 import { useOwnerTour } from './guide/useOwnerTour';
@@ -1319,6 +1320,7 @@ function App() {
           <>
             <ReloadPrompt />
             <InstallPrompt />
+            <DevBuildBadge />
             <MainApp />
           </>
         </AlertProvider>

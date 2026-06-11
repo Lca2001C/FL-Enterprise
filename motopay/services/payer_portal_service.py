@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import secrets
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from motopay.config import get_settings
+from motopay.config import app_today, get_settings
 from motopay.config.mercadopago_credentials import effective_mercadopago_credentials_mode
 from motopay.domain.enums import CobrancaStatus
 from motopay.domain.exceptions import ForbiddenError, NotFoundError
@@ -140,7 +140,7 @@ def get_portal_checkout(db: Session, token: str) -> PayerPortalOut:
         raise NotFoundError("Dados do pagamento não encontrados")
     if not mp_credentials_complete(op):
         raise ForbiddenError("Pagamento online indisponível para esta operação")
-    today = date.today()
+    today = app_today()
     out = _cobranca_to_out(cob, op, today, valor_base=ct.valor_recorrente)
     return PayerPortalOut(
         cobranca=out,

@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useCallback, type ReactNode } from 'react';
-import { resolveApiBase, sanitizeApiBase } from '../utils/apiBase';
+import { sameOriginApiPath } from '../utils/apiBase';
 
 export type AlertSeverity = 'critical' | 'warning' | 'info';
 
@@ -49,13 +49,11 @@ export const AlertProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const acknowledgeAlert = useCallback(async (id: string) => {
     try {
       const token = localStorage.getItem('token');
-      const base = sanitizeApiBase(
-        resolveApiBase(
-          import.meta.env.VITE_API_BASE_URL as string | undefined,
-          localStorage.getItem('apiBase')
-        )
+      const url = sameOriginApiPath(
+        `/alerts/${id}/acknowledge`,
+        import.meta.env.VITE_API_BASE_URL as string | undefined
       );
-      await fetch(`${base}/alerts/${id}/acknowledge`, {
+      await fetch(url, {
         method: 'POST',
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });

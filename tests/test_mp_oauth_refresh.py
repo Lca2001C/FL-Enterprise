@@ -17,11 +17,15 @@ from motopay.services.mercadopago_token_service import ensure_valid_mp_token
 
 
 def test_ensure_valid_mp_token_refreshes_when_expired(db_session):
+    # Tokens com formato real do MP (APP_USR-, ≥20 chars) — exigido por
+    # is_valid_mp_access_token em mp_token_for_operacao.
+    old_token = "APP_USR-0000000000000000-old"
+    new_token = "APP_USR-1111111111111111-new"
     op = Operacao(
         nome="OAuth Op",
-        mercadopago_access_token="old-token",
-        mercadopago_public_key="pk",
-        mercadopago_webhook_secret="sec",
+        mercadopago_access_token=old_token,
+        mercadopago_public_key="APP_USR-pk-0000-1111-2222",
+        mercadopago_webhook_secret="whsec-12345678",
         mercadopago_refresh_token="refresh-xyz",
         mercadopago_oauth_expires_at=datetime.now(UTC) - timedelta(minutes=1),
     )
@@ -31,17 +35,17 @@ def test_ensure_valid_mp_token_refreshes_when_expired(db_session):
     with patch(
         "motopay.services.mercadopago_token_service.refresh_oauth_token",
         return_value={
-            "access_token": "new-token",
+            "access_token": new_token,
             "refresh_token": "refresh-new",
             "expires_in": 3600,
-            "public_key": "pk-new",
+            "public_key": "APP_USR-pk-3333-4444-5555",
         },
     ):
         token = ensure_valid_mp_token(db_session, op)
 
-    assert token == "new-token"
+    assert token == new_token
     db_session.refresh(op)
-    assert op.mercadopago_access_token == "new-token"
+    assert op.mercadopago_access_token == new_token
     assert op.mercadopago_refresh_token == "refresh-new"
 
 

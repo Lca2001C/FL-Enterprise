@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import io as _io
-from datetime import date
 
 try:
     import qrcode as _qrcode  # type: ignore[import]
@@ -15,7 +14,7 @@ from sqlalchemy import select
 from telegram import KeyboardButton, ReplyKeyboardMarkup, Update
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
 
-from motopay.config import get_settings
+from motopay.config import app_today, get_settings
 from motopay.domain.enums import ContratoStatus
 from motopay.infrastructure.db.models import Cliente, Contrato, Moto, Operacao
 from motopay.infrastructure.db.session import SessionLocal
@@ -355,7 +354,7 @@ async def cmd_pix(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                     reply_template = "overdue_no_pix"
                 else:
                     op = db.get(Operacao, ct.operacao_id)
-                    amounts = charge_amounts_for_cobranca(cob, ct, op, date.today()) if op else None
+                    amounts = charge_amounts_for_cobranca(cob, ct, op, app_today()) if op else None
                     total = amounts.valor_total if amounts else cob.valor
 
                     # Breakdown: mostra discriminação se houver juros ou multa

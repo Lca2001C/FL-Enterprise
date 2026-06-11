@@ -6,6 +6,10 @@ from sqlalchemy.orm import Session
 from motopay.domain.enums import UserRole
 from motopay.domain.exceptions import ConflictError, ForbiddenError, MotoPayError, NotFoundError
 from motopay.infrastructure.db.models import Operacao, Usuario
+from motopay.infrastructure.payments.mercadopago_client import (
+    is_valid_mp_access_token,
+    is_valid_mp_public_key,
+)
 from motopay.infrastructure.telegram.notify import TelegramPermanentError, send_telegram_text
 from motopay.infrastructure.telegram.templates import (
     list_custom_message_triggers,
@@ -234,9 +238,19 @@ def update_operacao(
         op.telegram_owner_notify_enabled = bool(body.telegram_owner_notify_enabled)
     _validate_owner_notify_settings(op)
     if body.mercadopago_access_token is not None:
-        op.mercadopago_access_token = body.mercadopago_access_token.strip() or None
+        raw_token = body.mercadopago_access_token.strip() or None
+        if raw_token and not is_valid_mp_access_token(raw_token):
+            raise MotoPayError(
+                "Access Token Mercado Pago inválido. Cole o token completo (APP_USR-... ou TEST-...)."
+            )
+        op.mercadopago_access_token = raw_token
     if body.mercadopago_public_key is not None:
-        op.mercadopago_public_key = body.mercadopago_public_key.strip() or None
+        raw_pk = body.mercadopago_public_key.strip() or None
+        if raw_pk and not is_valid_mp_public_key(raw_pk):
+            raise MotoPayError(
+                "Public Key Mercado Pago inválida. Cole a chave completa (APP_USR-... ou TEST-...)."
+            )
+        op.mercadopago_public_key = raw_pk
     if body.mercadopago_webhook_secret is not None:
         op.mercadopago_webhook_secret = body.mercadopago_webhook_secret.strip() or None
     db.add(op)

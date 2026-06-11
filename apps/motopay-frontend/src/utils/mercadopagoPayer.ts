@@ -16,16 +16,13 @@ export function normalizeBrickAmount(value: number | string): number {
   return Math.round(n * 100) / 100;
 }
 
-/** Payer exigido pelo Payment/Card Brick (entityType: individual | association). */
-export function buildMercadoPagoBrickPayer(input: {
+/** Payer do Card Brick (sem entityType — o SDK avisa se enviar valor inválido). */
+export function buildCardBrickPayer(input: {
   email: string;
   identification: { type: string; number: string };
-  customerId?: string;
-  cardsIds?: string[];
-}): MercadoPagoBrickPayer {
+}): Omit<MercadoPagoBrickPayer, 'entityType' | 'customerId' | 'cardsIds'> {
   const idNumber = input.identification.number.replace(/\D/g, '');
   return {
-    entityType: 'individual',
     email: input.email,
     ...(idNumber.length > 0
       ? {
@@ -35,8 +32,45 @@ export function buildMercadoPagoBrickPayer(input: {
           },
         }
       : {}),
-    ...(input.customerId ? { customerId: input.customerId } : {}),
-    ...(input.cardsIds?.length ? { cardsIds: input.cardsIds } : {}),
+  };
+}
+
+/** Payer do Payment Brick. Com cartões salvos, MP não aceita entityType no payer. */
+export function buildMercadoPagoBrickPayer(input: {
+  email: string;
+  identification: { type: string; number: string };
+  customerId?: string;
+  cardsIds?: string[];
+}): MercadoPagoBrickPayer {
+  const idNumber = input.identification.number.replace(/\D/g, '');
+  const identification =
+    idNumber.length > 0
+      ? {
+          identification: {
+            type: input.identification.type,
+            number: idNumber,
+          },
+        }
+      : {};
+  const savedCards =
+    input.customerId && input.cardsIds?.length
+      ? { customerId: input.customerId, cardsIds: input.cardsIds }
+      : input.customerId
+        ? { customerId: input.customerId }
+        : {};
+
+  if (input.customerId) {
+    return {
+      email: input.email,
+      ...identification,
+      ...savedCards,
+    } as MercadoPagoBrickPayer;
+  }
+
+  return {
+    entityType: 'individual',
+    email: input.email,
+    ...identification,
   };
 }
 

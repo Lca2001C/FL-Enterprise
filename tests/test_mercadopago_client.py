@@ -3,14 +3,17 @@ from __future__ import annotations
 from decimal import Decimal
 
 from motopay.config import get_settings
+from motopay.infrastructure.db.models import Operacao
 from motopay.infrastructure.payments.mercadopago_client import (
     MercadoPagoApiError,
     MercadoPagoClient,
     _order_data_from_mp_error,
     build_webhook_manifest,
     compute_webhook_signature,
+    is_valid_mp_access_token,
     mercadopago_api_error_message,
     mercadopago_status_detail_message,
+    mp_token_for_operacao,
     payer_email_for_mercadopago,
     verify_webhook_signature,
 )
@@ -212,3 +215,35 @@ def test_payer_email_production_uses_cliente_email(monkeypatch):
     )
     assert payer_email_for_mercadopago(cl) == "joao@example.com"
     get_settings.cache_clear()
+
+
+def test_is_valid_mp_access_token_rejects_short_values():
+    assert not is_valid_mp_access_token("la")
+    assert is_valid_mp_access_token("TEST-" + "x" * 20)
+
+
+def test_mp_token_for_operacao_falls_back_when_operacao_token_invalid(monkeypatch):
+    monkeypatch.setenv("ENVIRONMENT", "development")
+    monkeypatch.setenv("MERCADOPAGO_CREDENTIALS_MODE", "test")
+    monkeypatch.setenv("MERCADOPAGO_ACCESS_TOKEN_TEST", "TEST-global-token-1234567890")
+    get_settings.cache_clear()
+    op = Operacao(
+        id=3,
+        nome="Teste",
+        mercadopago_access_token="la",
+        mercadopago_public_key="APP_USR-" + "k" * 24,
+        mercadopago_webhook_secret="whsec-" + "s" * 12,
+    )
+    assert mp_token_for_operacao(op) == "TEST-global-token-1234567890"
+    get_settings.cache_clear()
+
+
+def test_mercadopago_api_error_message_policy_block():
+    exc = MercadoPagoApiError(
+        403,
+        "policy",
+        {"code": "PA_UNAUTHORIZED_RESULT_FROM_POLICIES", "message": "UNAUTHORIZED"},
+    )
+    msg = mercadopago_api_error_message(exc)
+    assert "Access Token" in msg
+    assert "Pix" in msg

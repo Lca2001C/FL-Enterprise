@@ -18,7 +18,9 @@ def _assert_not_blocked(*, key: str, max_attempts: int, detail: str) -> None:
     try:
         raw = get_redis_connection().get(key)
     except redis.RedisError as e:
-        logger.warning("rate_limit_check_failed key=%s: %s", key, e)
+        # Fail-open deliberado: Redis fora do ar não pode derrubar o login,
+        # mas a janela sem proteção contra brute-force precisa gerar alerta.
+        logger.error("rate_limit_check_failed (fail-open) key=%s: %s", key, e)
         return
     if raw is not None and int(raw) >= max_attempts:
         raise HTTPException(status_code=429, detail=detail)

@@ -24,22 +24,28 @@ from sqlalchemy import select
 
 from tests.conftest import auth_header, login
 
+# Credenciais fake com formato válido (prefixo TEST-/APP_USR-, ≥20 chars;
+# webhook secret ≥8 chars) — exigido por operacao_mp_fields_complete.
+_SEED_MP_TOKEN = "TEST-1234567890123456-seed"
+_SEED_MP_PUBLIC_KEY = "TEST-pk-1234-5678-seed"
+_SEED_MP_WEBHOOK_SECRET = "whsec-12345678"
+
 
 def _seed_received_cobranca(db_session, operacao: Operacao | None = None):
     if operacao is None:
         op = Operacao(
             nome="Enterprise Op",
-            mercadopago_access_token="TEST-token",
-            mercadopago_public_key="TEST-pk",
-            mercadopago_webhook_secret="whsec",
+            mercadopago_access_token=_SEED_MP_TOKEN,
+            mercadopago_public_key=_SEED_MP_PUBLIC_KEY,
+            mercadopago_webhook_secret=_SEED_MP_WEBHOOK_SECRET,
         )
         db_session.add(op)
         db_session.flush()
     else:
         op = operacao
-        op.mercadopago_access_token = op.mercadopago_access_token or "TEST-token"
-        op.mercadopago_public_key = op.mercadopago_public_key or "TEST-pk"
-        op.mercadopago_webhook_secret = op.mercadopago_webhook_secret or "whsec"
+        op.mercadopago_access_token = op.mercadopago_access_token or _SEED_MP_TOKEN
+        op.mercadopago_public_key = op.mercadopago_public_key or _SEED_MP_PUBLIC_KEY
+        op.mercadopago_webhook_secret = op.mercadopago_webhook_secret or _SEED_MP_WEBHOOK_SECRET
         db_session.add(op)
         db_session.flush()
     cl = Cliente(

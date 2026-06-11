@@ -66,6 +66,14 @@ def _verify_mp_signature(
     if not secret:
         secret = get_settings().mercadopago_webhook_secret.strip()
     if not secret:
+        # Sem secret configurado: em produção rejeita (fail-closed) — aceitar
+        # webhook não assinado permitiria forjar notificações de pagamento.
+        if get_settings().environment == "production":
+            logger.error(
+                "webhook_secret_missing: configure MERCADOPAGO_WEBHOOK_SECRET "
+                "(ou o secret da operação) — webhook rejeitado em produção."
+            )
+            return False
         return True
     x_sig = request.headers.get("x-signature", "")
     x_req = request.headers.get("x-request-id", "")

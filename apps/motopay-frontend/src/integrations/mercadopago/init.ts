@@ -18,7 +18,8 @@ export function initMercadoPagoSdk(publicKey: string): void {
   const key = publicKey.trim();
   if (!key) return;
   if (initialized && key === currentPublicKey) return;
-  initMercadoPago(key, { locale: 'pt-BR' });
+  // security.js em index.html já fornece device fingerprint; evita scripts extras (mlstatic).
+  initMercadoPago(key, { locale: 'pt-BR', advancedFraudPrevention: false });
   currentPublicKey = key;
   initialized = true;
   notifySdkReady();

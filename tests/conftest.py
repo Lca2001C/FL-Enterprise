@@ -25,7 +25,12 @@ def _ensure_test_env() -> None:
     os.environ["DATABASE_URL"] = TEST_DATABASE_URL
     os.environ["JWT_SECRET"] = "test-jwt-secret-not-for-production"
     os.environ["REDIS_URL"] = os.getenv("TEST_REDIS_URL", "redis://localhost:6379/15")
+    # Neutraliza TODAS as credenciais MP: sem isso, valores do .env local
+    # vazam via pydantic-settings (env_file) e os testes divergem do CI.
     os.environ["MERCADOPAGO_WEBHOOK_SECRET"] = ""
+    os.environ["MERCADOPAGO_WEBHOOK_SECRET_TEST"] = ""
+    os.environ["MERCADOPAGO_ACCESS_TOKEN"] = ""
+    os.environ["MERCADOPAGO_PUBLIC_KEY"] = ""
     os.environ["MERCADOPAGO_CREDENTIALS_MODE"] = "test"
     os.environ["MERCADOPAGO_ACCESS_TOKEN_TEST"] = "TEST-token"
     os.environ["MERCADOPAGO_PUBLIC_KEY_TEST"] = "TEST-pk"
