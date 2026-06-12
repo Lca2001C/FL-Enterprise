@@ -102,7 +102,7 @@ services:
           name: motopay-redis
           property: connectionString
     # Aplica as migrações antes de cada release entrar em tráfego.
-    preDeployCommand: alembic -c /app/alembic.ini upgrade head
+    preDeployCommand: env PYTHONPATH=/usr/local/lib/python3.11/site-packages:/app alembic -c /app/alembic.ini upgrade head
 
   # Celery worker (filas default, telegram, billing).
   - type: worker

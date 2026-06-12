@@ -77,4 +77,4 @@ services:
           name: motopay-db
           property: connectionString
       # REDIS_URL omitido de propósito — modo degradado (veja DEPLOY.md Apêndice B).
-    preDeployCommand: alembic -c /app/alembic.ini upgrade head
+    preDeployCommand: env PYTHONPATH=/usr/local/lib/python3.11/site-packages:/app alembic -c /app/alembic.ini upgrade head
