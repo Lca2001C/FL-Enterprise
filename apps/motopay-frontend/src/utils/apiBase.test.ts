@@ -4,10 +4,11 @@ import {
   pageOriginApiUrl,
   resolveApiBase,
   sameOriginApiPath,
+  shouldUseRelativeApiForClient,
   shouldUseRelativeApiRequests,
   usesSameOriginApiProxy,
 } from './apiBase';
-import { resolveClientBaseUrl } from '../apiClient';
+import { absoluteApiUrl, resolveClientBaseUrl } from '../apiClient';
 
 describe('normalizeLocalDevOrigin', () => {
   it('maps bare localhost to docker frontend port', () => {
@@ -51,6 +52,7 @@ describe('resolveApiBase', () => {
 describe('usesSameOriginApiProxy', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
   });
 
   it('is true for SAME_ORIGIN docker build', () => {
@@ -85,5 +87,36 @@ describe('usesSameOriginApiProxy', () => {
       location: { origin: 'http://192.168.0.209:5173', hostname: '192.168.0.209' },
     });
     expect(shouldUseRelativeApiRequests()).toBe(true);
+  });
+
+  it('uses absolute API on Vercel when VITE_API_BASE_URL points to Render', () => {
+    vi.stubEnv('VITE_API_BASE_URL', 'https://motopay-api.onrender.com');
+    vi.stubGlobal('window', {
+      location: {
+        origin: 'https://fl-enterprise.vercel.app',
+        hostname: 'fl-enterprise.vercel.app',
+        host: 'fl-enterprise.vercel.app',
+      },
+    });
+    const apiBase = 'https://motopay-api.onrender.com';
+    expect(shouldUseRelativeApiRequests()).toBe(false);
+    expect(shouldUseRelativeApiForClient(apiBase)).toBe(false);
+    expect(resolveClientBaseUrl(apiBase)).toBe('https://motopay-api.onrender.com');
+    expect(absoluteApiUrl('/api/v1/auth/login', apiBase)).toBe(
+      'https://motopay-api.onrender.com/api/v1/auth/login'
+    );
+  });
+
+  it('falls back to relative on Vercel when apiBase is the same origin as the panel', () => {
+    vi.stubEnv('VITE_API_BASE_URL', '');
+    vi.stubGlobal('window', {
+      location: {
+        origin: 'https://fl-enterprise.vercel.app',
+        hostname: 'fl-enterprise.vercel.app',
+        host: 'fl-enterprise.vercel.app',
+      },
+    });
+    expect(shouldUseRelativeApiForClient('https://fl-enterprise.vercel.app')).toBe(true);
+    expect(resolveClientBaseUrl('https://fl-enterprise.vercel.app')).toBe('');
   });
 });

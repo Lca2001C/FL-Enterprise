@@ -2,7 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { useAuth } from './AuthContext';
 import { LogIn, Shield, Mail, Lock, Settings } from 'lucide-react';
 import { parseApiError } from './utils/apiError';
-import { shouldUseRelativeApiRequests } from './utils/apiBase';
+import { shouldUseRelativeApiForClient } from './utils/apiBase';
 
 const Login = () => {
   const { login, apiBase, setApiBase } = useAuth();
@@ -88,7 +88,7 @@ const Login = () => {
         </form>
 
         <div className="card-footer">
-          {!shouldUseRelativeApiRequests() && (
+          {!shouldUseRelativeApiForClient(apiBase) && (
           <button
             type="button"
             className="settings-toggle"
@@ -98,7 +98,7 @@ const Login = () => {
           </button>
           )}
 
-          {!shouldUseRelativeApiRequests() && showSettings && (
+          {!shouldUseRelativeApiForClient(apiBase) && showSettings && (
             <div className="settings-panel animate-fade">
               <label className="input-label">URL Base da API</label>
               <input

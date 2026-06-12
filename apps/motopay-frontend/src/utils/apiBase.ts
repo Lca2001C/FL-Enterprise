@@ -67,6 +67,10 @@ export function isSeparateProductionApi(envUrl: string): boolean {
   }
 }
 
+export function viteApiBaseFromEnv(): string {
+  return ((import.meta.env.VITE_API_BASE_URL as string | undefined) ?? '').trim().replace(/\/$/, '');
+}
+
 /** Em dev local, força mesma origem da página (proxy /api e /alerts) para respeitar CSP. */
 function preferPageOriginForLocalDev(configured: string, origin: string): string {
   try {
@@ -120,7 +124,33 @@ export function shouldUseRelativeApiRequests(envUrl?: string): boolean {
   if (typeof window === 'undefined') return false;
   const host = window.location.hostname;
   if (isLocalDevHostname(host) || isPrivateLanHostname(host)) return true;
-  return usesSameOriginApiProxy(envUrl);
+  const env = (envUrl ?? viteApiBaseFromEnv()).trim().replace(/\/$/, '');
+  return usesSameOriginApiProxy(env || undefined);
+}
+
+/**
+ * Axios/fetch: em Vercel + API no Render, usa URL absoluta quando apiBase ou VITE_API_BASE_URL
+ * apontam para host de produção separado do painel.
+ */
+function apiBaseSharesPageOrigin(apiBase: string): boolean {
+  const normalized = apiBase.trim().replace(/\/$/, '');
+  if (!normalized) return false;
+  try {
+    const apiHost = new URL(normalized.includes('://') ? normalized : `http://${normalized}`).host;
+    return apiHost === window.location.host;
+  } catch {
+    return false;
+  }
+}
+
+export function shouldUseRelativeApiForClient(apiBase: string, envUrl?: string): boolean {
+  if (typeof window === 'undefined') return false;
+  const host = window.location.hostname;
+  if (isLocalDevHostname(host) || isPrivateLanHostname(host)) return true;
+  if (apiBaseSharesPageOrigin(apiBase)) return true;
+  if (isSeparateProductionApi(apiBase.trim().replace(/\/$/, ''))) return false;
+  const env = (envUrl ?? viteApiBaseFromEnv()).trim().replace(/\/$/, '');
+  return usesSameOriginApiProxy(env || undefined);
 }
 
 /** Origem da API no browser (corrige localhost sem porta → :5173). */

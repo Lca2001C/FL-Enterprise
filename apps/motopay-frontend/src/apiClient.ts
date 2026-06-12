@@ -3,7 +3,7 @@ import {
   isBareLocalDevUrl,
   pageOriginApiUrl,
   sanitizeApiBase,
-  shouldUseRelativeApiRequests,
+  shouldUseRelativeApiForClient,
 } from './utils/apiBase';
 
 export function normalizeBase(url: string): string {
@@ -15,7 +15,7 @@ export function normalizeBase(url: string): string {
  * reescreve paths para pageOriginApiUrl (porta correta).
  */
 export function resolveClientBaseUrl(baseURL: string): string {
-  if (shouldUseRelativeApiRequests()) {
+  if (shouldUseRelativeApiForClient(baseURL)) {
     return '';
   }
   return sanitizeApiBase(normalizeBase(baseURL));
@@ -23,14 +23,14 @@ export function resolveClientBaseUrl(baseURL: string): string {
 
 export function absoluteApiUrl(path: string, baseURL: string): string {
   const normalizedPath = path.startsWith('/') ? path : `/${path}`;
-  if (shouldUseRelativeApiRequests()) {
+  if (shouldUseRelativeApiForClient(baseURL)) {
     return normalizedPath;
   }
   const base = sanitizeApiBase(normalizeBase(baseURL));
   return `${base}${normalizedPath}`;
 }
 
-function applyRequestOrigin(config: InternalAxiosRequestConfig): void {
+function applyRequestOrigin(config: InternalAxiosRequestConfig, baseURL: string): void {
   const raw = typeof config.url === 'string' ? config.url : '';
 
   if (raw.startsWith('http://') || raw.startsWith('https://')) {
@@ -48,7 +48,7 @@ function applyRequestOrigin(config: InternalAxiosRequestConfig): void {
 
   if (!raw.startsWith('/')) return;
 
-  if (shouldUseRelativeApiRequests()) {
+  if (shouldUseRelativeApiForClient(baseURL)) {
     config.baseURL = '';
     return;
   }
@@ -100,7 +100,7 @@ export function createApiClient(
   };
 
   client.interceptors.request.use((config) => {
-    applyRequestOrigin(config);
+    applyRequestOrigin(config, baseURL);
 
     const t = getToken();
     if (t) {
@@ -149,7 +149,7 @@ export function createApiClient(
       }
 
       original.headers.Authorization = `Bearer ${newToken}`;
-      applyRequestOrigin(original);
+      applyRequestOrigin(original, baseURL);
       return client.request(original);
     }
   );
