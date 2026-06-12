@@ -9,24 +9,57 @@ from motopay.config.settings import Settings, get_settings
 from motopay.infrastructure.redis_client import (
     InMemoryRedis,
     get_redis_connection,
+    redis_enabled,
+    redis_using_memory,
 )
+from motopay.infrastructure.security.refresh_tokens import create_refresh_token
 
 
 @pytest.fixture
 def no_redis(monkeypatch: pytest.MonkeyPatch):
     """Força modo sem-Redis de forma determinística (ignora o .env local)."""
-    from types import SimpleNamespace
-
     from motopay.infrastructure import redis_client
 
-    monkeypatch.setattr(redis_client, "get_settings", lambda: SimpleNamespace(redis_url=""))
+    monkeypatch.delenv("REDIS_URL", raising=False)
+    monkeypatch.setenv("REDIS_URL", "")
+    get_settings.cache_clear()
     redis_client.reset_redis_connection()
     yield
     redis_client.reset_redis_connection()
+    get_settings.cache_clear()
 
 
 def test_get_connection_returns_inmemory_when_unset(no_redis):
     assert isinstance(get_redis_connection(), InMemoryRedis)
+
+
+def test_get_connection_falls_back_when_redis_unreachable(monkeypatch: pytest.MonkeyPatch):
+    """REDIS_URL inválido não deve derrubar login (usa InMemoryRedis após ping falhar)."""
+    from motopay.infrastructure import redis_client
+
+    monkeypatch.setenv("REDIS_URL", "redis://127.0.0.1:59999/0")
+    get_settings.cache_clear()
+    redis_client.reset_redis_connection()
+    conn = get_redis_connection()
+    assert isinstance(conn, InMemoryRedis)
+    assert redis_using_memory() is True
+    assert redis_enabled() is False
+    assert conn.setex("refresh:test", 60, "1") is True
+    redis_client.reset_redis_connection()
+    get_settings.cache_clear()
+
+
+def test_create_refresh_token_with_unreachable_redis(monkeypatch: pytest.MonkeyPatch):
+    """Login não pode falhar com 500 só porque REDIS_URL aponta para host inacessível."""
+    from motopay.infrastructure import redis_client
+
+    monkeypatch.setenv("REDIS_URL", "redis://127.0.0.1:59999/0")
+    get_settings.cache_clear()
+    redis_client.reset_redis_connection()
+    token = create_refresh_token(99)
+    assert len(token) >= 32
+    redis_client.reset_redis_connection()
+    get_settings.cache_clear()
 
 
 def test_inmemory_string_ops():

@@ -5,11 +5,16 @@ import threading
 import time
 from typing import Any
 
+import logging
+
 import redis
 
 from motopay.config import get_settings
 
+logger = logging.getLogger(__name__)
+
 _redis_client: redis.Redis | InMemoryRedis | None = None
+_using_memory_fallback: bool = False
 
 
 class _InMemoryPubSub:
@@ -121,29 +126,58 @@ class InMemoryRedis:
         return _noop
 
 
+def redis_using_memory() -> bool:
+    """True quando a API usa InMemoryRedis (REDIS_URL vazio ou Redis indisponível)."""
+    get_redis_connection()
+    return _using_memory_fallback
+
+
 def redis_enabled() -> bool:
-    return bool(get_settings().redis_url.strip())
+    """True somente com Redis real conectado (não modo degradado em memória)."""
+    if not get_settings().redis_url.strip():
+        return False
+    get_redis_connection()
+    return not _using_memory_fallback
+
+
+def _connect_redis() -> None:
+    """Abre conexão Redis ou cai para InMemoryRedis se URL vazia / ping falhar."""
+    global _redis_client, _using_memory_fallback
+    s = get_settings()
+    if not s.redis_url.strip():
+        _redis_client = InMemoryRedis()
+        _using_memory_fallback = True
+        return
+    try:
+        client = redis.from_url(
+            s.redis_url,
+            decode_responses=True,
+            socket_connect_timeout=float(s.redis_socket_connect_timeout_seconds),
+            socket_timeout=float(s.redis_socket_timeout_seconds),
+            health_check_interval=int(s.redis_health_check_interval_seconds),
+        )
+        client.ping()
+        _redis_client = client
+        _using_memory_fallback = False
+    except redis.RedisError as e:
+        logger.warning(
+            "REDIS_URL configurado mas indisponível (%s): usando InMemoryRedis (modo degradado).",
+            e,
+        )
+        _redis_client = InMemoryRedis()
+        _using_memory_fallback = True
 
 
 def get_redis_connection() -> redis.Redis | InMemoryRedis:
-    """Conexão única. Redis real quando REDIS_URL definido; senão, shim em memória."""
+    """Conexão única. Redis real quando REDIS_URL definido e acessível; senão, shim em memória."""
     global _redis_client
     if _redis_client is None:
-        s = get_settings()
-        if not s.redis_url.strip():
-            _redis_client = InMemoryRedis()
-        else:
-            _redis_client = redis.from_url(
-                s.redis_url,
-                decode_responses=True,
-                socket_connect_timeout=float(s.redis_socket_connect_timeout_seconds),
-                socket_timeout=float(s.redis_socket_timeout_seconds),
-                health_check_interval=int(s.redis_health_check_interval_seconds),
-            )
+        _connect_redis()
     return _redis_client
 
 
 def reset_redis_connection() -> None:
-    """Limpa o cache de conexão (usado em testes ao trocar REDIS_URL)."""
-    global _redis_client
+    """Limpa o cache de conexão (usado em testes ou após falha em runtime)."""
+    global _redis_client, _using_memory_fallback
     _redis_client = None
+    _using_memory_fallback = False

@@ -10,7 +10,7 @@ from sqlalchemy import text
 
 from motopay.config.settings import get_settings
 from motopay.infrastructure.db.session import SessionLocal
-from motopay.infrastructure.redis_client import redis_enabled
+from motopay.infrastructure.redis_client import InMemoryRedis, get_redis_connection, redis_enabled
 
 
 class HealthStatus(str, Enum):
@@ -73,7 +73,8 @@ async def check_redis() -> HealthCheckResult:
     """Check Redis connectivity."""
     import time
 
-    if not redis_enabled():
+    settings = get_settings()
+    if not settings.redis_url.strip():
         return HealthCheckResult(
             name="redis",
             status=HealthStatus.DEGRADED,
@@ -83,8 +84,15 @@ async def check_redis() -> HealthCheckResult:
 
     start = time.time()
     try:
-        settings = get_settings()
-        r = redis.from_url(settings.redis_url)
+        r = get_redis_connection()
+        if isinstance(r, InMemoryRedis):
+            duration_ms = (time.time() - start) * 1000
+            return HealthCheckResult(
+                name="redis",
+                status=HealthStatus.DEGRADED,
+                duration_ms=duration_ms,
+                error="REDIS_URL definido mas indisponível (usando memória local)",
+            )
         r.ping()
         duration_ms = (time.time() - start) * 1000
         return HealthCheckResult(
