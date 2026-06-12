@@ -101,3 +101,18 @@ def test_production_disables_webhook_query_token(monkeypatch: pytest.MonkeyPatch
     _base_production(monkeypatch)
     s = Settings()
     assert s.allow_webhook_token_in_query is False
+
+
+def test_production_reports_all_missing_vars_at_once(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Vários problemas simultâneos: a mensagem deve listar TODOS (sem "gato e rato").
+    _base_production(monkeypatch)
+    monkeypatch.setenv("MERCADOPAGO_ACCESS_TOKEN", "")
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "")
+    monkeypatch.setenv("REDIS_URL", "redis://redis.example:6379/0")
+    monkeypatch.delenv("ALLOW_PRODUCTION_REDIS_WITHOUT_AUTH", raising=False)
+    with pytest.raises(RuntimeError) as exc:
+        Settings()
+    msg = str(exc.value)
+    assert "MERCADOPAGO_ACCESS_TOKEN" in msg
+    assert "TELEGRAM_BOT_TOKEN" in msg
+    assert "REDIS_URL" in msg

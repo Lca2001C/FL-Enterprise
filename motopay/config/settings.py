@@ -151,34 +151,42 @@ class Settings(BaseSettings):
                 "STORAGE_BACKEND=s3 (S3/R2/B2/Spaces). Veja DEPLOY.md.",
                 self.upload_dir,
             )
+        # Acumula TODAS as variáveis faltando e falha uma única vez — evita o
+        # "gato e rato" de descobrir um erro por deploy.
+        errors: list[str] = []
         if not self.jwt_secret or self.jwt_secret.startswith("change-me"):
-            raise RuntimeError(
-                "JWT_SECRET não foi configurado para produção (use um segredo forte; valores que começam com 'change-me' são recusados)."
+            errors.append(
+                "JWT_SECRET: defina um segredo forte (gere com `openssl rand -hex 32`; "
+                "valores que começam com 'change-me' são recusados)."
             )
         if not self.allow_production_without_mercadopago and not self.mercadopago_access_token.strip():
-            raise RuntimeError(
-                "MERCADOPAGO_ACCESS_TOKEN é obrigatório em produção "
-                "(ou ALLOW_PRODUCTION_WITHOUT_MERCADOPAGO=true apenas em exceção documentada)."
+            errors.append(
+                "MERCADOPAGO_ACCESS_TOKEN: obrigatório em produção "
+                "(ou ALLOW_PRODUCTION_WITHOUT_MERCADOPAGO=true para subir sem Mercado Pago temporariamente)."
             )
-
         if not self.allow_production_without_telegram and not self.telegram_bot_token.strip():
-            raise RuntimeError(
-                "TELEGRAM_BOT_TOKEN é obrigatório em produção (ou ALLOW_PRODUCTION_WITHOUT_TELEGRAM=true apenas em exceção documentada)."
+            errors.append(
+                "TELEGRAM_BOT_TOKEN: obrigatório em produção "
+                "(ou ALLOW_PRODUCTION_WITHOUT_TELEGRAM=true para subir sem o bot temporariamente)."
             )
-
         if _database_password_is_insecure(self.database_url, self.postgres_password):
+            errors.append(
+                "POSTGRES_PASSWORD / senha em DATABASE_URL: use senha forte "
+                "(valores 'postgres' e 'change-me' são recusados)."
+            )
+        if not _redis_url_has_password(self.redis_url) and not self.allow_production_redis_without_auth:
+            errors.append(
+                "REDIS_URL: exige autenticação (ex.: rediss://:SENHA@host:6379/0). "
+                "Em Redis de rede privada sem senha (ex.: Render Key Value interno), "
+                "defina ALLOW_PRODUCTION_REDIS_WITHOUT_AUTH=true."
+            )
+        if errors:
             raise RuntimeError(
-                "POSTGRES_PASSWORD / senha em DATABASE_URL não foi configurada para produção "
-                "(use senha forte; valores 'postgres' e 'change-me' são recusados)."
+                "Configuração de produção incompleta — corrija TODAS as variáveis abaixo "
+                "(detalhes em DEPLOY.md, Apêndice A):\n  - " + "\n  - ".join(errors)
             )
 
-        if not _redis_url_has_password(self.redis_url):
-            if not self.allow_production_redis_without_auth:
-                raise RuntimeError(
-                    "REDIS_URL em produção exige autenticação (ex.: redis://:SENHA@host:6379/0 ou "
-                    "rediss://:SENHA@host:6380/0). Em Redis gerenciado de rede privada e sem senha "
-                    "(ex.: Render Key Value interno), defina ALLOW_PRODUCTION_REDIS_WITHOUT_AUTH=true."
-                )
+        if not _redis_url_has_password(self.redis_url) and self.allow_production_redis_without_auth:
             _logger.warning(
                 "REDIS_URL sem senha aceito em production (ALLOW_PRODUCTION_REDIS_WITHOUT_AUTH=true): "
                 "garanta que o Redis está em rede privada e NÃO exposto à internet."
