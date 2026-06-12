@@ -103,6 +103,22 @@ def test_production_disables_webhook_query_token(monkeypatch: pytest.MonkeyPatch
     assert s.allow_webhook_token_in_query is False
 
 
+def test_database_url_render_style_gets_psycopg_driver(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(
+        "DATABASE_URL",
+        "postgresql://motopay:secret@dpg-xxxx-a/motopay",
+    )
+    s = Settings()
+    assert s.database_url.startswith("postgresql+psycopg://")
+    assert "dpg-xxxx-a" in s.database_url
+
+
+def test_database_url_postgres_scheme_gets_psycopg_driver(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DATABASE_URL", "postgres://user:pw@host:5432/db")
+    s = Settings()
+    assert s.database_url == "postgresql+psycopg://user:pw@host:5432/db"
+
+
 def test_redis_url_without_scheme_gets_prefixed(monkeypatch: pytest.MonkeyPatch) -> None:
     # Host copiado do Render Key Value sem 'redis://' — deve ser normalizado.
     monkeypatch.setenv("REDIS_URL", "red-abc123:6379")

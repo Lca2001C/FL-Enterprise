@@ -34,6 +34,20 @@ def _database_password_is_insecure(database_url: str, postgres_password: str) ->
     return False
 
 
+def normalize_database_url(url: str) -> str:
+    """Garante driver psycopg v3 (SQLAlchemy). Render/Neon entregam postgresql:// sem +psycopg."""
+    v = (url or "").strip()
+    if not v:
+        return v
+    if v.startswith("postgresql+"):
+        return v
+    if v.startswith("postgres://"):
+        return "postgresql+psycopg://" + v[len("postgres://") :]
+    if v.startswith("postgresql://"):
+        return "postgresql+psycopg://" + v[len("postgresql://") :]
+    return v
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
@@ -117,6 +131,19 @@ class Settings(BaseSettings):
     sentry_dsn: str = ""
     openai_api_key: str = ""
     ai_bot_enabled: bool = False
+
+    @field_validator("database_url", mode="after")
+    @classmethod
+    def _normalize_database_url_field(cls, value: str) -> str:
+        return normalize_database_url(value)
+
+    @field_validator("database_migration_url", mode="after")
+    @classmethod
+    def _normalize_database_migration_url_field(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = normalize_database_url(value)
+        return normalized or None
 
     @field_validator("redis_url", mode="after")
     @classmethod
