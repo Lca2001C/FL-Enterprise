@@ -10,6 +10,7 @@ from sqlalchemy import text
 
 from motopay.config.settings import get_settings
 from motopay.infrastructure.db.session import SessionLocal
+from motopay.infrastructure.redis_client import redis_enabled
 
 
 class HealthStatus(str, Enum):
@@ -71,7 +72,15 @@ async def check_database() -> HealthCheckResult:
 async def check_redis() -> HealthCheckResult:
     """Check Redis connectivity."""
     import time
-    
+
+    if not redis_enabled():
+        return HealthCheckResult(
+            name="redis",
+            status=HealthStatus.DEGRADED,
+            duration_ms=0,
+            error="Redis não configurado (modo degradado)",
+        )
+
     start = time.time()
     try:
         settings = get_settings()

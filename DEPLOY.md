@@ -446,3 +446,56 @@ Mercado Pago apontando para a URL da API (passos 8.2 e 8.3).
 > (válido só no docker-compose). No Render, frontend e API têm URLs distintas, por
 > isso o `VITE_API_BASE_URL` aponta direto para a URL pública da API e o
 > `CORS_ORIGINS` precisa conter a URL do frontend.
+
+---
+
+## Apêndice B — Subir SEM Redis agora (ativar depois)
+
+No plano **free** do Render, workers e Key Value (Redis) exigem plano pago — só o
+Web Service da API roda de graça. Dá para subir a API **sem Redis** e ativá-lo
+depois, sem mudar código.
+
+### Blueprint recomendado (Render free)
+
+Use [`render-api-only.yaml`](render-api-only.yaml) em vez de [`render.yaml`](render.yaml):
+
+1. Render → **New** → **Blueprint** → conecte o repositório.
+2. Quando pedir o arquivo, aponte para **`render-api-only.yaml`** (Postgres + API apenas).
+3. Preencha as secrets do grupo `motopay-shared-api-only` (JWT, MP, Telegram, S3, URLs).
+4. Após o deploy, abra o **Shell** do serviço `motopay-api` e rode o seed (Apêndice A, passo 7).
+
+O blueprint completo [`render.yaml`](render.yaml) inclui Redis, worker, beat e bot — use
+quando tiver plano pago e quiser fila assíncrona + realtime desde o início.
+
+### Como subir sem Redis
+
+Deixe `REDIS_URL` **vazio** (ou não defina). A API sobe em **modo degradado**:
+
+| Recurso | Sem Redis (degradado) | Com Redis |
+|---|---|---|
+| Login / CRUD / cobranças / dashboard | ✅ funcionam | ✅ |
+| Rate-limit (anti-brute-force) | em memória, single-instance | distribuído |
+| Refresh token (sessão longa) | em memória — **cai a cada redeploy/restart** (basta logar de novo) | persistente |
+| Fila assíncrona / notificações Telegram automáticas | ⏸️ pausadas (sem worker) | ✅ |
+| Realtime (atualização ao vivo do painel) | ⏸️ desativado | ✅ |
+
+A API loga um aviso no boot deixando claro que está em modo degradado. Nada quebra;
+os recursos acima só ficam plenos quando o Redis existir.
+
+> Observação: com `ENVIRONMENT=production` e `REDIS_URL` vazio, **não** é preciso
+> `ALLOW_PRODUCTION_REDIS_WITHOUT_AUTH` — esse flag é só para quando há um Redis
+> sem senha. Sem Redis nenhum, a validação já libera (com aviso).
+
+### Como ativar o Redis depois (zero mudança de código)
+
+1. Crie um **Key Value** no Render (ou Upstash, que tem free tier com `rediss://`).
+2. No serviço da API, defina `REDIS_URL`:
+   - Render Key Value interno: `redis://red-xxxx:6379` + `ALLOW_PRODUCTION_REDIS_WITHOUT_AUTH=true`
+   - Upstash: `rediss://:SENHA@host:6379` (já tem senha, não precisa do flag)
+3. Para a fila assíncrona e o bot, crie os serviços **worker** e **beat** (planos pagos)
+   com os comandos do Apêndice A. Redeploy — tudo passa a usar o Redis real.
+4. Alternativa: migre para o blueprint [`render.yaml`](render.yaml) completo (Redis + workers
+   já declarados) em vez de editar o `render-api-only.yaml` manualmente.
+
+> **Sessão longa:** refresh tokens ficam em memória sem Redis — após cada redeploy da API
+> no Render, usuários precisam fazer login novamente. Com Redis, a sessão persiste.

@@ -6,13 +6,20 @@ from celery import Celery
 from celery.schedules import crontab
 
 from motopay.config import get_settings
+from motopay.infrastructure.redis_client import redis_enabled
 
 _settings = get_settings()
 
+# Sem REDIS_URL (modo degradado), usa broker em memória: .delay() não quebra a API.
+# Como nenhum worker consome a fila em memória, as tasks ficam pendentes até o
+# Redis ser configurado — adequado para subir a API antes de provisionar o Redis.
+_broker_url = _settings.redis_url or "memory://"
+_backend_url = _settings.redis_url or None
+
 celery_app = Celery(
     "motopay",
-    broker=_settings.redis_url,
-    backend=_settings.redis_url,
+    broker=_broker_url,
+    backend=_backend_url,
 )
 
 celery_app.conf.update(
@@ -45,7 +52,7 @@ celery_app.conf.update(
     task_default_queue="default",
 )
 
-if _settings.redis_url.startswith("rediss://"):
+if _settings.redis_url and _settings.redis_url.startswith("rediss://"):
     ssl_backend = {"ssl_cert_reqs": ssl.CERT_REQUIRED}
     celery_app.conf.broker_use_ssl = ssl_backend
     celery_app.conf.redis_backend_use_ssl = ssl_backend
@@ -69,9 +76,10 @@ if _settings.sentry_dsn.strip():
     except ImportError:
         pass
 
-celery_app.conf.beat_scheduler = "redbeat.schedulers:RedBeatScheduler"
-celery_app.conf.redbeat_redis_url = _settings.redis_url
-celery_app.conf.redbeat_key_prefix = "motopay:redbeat:"
+if redis_enabled():
+    celery_app.conf.beat_scheduler = "redbeat.schedulers:RedBeatScheduler"
+    celery_app.conf.redbeat_redis_url = _settings.redis_url
+    celery_app.conf.redbeat_key_prefix = "motopay:redbeat:"
 
 celery_app.conf.beat_schedule = {
     "daily-motopay-automation": {

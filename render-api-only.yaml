@@ -1,0 +1,80 @@
+# Blueprint Render — MotoPay API only (sem Redis / workers)
+#
+# Use este arquivo para subir no plano FREE do Render: Postgres + API Web Service.
+# A API sobe em modo degradado (REDIS_URL vazio): login, CRUD, Pix e cartão funcionam;
+# fila assíncrona, beat, bot e realtime ficam pausados até provisionar Redis.
+#
+# Como usar:
+#   1. No Render: New → Blueprint → selecione este arquivo (render-api-only.yaml).
+#   2. Preencha secrets (sync: false): JWT_SECRET, Mercado Pago, Telegram, S3, URLs.
+#   3. Após o deploy, rode o seed (Shell do serviço) — veja DEPLOY.md Apêndice B.
+#
+# Para produção completa (Redis + worker + beat + bot), use render.yaml.
+# Detalhes: DEPLOY.md Apêndice B.
+
+databases:
+  - name: motopay-db
+    databaseName: motopay
+    user: motopay
+    plan: free
+
+envVarGroups:
+  - name: motopay-shared-api-only
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: JWT_SECRET
+        sync: false
+      - key: TRUSTED_PROXY_IPS
+        value: 10.0.0.0/8
+      - key: MERCADOPAGO_CREDENTIALS_MODE
+        value: production
+      - key: MERCADOPAGO_ACCESS_TOKEN
+        sync: false
+      - key: MERCADOPAGO_PUBLIC_KEY
+        sync: false
+      - key: MERCADOPAGO_WEBHOOK_SECRET
+        sync: false
+      - key: MERCADOPAGO_OAUTH_CLIENT_ID
+        sync: false
+      - key: MERCADOPAGO_OAUTH_CLIENT_SECRET
+        sync: false
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: API_PUBLIC_BASE_URL
+        sync: false
+      - key: PAYER_PORTAL_BASE_URL
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false
+      - key: STORAGE_BACKEND
+        value: s3
+      - key: S3_BUCKET
+        sync: false
+      - key: S3_ENDPOINT_URL
+        sync: false
+      - key: S3_REGION
+        sync: false
+      - key: S3_ACCESS_KEY_ID
+        sync: false
+      - key: S3_SECRET_ACCESS_KEY
+        sync: false
+      - key: SENTRY_DSN
+        sync: false
+
+services:
+  - type: web
+    name: motopay-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - fromGroup: motopay-shared-api-only
+      - key: DATABASE_URL
+        fromDatabase:
+          name: motopay-db
+          property: connectionString
+      # REDIS_URL omitido de propósito — modo degradado (veja DEPLOY.md Apêndice B).
+    preDeployCommand: alembic -c /app/alembic.ini upgrade head

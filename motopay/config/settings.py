@@ -6,7 +6,7 @@ from functools import lru_cache
 from urllib.parse import unquote, urlparse
 from zoneinfo import ZoneInfo
 
-from pydantic import model_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _logger = logging.getLogger(__name__)
@@ -48,7 +48,9 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 60
     refresh_token_expire_days: int = 7
-    redis_url: str = "redis://localhost:6379/0"
+    # Vazio = sem Redis (modo degradado: shim em memória). docker-compose e .env
+    # definem a URL; em produção, configure para habilitar rate-limit/fila/pub-sub.
+    redis_url: str = ""
     redis_socket_connect_timeout_seconds: float = 5.0
     redis_socket_timeout_seconds: float = 10.0
     redis_health_check_interval_seconds: int = 30
@@ -116,6 +118,23 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     ai_bot_enabled: bool = False
 
+    @field_validator("redis_url", mode="after")
+    @classmethod
+    def _normalize_redis_url(cls, value: str) -> str:
+        """Aceita REDIS_URL sem esquema (ex.: host copiado do Render Key Value).
+
+        O redis-py exige redis://, rediss:// ou unix://. Se vier só host[:porta]
+        (sem '://'), prefixamos redis:// — erro comum ao colar a URL interna do
+        provedor gerenciado. Vazio = modo degradado (sem Redis); docker-compose
+        define REDIS_URL explicitamente em dev.
+        """
+        v = (value or "").strip()
+        if not v:
+            return ""
+        if "://" not in v:
+            return f"redis://{v}"
+        return v
+
     @model_validator(mode="after")
     def validate_storage_backend(self) -> Settings:
         backend = (self.storage_backend or "local").strip().lower()
@@ -174,7 +193,12 @@ class Settings(BaseSettings):
                 "POSTGRES_PASSWORD / senha em DATABASE_URL: use senha forte "
                 "(valores 'postgres' e 'change-me' são recusados)."
             )
-        if not _redis_url_has_password(self.redis_url) and not self.allow_production_redis_without_auth:
+        redis_configured = bool(self.redis_url.strip())
+        if (
+            redis_configured
+            and not _redis_url_has_password(self.redis_url)
+            and not self.allow_production_redis_without_auth
+        ):
             errors.append(
                 "REDIS_URL: exige autenticação (ex.: rediss://:SENHA@host:6379/0). "
                 "Em Redis de rede privada sem senha (ex.: Render Key Value interno), "
@@ -186,7 +210,13 @@ class Settings(BaseSettings):
                 "(detalhes em DEPLOY.md, Apêndice A):\n  - " + "\n  - ".join(errors)
             )
 
-        if not _redis_url_has_password(self.redis_url) and self.allow_production_redis_without_auth:
+        if not redis_configured:
+            _logger.warning(
+                "REDIS_URL vazio em production: a app sobe em MODO DEGRADADO "
+                "(rate-limit e fila assíncrona em memória, single-instance; pub/sub desativado). "
+                "Defina REDIS_URL quando provisionar o Redis para produção completa. Veja DEPLOY.md."
+            )
+        elif not _redis_url_has_password(self.redis_url) and self.allow_production_redis_without_auth:
             _logger.warning(
                 "REDIS_URL sem senha aceito em production (ALLOW_PRODUCTION_REDIS_WITHOUT_AUTH=true): "
                 "garanta que o Redis está em rede privada e NÃO exposto à internet."

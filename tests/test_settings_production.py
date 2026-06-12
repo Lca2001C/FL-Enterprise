@@ -103,6 +103,25 @@ def test_production_disables_webhook_query_token(monkeypatch: pytest.MonkeyPatch
     assert s.allow_webhook_token_in_query is False
 
 
+def test_redis_url_without_scheme_gets_prefixed(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Host copiado do Render Key Value sem 'redis://' — deve ser normalizado.
+    monkeypatch.setenv("REDIS_URL", "red-abc123:6379")
+    s = Settings()
+    assert s.redis_url == "redis://red-abc123:6379"
+
+
+def test_redis_url_empty_means_degraded_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("REDIS_URL", "")
+    s = Settings()
+    assert s.redis_url == ""
+
+
+def test_redis_url_with_scheme_unchanged(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("REDIS_URL", "rediss://:secret@host.example:6380/0")
+    s = Settings()
+    assert s.redis_url == "rediss://:secret@host.example:6380/0"
+
+
 def test_production_reports_all_missing_vars_at_once(monkeypatch: pytest.MonkeyPatch) -> None:
     # Vários problemas simultâneos: a mensagem deve listar TODOS (sem "gato e rato").
     _base_production(monkeypatch)
