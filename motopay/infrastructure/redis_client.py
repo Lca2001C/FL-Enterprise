@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 import fnmatch
+import logging
 import threading
 import time
 from typing import Any
-
-import logging
 
 import redis
 
@@ -112,7 +111,7 @@ class InMemoryRedis:
     def publish(self, *_: Any, **__: Any) -> int:
         return 0  # sem subscriber em modo degradado
 
-    def pubsub(self, **_: Any) -> "_InMemoryPubSub":
+    def pubsub(self, **_: Any) -> _InMemoryPubSub:
         return _InMemoryPubSub()
 
     def ping(self) -> bool:

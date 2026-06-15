@@ -4,13 +4,12 @@ from __future__ import annotations
 from datetime import datetime
 from enum import Enum
 
-import redis
 from pydantic import BaseModel
 from sqlalchemy import text
 
 from motopay.config.settings import get_settings
 from motopay.infrastructure.db.session import SessionLocal
-from motopay.infrastructure.redis_client import InMemoryRedis, get_redis_connection, redis_enabled
+from motopay.infrastructure.redis_client import InMemoryRedis, get_redis_connection
 
 
 class HealthStatus(str, Enum):

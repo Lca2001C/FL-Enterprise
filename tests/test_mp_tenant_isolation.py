@@ -7,7 +7,6 @@ from decimal import Decimal
 from unittest.mock import patch
 
 import pytest
-
 from motopay.config import get_settings
 from motopay.domain.exceptions import MercadoPagoNotConnectedError
 from motopay.infrastructure.crypto.token_encryption import encrypt_token

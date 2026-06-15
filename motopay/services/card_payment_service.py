@@ -6,7 +6,12 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from motopay.domain.enums import CobrancaStatus, PaymentMethodType
-from motopay.domain.exceptions import ForbiddenError, MercadoPagoNotConnectedError, MotoPayError, NotFoundError
+from motopay.domain.exceptions import (
+    ForbiddenError,
+    MercadoPagoNotConnectedError,
+    MotoPayError,
+    NotFoundError,
+)
 from motopay.infrastructure.db.models import Cliente, ClienteMpCard, Cobranca, Contrato, Operacao
 from motopay.infrastructure.payments.mercadopago_client import (
     MP_NOT_CONNECTED_MSG,
@@ -39,6 +44,7 @@ from motopay.services.billing_service import (
     _today,
     charge_amounts_for_cobranca,
 )
+
 
 def list_cliente_mp_cards(db: Session, cliente_id: int, operacao_id: int) -> list[ClienteMpCardOut]:
     rows = db.scalars(

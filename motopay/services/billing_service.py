@@ -18,7 +18,12 @@ from motopay.domain.enums import (
     PaymentMethodType,
     UserRole,
 )
-from motopay.domain.exceptions import ForbiddenError, MercadoPagoNotConnectedError, MotoPayError, NotFoundError
+from motopay.domain.exceptions import (
+    ForbiddenError,
+    MercadoPagoNotConnectedError,
+    MotoPayError,
+    NotFoundError,
+)
 from motopay.infrastructure.db.models import (
     Cliente,
     Cobranca,
@@ -31,6 +36,7 @@ from motopay.infrastructure.db.models import (
 from motopay.infrastructure.payments.mercadopago_client import (
     MP_NOT_CONNECTED_MSG,
     MercadoPagoClient,
+    mp_configured_for_operacao,
     mp_operacao_ready_for_payments,
     payer_email_for_mercadopago,
     require_operacao_mp_token,
@@ -39,6 +45,7 @@ from motopay.infrastructure.payments.order_utils import is_order_paid, order_tot
 from motopay.interfaces.api.deps import CurrentUser
 from motopay.interfaces.api.schemas import CobrancaOut
 from motopay.services.late_fee import LateAmounts, calculate_late_amounts
+from motopay.services.mercadopago_token_service import ensure_valid_mp_token
 from motopay.services.payment_gateway import (
     cancel_external_payment,
     create_pix_for_cobranca,

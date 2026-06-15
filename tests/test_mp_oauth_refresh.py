@@ -5,6 +5,7 @@ from decimal import Decimal
 from unittest.mock import patch
 
 from motopay.domain.enums import CicloCobranca, CobrancaStatus, ContratoStatus
+from motopay.infrastructure.crypto.token_encryption import encrypt_token
 from motopay.infrastructure.db.models import (
     Cliente,
     Cobranca,
@@ -14,7 +15,6 @@ from motopay.infrastructure.db.models import (
     Operacao,
 )
 from motopay.services.mercadopago_token_service import ensure_valid_mp_token
-from motopay.infrastructure.crypto.token_encryption import encrypt_token
 
 
 def test_ensure_valid_mp_token_refreshes_when_expired(db_session):
