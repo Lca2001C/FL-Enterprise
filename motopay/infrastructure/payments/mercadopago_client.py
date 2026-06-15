@@ -18,6 +18,8 @@ from motopay.config.mercadopago_credentials import (
     effective_mercadopago_webhook_secret,
 )
 from motopay.domain.enums import CicloCobranca
+from motopay.domain.exceptions import MercadoPagoNotConnectedError
+from motopay.infrastructure.crypto.token_encryption import decrypt_token
 from motopay.infrastructure.db.models import Cliente, Operacao
 from motopay.infrastructure.payments.order_utils import (
     MercadoPagoOrderResult,
@@ -30,8 +32,10 @@ __all__ = [
     "MercadoPagoApiError",
     "MercadoPagoClient",
     "MercadoPagoOrderResult",
+    "MP_NOT_CONNECTED_MSG",
     "build_webhook_manifest",
     "compute_webhook_signature",
+    "fetch_mp_user_profile",
     "is_valid_mp_access_token",
     "is_valid_mp_public_key",
     "mercadopago_api_error_message",
@@ -39,13 +43,19 @@ __all__ = [
     "mp_credentials_complete",
     "mp_credentials_source",
     "mp_has_operacao_token",
+    "mp_operacao_ready_for_payments",
     "mp_public_key_for_operacao",
     "mp_token_for_operacao",
     "mp_webhook_secret_for_operacao",
+    "operacao_access_token_plain",
+    "operacao_mp_oauth_connected",
     "payer_email_for_mercadopago",
+    "require_operacao_mp_token",
     "uses_operacao_mercadopago_credentials",
     "verify_webhook_signature",
 ]
+
+MP_NOT_CONNECTED_MSG = "Conta Mercado Pago não conectada para esta operação."
 
 
 class MercadoPagoApiError(Exception):
@@ -256,25 +266,71 @@ def verify_webhook_signature(
     return hmac.compare_digest(expected, v1)
 
 
+def _allow_global_mp_token() -> bool:
+    """Token global do .env só em desenvolvimento/teste — nunca em produção."""
+    return not get_settings().is_production
+
+
+def operacao_access_token_plain(op: Operacao | None) -> str:
+    if not op:
+        return ""
+    return decrypt_token(op.mercadopago_access_token)
+
+
+def operacao_refresh_token_plain(op: Operacao) -> str:
+    return decrypt_token(op.mercadopago_refresh_token)
+
+
+def operacao_mp_oauth_connected(op: Operacao) -> bool:
+    status = (op.mercadopago_connection_status or "disconnected").strip().lower()
+    token = operacao_access_token_plain(op)
+    has_pk = is_valid_mp_public_key(op.mercadopago_public_key)
+    has_oauth_id = bool((op.mercadopago_oauth_user_id or "").strip())
+    if status == "connected":
+        return bool(is_valid_mp_access_token(token) and has_pk and has_oauth_id)
+    if status in ("disconnected", "expired"):
+        return False
+    # Legado: linhas sem status explícito
+    return bool(is_valid_mp_access_token(token) and has_pk and has_oauth_id)
+
+
+def mp_operacao_ready_for_payments(op: Operacao) -> bool:
+    if operacao_mp_oauth_connected(op):
+        return bool(mp_webhook_secret_for_operacao(op))
+    if _allow_global_mp_token() and operacao_mp_fields_complete(op):
+        return bool(mp_webhook_secret_for_operacao(op))
+    return False
+
+
+def require_operacao_mp_token(db, op: Operacao) -> str:
+    """Retorna access_token do tenant; nunca usa token global em produção."""
+    from motopay.services.mercadopago_token_service import ensure_valid_mp_token
+
+    if not mp_operacao_ready_for_payments(op):
+        raise MercadoPagoNotConnectedError(MP_NOT_CONNECTED_MSG)
+    token = ensure_valid_mp_token(db, op)
+    if not is_valid_mp_access_token(token):
+        raise MercadoPagoNotConnectedError(MP_NOT_CONNECTED_MSG)
+    return token
+
+
 def _operacao_has_any_mp_credential(op: Operacao) -> bool:
     return bool(
-        (op.mercadopago_access_token or "").strip()
+        operacao_access_token_plain(op)
         or (op.mercadopago_public_key or "").strip()
         or (op.mercadopago_webhook_secret or "").strip()
     )
 
 
 def operacao_mp_fields_complete(op: Operacao) -> bool:
-    """Token + Public Key válidos NA OPERAÇÃO (via OAuth ou manual).
+    """Token + Public Key válidos NA OPERAÇÃO (via OAuth ou manual em dev).
 
     O webhook secret NÃO é exigido por operação: no fluxo OAuth as notificações
     chegam no webhook da APLICAÇÃO e são assinadas com o secret global dela.
     Um secret por operação é opcional e tem precedência quando definido.
     """
-    return bool(
-        is_valid_mp_access_token(op.mercadopago_access_token)
-        and is_valid_mp_public_key(op.mercadopago_public_key)
-    )
+    token = operacao_access_token_plain(op)
+    return bool(is_valid_mp_access_token(token) and is_valid_mp_public_key(op.mercadopago_public_key))
 
 
 def uses_operacao_mercadopago_credentials(op: Operacao | None) -> bool:
@@ -283,26 +339,26 @@ def uses_operacao_mercadopago_credentials(op: Operacao | None) -> bool:
 
 def mp_token_for_operacao(op: Operacao | None) -> str:
     if op:
-        token = (op.mercadopago_access_token or "").strip()
-        if is_valid_mp_access_token(token):
-            if uses_operacao_mercadopago_credentials(op):
-                if operacao_mp_fields_complete(op):
-                    return token
-            else:
-                return token
-    return effective_mercadopago_access_token()
+        token = operacao_access_token_plain(op)
+        if is_valid_mp_access_token(token) and operacao_mp_fields_complete(op):
+            return token
+        if not _allow_global_mp_token():
+            return ""
+    if _allow_global_mp_token():
+        return effective_mercadopago_access_token()
+    return ""
 
 
 def mp_public_key_for_operacao(op: Operacao | None) -> str:
     if op:
         public_key = (op.mercadopago_public_key or "").strip()
         if is_valid_mp_public_key(public_key):
-            if uses_operacao_mercadopago_credentials(op):
-                if operacao_mp_fields_complete(op):
-                    return public_key
-            else:
-                return public_key
-    return effective_mercadopago_public_key()
+            return public_key
+        if not _allow_global_mp_token():
+            return ""
+    if _allow_global_mp_token():
+        return effective_mercadopago_public_key()
+    return ""
 
 
 def mp_webhook_secret_for_operacao(op: Operacao | None) -> str:
@@ -314,8 +370,12 @@ def mp_webhook_secret_for_operacao(op: Operacao | None) -> str:
 
 
 def mp_credentials_complete(op: Operacao | None) -> bool:
-    if op and operacao_mp_fields_complete(op):
-        return bool(mp_webhook_secret_for_operacao(op))
+    if op and mp_operacao_ready_for_payments(op):
+        return True
+    if op is not None:
+        return False
+    if not _allow_global_mp_token():
+        return False
     return bool(
         effective_mercadopago_access_token()
         and effective_mercadopago_public_key()
@@ -324,19 +384,27 @@ def mp_credentials_complete(op: Operacao | None) -> bool:
 
 
 def mp_credentials_source(op: Operacao | None) -> str:
+    if op and operacao_mp_oauth_connected(op):
+        return "operacao_oauth"
     if op and operacao_mp_fields_complete(op):
         return "operacao"
-    if effective_mercadopago_access_token():
+    if _allow_global_mp_token() and effective_mercadopago_access_token():
         return "global"
     return "none"
 
 
 def mp_configured_for_operacao(op: Operacao | None) -> bool:
-    return bool(mp_token_for_operacao(op))
+    if op:
+        return mp_operacao_ready_for_payments(op)
+    return bool(_allow_global_mp_token() and effective_mercadopago_access_token())
 
 
 def mp_has_operacao_token(op: Operacao | None) -> bool:
-    return bool(op and (op.mercadopago_access_token or "").strip())
+    return bool(op and is_valid_mp_access_token(operacao_access_token_plain(op)))
+
+
+def fetch_mp_user_profile(*, access_token: str) -> dict[str, Any]:
+    return MercadoPagoClient(access_token=access_token)._request("GET", "/users/me", timeout=30.0)
 
 
 class MercadoPagoClient:

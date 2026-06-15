@@ -12,7 +12,7 @@ from motopay.domain.enums import CobrancaStatus
 from motopay.domain.exceptions import ForbiddenError, NotFoundError
 from motopay.infrastructure.db.models import Cliente, Cobranca, Contrato, Operacao
 from motopay.infrastructure.payments.mercadopago_client import (
-    mp_credentials_complete,
+    mp_operacao_ready_for_payments,
     mp_public_key_for_operacao,
 )
 from motopay.interfaces.api.deps import CurrentUser
@@ -138,7 +138,7 @@ def get_portal_checkout(db: Session, token: str) -> PayerPortalOut:
     op = db.get(Operacao, cob.operacao_id)
     if not ct or not cliente or not op:
         raise NotFoundError("Dados do pagamento não encontrados")
-    if not mp_credentials_complete(op):
+    if not mp_operacao_ready_for_payments(op):
         raise ForbiddenError("Pagamento online indisponível para esta operação")
     today = app_today()
     out = _cobranca_to_out(cob, op, today, valor_base=ct.valor_recorrente)

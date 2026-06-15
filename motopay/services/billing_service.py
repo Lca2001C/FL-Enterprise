@@ -18,7 +18,7 @@ from motopay.domain.enums import (
     PaymentMethodType,
     UserRole,
 )
-from motopay.domain.exceptions import ForbiddenError, MotoPayError, NotFoundError
+from motopay.domain.exceptions import ForbiddenError, MercadoPagoNotConnectedError, MotoPayError, NotFoundError
 from motopay.infrastructure.db.models import (
     Cliente,
     Cobranca,
@@ -29,16 +29,16 @@ from motopay.infrastructure.db.models import (
     Operacao,
 )
 from motopay.infrastructure.payments.mercadopago_client import (
+    MP_NOT_CONNECTED_MSG,
     MercadoPagoClient,
-    mp_configured_for_operacao,
-    mp_credentials_complete,
+    mp_operacao_ready_for_payments,
     payer_email_for_mercadopago,
+    require_operacao_mp_token,
 )
 from motopay.infrastructure.payments.order_utils import is_order_paid, order_total_amount
 from motopay.interfaces.api.deps import CurrentUser
 from motopay.interfaces.api.schemas import CobrancaOut
 from motopay.services.late_fee import LateAmounts, calculate_late_amounts
-from motopay.services.mercadopago_token_service import ensure_valid_mp_token
 from motopay.services.payment_gateway import (
     cancel_external_payment,
     create_pix_for_cobranca,
@@ -313,11 +313,8 @@ def ensure_pix_for_cobranca(
     cliente = db.get(Cliente, ct.cliente_id)
     if not cliente:
         raise NotFoundError("Dados do contrato não encontrados")
-    if not mp_credentials_complete(op) and mp_configured_for_operacao(op):
-        raise ForbiddenError(
-            "Credenciais Mercado Pago incompletas. Configure Access Token, Public Key e "
-            "Webhook Secret em Ajustes."
-        )
+    if not mp_operacao_ready_for_payments(op):
+        raise MercadoPagoNotConnectedError(MP_NOT_CONNECTED_MSG)
 
     display_status = (
         CobrancaStatus.ATRASADO.value
@@ -478,12 +475,12 @@ def create_mercadopago_subscription_for_contract(
     op = db.get(Operacao, operacao_id)
     if not op:
         raise NotFoundError("Operação não encontrada")
-    if not mp_credentials_complete(op):
-        raise ForbiddenError("Mercado Pago não configurado ou credenciais incompletas")
+    if not mp_operacao_ready_for_payments(op):
+        raise MercadoPagoNotConnectedError(MP_NOT_CONNECTED_MSG)
     cliente = db.get(Cliente, ct.cliente_id)
     if not cliente:
         raise NotFoundError("Cliente não encontrado")
-    client = MercadoPagoClient(access_token=ensure_valid_mp_token(db, op))
+    client = MercadoPagoClient(access_token=require_operacao_mp_token(db, op))
     # Importações locais para evitar ciclos
     from motopay.infrastructure.payments.mp_payload_builder import (
         MercadoPagoDataError,
@@ -534,9 +531,9 @@ def get_mercadopago_subscription_link(
     if not ct.mercadopago_subscription_id:
         raise NotFoundError("Contrato sem assinatura Mercado Pago")
     op = db.get(Operacao, operacao_id)
-    if not op or not mp_credentials_complete(op):
-        raise ForbiddenError("Mercado Pago não configurado")
-    data = MercadoPagoClient(access_token=ensure_valid_mp_token(db, op)).get_preapproval(
+    if not op or not mp_operacao_ready_for_payments(op):
+        raise MercadoPagoNotConnectedError(MP_NOT_CONNECTED_MSG)
+    data = MercadoPagoClient(access_token=require_operacao_mp_token(db, op)).get_preapproval(
         ct.mercadopago_subscription_id
     )
     status = str(data.get("status", ""))
@@ -632,8 +629,8 @@ def refund_cobranca_mercadopago(
     if not payment_id:
         raise ForbiddenError("Cobrança sem pagamento Mercado Pago para estorno")
     op = db.get(Operacao, operacao_id)
-    if not op or not mp_credentials_complete(op):
-        raise ForbiddenError("Mercado Pago não configurado")
+    if not op or not mp_operacao_ready_for_payments(op):
+        raise MercadoPagoNotConnectedError(MP_NOT_CONNECTED_MSG)
     already = cob.valor_estornado or Decimal(0)
     remaining = cob.valor - already
     if remaining <= 0:
@@ -641,7 +638,7 @@ def refund_cobranca_mercadopago(
     refund_amount = amount if amount is not None else remaining
     if refund_amount > remaining:
         raise ForbiddenError(f"Valor máximo estornável: {remaining}")
-    client = MercadoPagoClient(access_token=ensure_valid_mp_token(db, op))
+    client = MercadoPagoClient(access_token=require_operacao_mp_token(db, op))
     order_id = (cob.mercadopago_order_id or "").strip() or None
     try:
         if order_id:

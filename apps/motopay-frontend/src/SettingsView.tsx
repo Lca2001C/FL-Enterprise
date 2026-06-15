@@ -60,6 +60,81 @@ const sanitizeMenuButtonsForPatch = (
     };
   });
 
+function collectUsedMenuCommands(buttons: TelegramBotMenuButton[]): Set<string> {
+  return new Set(buttons.map((b) => b.command.trim().toLowerCase()).filter(Boolean));
+}
+
+function nextUniqueCustomCommand(buttons: TelegramBotMenuButton[]): string {
+  const used = collectUsedMenuCommands(buttons);
+  let n = 1;
+  while (used.has(`custom_${n}`)) n += 1;
+  return `custom_${n}`;
+}
+
+function validateMenuButtonsForSave(buttons: TelegramBotMenuButton[]): string | null {
+  const seenLabels = new Set<string>();
+  const seenCommands = new Set<string>();
+  for (const btn of buttons) {
+    const label = btn.label.trim();
+    const command = btn.command.trim().toLowerCase();
+    if (!label) return 'Todos os botões do menu precisam de um texto.';
+    if (seenLabels.has(label)) return `Label duplicado no menu: ${label}`;
+    if (seenCommands.has(command)) return `Comando duplicado no menu: ${command}`;
+    seenLabels.add(label);
+    seenCommands.add(command);
+    if (!isBuiltinBotMenuCommand(command) && !(btn.response ?? '').trim()) {
+      return `Comando personalizado "${command}" precisa de uma resposta.`;
+    }
+  }
+  return null;
+}
+
+type SettingsPatchBody = {
+  multa_fixa_percentual?: number;
+  juros_diario_percentual?: number;
+  telegram_templates?: Record<string, string>;
+  telegram_bot_menu_buttons?: TelegramBotMenuButton[];
+  telegram_owner_notify_id?: string | null;
+  telegram_owner_notify_enabled?: boolean;
+};
+
+function verifySettingsPersisted(
+  body: SettingsPatchBody,
+  loaded: OperacaoConfig,
+  meta: TelegramTemplateMeta[]
+): boolean {
+  if (
+    sanitizePercent(body.multa_fixa_percentual ?? 0) !== sanitizePercent(loaded.multa_fixa_percentual)
+  ) {
+    return false;
+  }
+  if (
+    sanitizePercent(body.juros_diario_percentual ?? 0) !==
+    sanitizePercent(loaded.juros_diario_percentual)
+  ) {
+    return false;
+  }
+  if (body.telegram_owner_notify_enabled !== loaded.telegram_owner_notify_enabled) {
+    return false;
+  }
+  if ((body.telegram_owner_notify_id ?? null) !== (loaded.telegram_owner_notify_id ?? null)) {
+    return false;
+  }
+  if (body.telegram_templates && meta.length > 0) {
+    for (const item of meta) {
+      const sentVal = body.telegram_templates[item.key] ?? item.default;
+      const loadedVal = loaded.telegram_templates[item.key] ?? item.default;
+      if (sentVal !== loadedVal) return false;
+    }
+  }
+  if (body.telegram_bot_menu_buttons) {
+    const sent = JSON.stringify(sanitizeMenuButtonsForPatch(body.telegram_bot_menu_buttons));
+    const got = JSON.stringify(sanitizeMenuButtonsForPatch(loaded.telegram_bot_menu_buttons));
+    if (sent !== got) return false;
+  }
+  return true;
+}
+
 const SettingsView = () => {
   const { api, user, operacaoScopeId } = useAuth();
   const [config, setConfig] = useState<OperacaoConfig>({
@@ -287,29 +362,41 @@ const SettingsView = () => {
       setError('Informe seu Telegram ID para ativar notificações ao dono.');
       return;
     }
+    const menuError = validateMenuButtonsForSave(config.telegram_bot_menu_buttons);
+    if (menuError) {
+      setError(menuError);
+      return;
+    }
     setSaving(true);
     setError('');
     try {
       const body = buildPatchBody();
-      let saved: OperacaoConfig;
       if (isAdmin) {
         if (adminTargetId == null) {
           setError('Selecione uma operação no topo da página.');
           return;
         }
-        const r = await api.patch<OperacaoConfig>(`/api/v1/operacoes/${adminTargetId}`, body);
-        saved = r.data;
+        await api.patch<OperacaoConfig>(`/api/v1/operacoes/${adminTargetId}`, body);
       } else {
-        const r = await api.patch<OperacaoConfig>('/api/v1/operacoes/me', body);
-        saved = r.data;
+        await api.patch<OperacaoConfig>('/api/v1/operacoes/me', body);
       }
-      setConfig(applyOperacaoConfig(saved));
-      // Segredos voltam a ficar em branco (mostrados via preview mascarado).
-      // A Public Key é repopulada por fetchPaymentsConfig com o valor salvo.
+
+      const verifiedRes = isAdmin
+        ? await api.get<OperacaoConfig>(`/api/v1/operacoes/${adminTargetId}`)
+        : await api.get<OperacaoConfig>('/api/v1/operacoes/me');
+      const verified = applyOperacaoConfig(verifiedRes.data);
+
+      if (!verifySettingsPersisted(body, verified, templateMeta)) {
+        setConfig(verified);
+        setError('Salvo na API mas não confirmado — recarregue a página e tente novamente.');
+        return;
+      }
+
+      setConfig(verified);
       setMpToken('');
       setMpWebhookSecret('');
-      await fetchPaymentsConfig();
       showToast('Configurações salvas com sucesso!');
+      void fetchPaymentsConfig();
     } catch (e) {
       setError(parseApiError(e, 'Erro ao salvar configurações'));
     } finally {
@@ -351,11 +438,16 @@ const SettingsView = () => {
   const addMenuButton = () => {
     setConfig((prev) => {
       if (prev.telegram_bot_menu_buttons.length >= 6) return prev;
+      const command = nextUniqueCustomCommand(prev.telegram_bot_menu_buttons);
       return {
         ...prev,
         telegram_bot_menu_buttons: [
           ...prev.telegram_bot_menu_buttons,
-          { label: 'Novo botão', command: 'ajuda' },
+          {
+            label: 'Novo botão',
+            command,
+            response: 'Olá, {cliente}! Como posso ajudar?',
+          },
         ],
       };
     });
@@ -608,8 +700,18 @@ const SettingsView = () => {
                     <>
                       <p className="text-muted" style={{ fontSize: '0.82rem', marginBottom: 12 }}>
                         {paymentsConfig.mercadopago_oauth_connected
-                          ? `Conta Mercado Pago conectada${paymentsConfig.mercadopago_oauth_user_id ? ` (ID: ${paymentsConfig.mercadopago_oauth_user_id})` : ''}. O token é renovado automaticamente.`
-                          : 'Entre com a conta Mercado Pago da operação para receber os pagamentos — sem precisar colar tokens.'}
+                          ? `Conta Mercado Pago conectada${paymentsConfig.mercadopago_oauth_user_id ? ` (ID: ${paymentsConfig.mercadopago_oauth_user_id}` : ''}${paymentsConfig.mercadopago_account_email ? `${paymentsConfig.mercadopago_oauth_user_id ? ', ' : ' ('}${paymentsConfig.mercadopago_account_email}` : ''}${paymentsConfig.mercadopago_oauth_user_id || paymentsConfig.mercadopago_account_email ? ')' : ''}. O token é renovado automaticamente.`
+                          : 'Use o botão abaixo para autorizar a conta Mercado Pago desta operação. Entrar no app Mercado Pago no celular não conecta a conta ao sistema.'}
+                      </p>
+                      <p className="text-muted" style={{ fontSize: '0.78rem', marginBottom: 10 }}>
+                        Status:{' '}
+                        <strong>
+                          {paymentsConfig.mercadopago_connection_status === 'connected'
+                            ? 'Conectado'
+                            : paymentsConfig.mercadopago_connection_status === 'expired'
+                              ? 'Expirado — reconecte'
+                              : 'Desconectado'}
+                        </strong>
                       </p>
                       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                         <button
@@ -847,8 +949,13 @@ const SettingsView = () => {
                       onChange={(e) => {
                         const value = e.target.value;
                         if (value === '__custom__') {
+                          const command = nextUniqueCustomCommand(
+                            config.telegram_bot_menu_buttons.map((b, i) =>
+                              i === index ? { ...b, command: '' } : b
+                            )
+                          );
                           updateMenuButton(index, {
-                            command: 'contato',
+                            command,
                             response:
                               'Entendido, {cliente}. Nossa equipe entrará em contato em breve.',
                           });

@@ -381,6 +381,8 @@ class PaymentsConfigOut(BaseModel):
     mercadopago_has_operacao_token: bool = False
     mercadopago_oauth_available: bool = False
     mercadopago_oauth_connected: bool = False
+    mercadopago_connection_status: str = "disconnected"
+    mercadopago_account_email: str | None = None
     mercadopago_webhook_ready: bool = False
     webhook_url: str | None = None
     mercadopago_oauth_user_id: str | None = None

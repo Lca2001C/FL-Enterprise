@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import flag_modified
 
 from motopay.domain.enums import UserRole
 from motopay.domain.exceptions import ConflictError, ForbiddenError, MotoPayError, NotFoundError
+from motopay.infrastructure.crypto.token_encryption import encrypt_token
 from motopay.infrastructure.db.models import Operacao, Usuario
 from motopay.infrastructure.payments.mercadopago_client import (
     is_valid_mp_access_token,
@@ -189,17 +191,25 @@ def send_telegram_owner_notify_test(db: Session, operacao_id: int) -> None:
         raise MotoPayError(f"Não foi possível enviar ao Telegram: {exc}") from exc
 
 
+_ALLOWED_DONO_UPDATE_FIELDS = frozenset(
+    {
+        "multa_fixa_percentual",
+        "juros_diario_percentual",
+        "telegram_templates",
+        "telegram_bot_menu_buttons",
+        "telegram_owner_notify_id",
+        "telegram_owner_notify_enabled",
+    }
+)
+
+
 def _apply_dono_restrictions(body: OperacaoUpdate) -> OperacaoUpdate:
     # Credenciais Mercado Pago NÃO são editáveis pelo dono: a conexão da conta
     # do dono é exclusivamente via OAuth (Ajustes → "Conectar Mercado Pago").
     # Admin segue podendo configurar manualmente (fallback/suporte).
+    data = body.model_dump(exclude_unset=True)
     return OperacaoUpdate(
-        multa_fixa_percentual=body.multa_fixa_percentual,
-        juros_diario_percentual=body.juros_diario_percentual,
-        telegram_templates=body.telegram_templates,
-        telegram_bot_menu_buttons=body.telegram_bot_menu_buttons,
-        telegram_owner_notify_id=body.telegram_owner_notify_id,
-        telegram_owner_notify_enabled=body.telegram_owner_notify_enabled,
+        **{k: v for k, v in data.items() if k in _ALLOWED_DONO_UPDATE_FIELDS}
     )
 
 
@@ -223,15 +233,18 @@ def update_operacao(
         op.telegram_templates = merge_template_overrides(
             op.telegram_templates, body.telegram_templates
         )
+        flag_modified(op, "telegram_templates")
     if body.telegram_custom_messages is not None:
         validated = validate_custom_messages(
             [m.model_dump() for m in body.telegram_custom_messages]
         )
         op.telegram_custom_messages = validated
+        flag_modified(op, "telegram_custom_messages")
     if body.telegram_bot_menu_buttons is not None:
         op.telegram_bot_menu_buttons = validate_bot_menu_buttons(
             [b.model_dump() for b in body.telegram_bot_menu_buttons]
         )
+        flag_modified(op, "telegram_bot_menu_buttons")
     if "telegram_owner_notify_id" in fields_set:
         op.telegram_owner_notify_id = (body.telegram_owner_notify_id or "").strip() or None
     if "telegram_owner_notify_enabled" in fields_set:
@@ -243,7 +256,9 @@ def update_operacao(
             raise MotoPayError(
                 "Access Token Mercado Pago inválido. Cole o token completo (APP_USR-... ou TEST-...)."
             )
-        op.mercadopago_access_token = raw_token
+        op.mercadopago_access_token = encrypt_token(raw_token) if raw_token else None
+        if raw_token and op.mercadopago_public_key and not op.mercadopago_oauth_user_id:
+            op.mercadopago_connection_status = "connected"
     if body.mercadopago_public_key is not None:
         raw_pk = body.mercadopago_public_key.strip() or None
         if raw_pk and not is_valid_mp_public_key(raw_pk):

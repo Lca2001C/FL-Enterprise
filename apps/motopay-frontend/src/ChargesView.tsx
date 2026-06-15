@@ -7,6 +7,7 @@ import type {
   CobrancaOut,
   ContratoOut,
   Paginated,
+  PaymentsConfig,
   PortalLinkOut,
 } from './apiTypes';
 import PayCobrancaModal from './components/PayCobrancaModal';
@@ -25,6 +26,7 @@ const ChargesView = () => {
   const { api } = useAuth();
   const [cobrancas, setCobrancas] = useState<CobrancaOut[]>([]);
   const [contratos, setContratos] = useState<ContratoOut[]>([]);
+  const [mpPayments, setMpPayments] = useState<PaymentsConfig | null>(null);
   const [total, setTotal] = useState(0);
   const [offset, setOffset] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -51,14 +53,16 @@ const ChargesView = () => {
       try {
         const cobParams: Record<string, unknown> = { limit: PAGE_SIZE, offset: pageOffset };
         if (statusFilter !== 'todos') cobParams.status = statusFilter;
-        const [cobRes, ctItems] = await Promise.all([
+        const [cobRes, ctItems, mpRes] = await Promise.all([
           api.get<Paginated<CobrancaOut>>('/api/v1/cobrancas', { params: cobParams }),
           fetchAllPaginated<ContratoOut>(api, '/api/v1/contratos', { status: 'ativo' }),
+          api.get<PaymentsConfig>('/api/v1/config/payments'),
         ]);
         setCobrancas(cobRes.data.items);
         setTotal(cobRes.data.total);
         setOffset(pageOffset);
         setContratos(ctItems);
+        setMpPayments(mpRes.data);
       } catch (e) {
         setError(parseApiError(e, 'Erro ao carregar cobranças'));
       } finally {
@@ -72,9 +76,27 @@ const ChargesView = () => {
     void fetchData(0);
   }, [fetchData]);
 
+  const mpReady = Boolean(
+    mpPayments?.mercadopago_credentials_complete || mpPayments?.mercadopago_oauth_connected
+  );
+
+  const openChargeModal = () => {
+    if (!mpReady) {
+      setError(
+        'Conta Mercado Pago não conectada para esta operação. Vá em Ajustes e use o botão "Conectar Mercado Pago".'
+      );
+      return;
+    }
+    setShowModal(true);
+  };
+
   const handleCreateCharge = async (e: FormEvent) => {
     e.preventDefault();
     setError('');
+    if (!mpReady) {
+      setError('Conta Mercado Pago não conectada para esta operação.');
+      return;
+    }
     try {
       const device_id = getMercadoPagoDeviceId();
       await api.post('/api/v1/cobrancas/pix', { contrato_id: parseInt(contratoId, 10), device_id });
@@ -178,10 +200,20 @@ const ChargesView = () => {
           <h2>Gestão de Cobranças</h2>
           <p className="text-muted">Acompanhamento de pagamentos e faturamento</p>
         </div>
-        <button className="btn-primary" onClick={() => setShowModal(true)}>
+        <button className="btn-primary" onClick={openChargeModal} disabled={mpPayments !== null && !mpReady}>
           <Plus size={20} /> Gerar Cobrança
         </button>
       </div>
+
+      {mpPayments && !mpReady && (
+        <div className="glass" style={{ padding: '12px 16px', marginBottom: 16, borderLeft: '3px solid var(--warning)' }}>
+          <p style={{ margin: 0, fontSize: '0.85rem' }}>
+            <AlertTriangle size={14} style={{ verticalAlign: 'middle', marginRight: 6 }} />
+            Mercado Pago não conectado para esta operação. Conecte em{' '}
+            <a href="/ajustes" style={{ color: 'var(--primary)' }}>Ajustes</a> antes de gerar cobranças.
+          </p>
+        </div>
+      )}
 
       {error && <ErrorBanner message={error} onDismiss={() => setError('')} />}
       <AdminScopeBanner />
@@ -208,7 +240,7 @@ const ChargesView = () => {
             title="Nenhuma cobrança encontrada"
             description="Gere uma cobrança Pix para um contrato ativo."
             action={
-              <button className="btn-primary" onClick={() => setShowModal(true)}>
+              <button className="btn-primary" onClick={openChargeModal} disabled={!mpReady}>
                 <Plus size={18} /> Gerar Cobrança
               </button>
             }

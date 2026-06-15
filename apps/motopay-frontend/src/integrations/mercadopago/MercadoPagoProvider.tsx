@@ -20,13 +20,6 @@ export function MercadoPagoProvider({ children }: Props) {
   useEffect(() => {
     if (!token) return;
     const run = async () => {
-      const fromEnv = envPublicKey();
-      if (fromEnv) {
-        if (!getMercadoPagoSdkPublicKey() || fromEnv !== getMercadoPagoCurrentPublicKey()) {
-          initMercadoPagoSdk(fromEnv);
-        }
-        return;
-      }
       try {
         const params =
           user?.tipo === 'admin' && operacaoScopeId != null
@@ -36,9 +29,14 @@ export function MercadoPagoProvider({ children }: Props) {
         const key = (r.data.mercadopago_public_key ?? '').trim();
         if (key && (!getMercadoPagoSdkPublicKey() || key !== getMercadoPagoCurrentPublicKey())) {
           initMercadoPagoSdk(key);
+          return;
         }
       } catch {
         /* SDK opcional até configurar MP */
+      }
+      const fromEnv = envPublicKey();
+      if (fromEnv && (!getMercadoPagoSdkPublicKey() || fromEnv !== getMercadoPagoCurrentPublicKey())) {
+        initMercadoPagoSdk(fromEnv);
       }
     };
     void run();

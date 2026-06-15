@@ -186,6 +186,8 @@ export type PaymentsConfig = {
   mercadopago_has_operacao_token: boolean;
   mercadopago_oauth_available?: boolean;
   mercadopago_oauth_connected?: boolean;
+  mercadopago_connection_status?: 'connected' | 'disconnected' | 'expired' | string;
+  mercadopago_account_email?: string | null;
   mercadopago_webhook_ready?: boolean;
   webhook_url: string | null;
   mercadopago_oauth_user_id?: string | null;

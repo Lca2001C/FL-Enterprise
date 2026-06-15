@@ -14,6 +14,7 @@ from motopay.infrastructure.payments.mercadopago_client import (
     mp_has_operacao_token,
     mp_public_key_for_operacao,
     mp_webhook_secret_for_operacao,
+    operacao_mp_oauth_connected,
 )
 from motopay.interfaces.api.deps import CurrentUser, require_operacional, resolve_operacao_id
 from motopay.interfaces.api.schemas import PaymentsConfigOut
@@ -49,14 +50,9 @@ def payments_config(
     base = get_settings().api_public_base_url.rstrip("/")
     settings = get_settings()
     oauth_available = bool(settings.mercadopago_oauth_client_id.strip())
-    oauth_connected = bool(
-        op
-        and (
-            op.mercadopago_oauth_user_id
-            or op.mercadopago_refresh_token
-        )
-    )
+    oauth_connected = bool(op and operacao_mp_oauth_connected(op))
     webhook_ready = bool(webhook_secret)
+    connection_status = op.mercadopago_connection_status if op else "disconnected"
     return PaymentsConfigOut(
         mercadopago_configured=mp_configured_for_operacao(op),
         mercadopago_public_key=public_key or None,
@@ -67,6 +63,8 @@ def payments_config(
         mercadopago_has_operacao_token=mp_has_operacao_token(op),
         mercadopago_oauth_available=oauth_available,
         mercadopago_oauth_connected=oauth_connected,
+        mercadopago_connection_status=connection_status,
+        mercadopago_account_email=op.mercadopago_account_email if op else None,
         mercadopago_webhook_ready=webhook_ready,
         webhook_url=f"{base}/webhooks/mercadopago",
         mercadopago_oauth_user_id=(

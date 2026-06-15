@@ -11,7 +11,8 @@ from motopay.infrastructure.db.models import Cobranca, Operacao
 from motopay.infrastructure.payments.mercadopago_client import (
     MercadoPagoApiError,
     MercadoPagoClient,
-    mp_configured_for_operacao,
+    mp_operacao_ready_for_payments,
+    require_operacao_mp_token,
 )
 from motopay.infrastructure.payments.order_utils import is_order_paid, order_total_amount
 from motopay.services.billing_service import (
@@ -20,7 +21,6 @@ from motopay.services.billing_service import (
     handle_mercadopago_payment_confirmed,
     sync_refund_from_mercadopago_payment,
 )
-from motopay.services.mercadopago_token_service import ensure_valid_mp_token
 
 logger = logging.getLogger(__name__)
 
@@ -45,9 +45,9 @@ def reconcile_pending_mercadopago_payments(db: Session, *, limit: int = 100) -> 
     confirmed = 0
     for cob in rows:
         op = db.get(Operacao, cob.operacao_id)
-        if not op or not mp_configured_for_operacao(op):
+        if not op or not mp_operacao_ready_for_payments(op):
             continue
-        token = ensure_valid_mp_token(db, op)
+        token = require_operacao_mp_token(db, op)
         client = MercadoPagoClient(access_token=token)
         try:
             order_data = client.get_order(cob.mercadopago_order_id)
@@ -98,9 +98,9 @@ def reconcile_mercadopago_refunds(db: Session, *, limit: int = 50) -> int:
     synced = 0
     for cob in rows:
         op = db.get(Operacao, cob.operacao_id)
-        if not op or not mp_configured_for_operacao(op):
+        if not op or not mp_operacao_ready_for_payments(op):
             continue
-        client = MercadoPagoClient(access_token=ensure_valid_mp_token(db, op))
+        client = MercadoPagoClient(access_token=require_operacao_mp_token(db, op))
         try:
             pay = client.get_payment(cob.mercadopago_payment_id)
         except MercadoPagoApiError:
@@ -129,9 +129,9 @@ def reconcile_mercadopago_chargebacks(db: Session, *, limit: int = 50) -> int:
         if status and status not in _CHARGEBACK_OPEN:
             continue
         op = db.get(Operacao, cob.operacao_id)
-        if not op or not mp_configured_for_operacao(op):
+        if not op or not mp_operacao_ready_for_payments(op):
             continue
-        client = MercadoPagoClient(access_token=ensure_valid_mp_token(db, op))
+        client = MercadoPagoClient(access_token=require_operacao_mp_token(db, op))
         try:
             pay = client.get_payment(cob.mercadopago_payment_id)
         except MercadoPagoApiError:
@@ -165,9 +165,9 @@ def reconcile_expired_pix_orders(db: Session, *, limit: int = 50) -> int:
     cleared = 0
     for cob in rows:
         op = db.get(Operacao, cob.operacao_id)
-        if not op or not mp_configured_for_operacao(op):
+        if not op or not mp_operacao_ready_for_payments(op):
             continue
-        client = MercadoPagoClient(access_token=ensure_valid_mp_token(db, op))
+        client = MercadoPagoClient(access_token=require_operacao_mp_token(db, op))
         try:
             order_data = client.get_order(cob.mercadopago_order_id)
         except MercadoPagoApiError:

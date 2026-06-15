@@ -6,17 +6,18 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from motopay.domain.enums import CobrancaStatus, PaymentMethodType
-from motopay.domain.exceptions import ForbiddenError, MotoPayError, NotFoundError
+from motopay.domain.exceptions import ForbiddenError, MercadoPagoNotConnectedError, MotoPayError, NotFoundError
 from motopay.infrastructure.db.models import Cliente, ClienteMpCard, Cobranca, Contrato, Operacao
 from motopay.infrastructure.payments.mercadopago_client import (
+    MP_NOT_CONNECTED_MSG,
     MercadoPagoApiError,
     MercadoPagoClient,
     assert_payer_email_ready,
     mercadopago_api_error_message,
-    mp_configured_for_operacao,
-    mp_credentials_complete,
+    mp_operacao_ready_for_payments,
     parse_mp_card,
     payer_email_for_mercadopago,
+    require_operacao_mp_token,
 )
 from motopay.infrastructure.payments.mp_payload_builder import (
     MercadoPagoDataError,
@@ -38,8 +39,6 @@ from motopay.services.billing_service import (
     _today,
     charge_amounts_for_cobranca,
 )
-from motopay.services.mercadopago_token_service import ensure_valid_mp_token
-
 
 def list_cliente_mp_cards(db: Session, cliente_id: int, operacao_id: int) -> list[ClienteMpCardOut]:
     rows = db.scalars(
@@ -63,10 +62,10 @@ def save_cliente_mp_card(
     if not cliente or cliente.operacao_id != operacao_id:
         raise NotFoundError("Cliente não encontrado")
     op = db.get(Operacao, operacao_id)
-    if not op or not mp_credentials_complete(op):
-        raise ForbiddenError("Mercado Pago não configurado para esta operação")
+    if not op or not mp_operacao_ready_for_payments(op):
+        raise MercadoPagoNotConnectedError(MP_NOT_CONNECTED_MSG)
     email = payer_email_for_mercadopago(cliente)
-    client = MercadoPagoClient(access_token=ensure_valid_mp_token(db, op))
+    client = MercadoPagoClient(access_token=require_operacao_mp_token(db, op))
     customer_id = cliente.mercadopago_customer_id
     if not customer_id:
         first_name, _ = split_full_name(cliente.nome, cliente.sobrenome)
@@ -136,9 +135,9 @@ def delete_cliente_mp_card(
         raise NotFoundError("Cartão não encontrado")
     op = db.get(Operacao, operacao_id)
     cliente = db.get(Cliente, cliente_id)
-    if op and cliente and cliente.mercadopago_customer_id and mp_configured_for_operacao(op):
+    if op and cliente and cliente.mercadopago_customer_id and mp_operacao_ready_for_payments(op):
         try:
-            MercadoPagoClient(access_token=ensure_valid_mp_token(db, op)).delete_card(
+            MercadoPagoClient(access_token=require_operacao_mp_token(db, op)).delete_card(
                 customer_id=cliente.mercadopago_customer_id,
                 card_id=row.mp_card_id,
             )
@@ -172,8 +171,8 @@ def pay_cobranca_with_card(
     op = db.get(Operacao, operacao_id)
     if not ct or not cliente or not op:
         raise NotFoundError("Dados do contrato não encontrados")
-    if not mp_credentials_complete(op):
-        raise ForbiddenError("Mercado Pago não configurado")
+    if not mp_operacao_ready_for_payments(op):
+        raise MercadoPagoNotConnectedError(MP_NOT_CONNECTED_MSG)
     assert_payer_email_ready(cliente)
 
     method_type = (
@@ -207,7 +206,7 @@ def pay_cobranca_with_card(
     if amounts.dias_atraso > 0 and cob.status != CobrancaStatus.ATRASADO.value:
         cob.status = CobrancaStatus.ATRASADO.value
 
-    client = MercadoPagoClient(access_token=ensure_valid_mp_token(db, op))
+    client = MercadoPagoClient(access_token=require_operacao_mp_token(db, op))
 
     payment_token = token.strip()
     if saved is not None and len(payment_token) < _MP_PAYMENT_TOKEN_MIN_LEN:

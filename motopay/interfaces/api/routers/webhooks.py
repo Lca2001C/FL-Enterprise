@@ -16,8 +16,9 @@ from motopay.infrastructure.messaging.tasks import handle_domain_event
 from motopay.infrastructure.payments.mercadopago_client import (
     MercadoPagoApiError,
     MercadoPagoClient,
-    mp_token_for_operacao,
+    mp_operacao_ready_for_payments,
     mp_webhook_secret_for_operacao,
+    require_operacao_mp_token,
     verify_webhook_signature,
 )
 from motopay.infrastructure.payments.order_utils import is_order_paid, order_total_amount
@@ -35,7 +36,6 @@ from motopay.services.billing_service import (
     handle_mercadopago_subscription_payment,
     sync_refund_from_mercadopago_payment,
 )
-from motopay.services.mercadopago_token_service import ensure_valid_mp_token
 
 logger = logging.getLogger(__name__)
 
@@ -88,14 +88,12 @@ def _verify_mp_signature(
 
 
 def _mp_access_token(db: Session, op: Operacao | None) -> str:
-    if op:
-        token = ensure_valid_mp_token(db, op)
-        if token:
-            return token
-    token = mp_token_for_operacao(op)
-    if token:
-        return token
-    return get_settings().mercadopago_access_token.strip()
+    if op and mp_operacao_ready_for_payments(op):
+        return require_operacao_mp_token(db, op)
+    settings = get_settings()
+    if settings.is_production:
+        return ""
+    return settings.mercadopago_access_token.strip()
 
 
 def _fetch_order(db: Session, op: Operacao | None, order_id: str) -> dict[str, Any]:

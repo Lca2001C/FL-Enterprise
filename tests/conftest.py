@@ -34,6 +34,8 @@ def _ensure_test_env() -> None:
     os.environ["MERCADOPAGO_CREDENTIALS_MODE"] = "test"
     os.environ["MERCADOPAGO_ACCESS_TOKEN_TEST"] = "TEST-token"
     os.environ["MERCADOPAGO_PUBLIC_KEY_TEST"] = "TEST-pk"
+    os.environ["MERCADOPAGO_WEBHOOK_SECRET_TEST"] = "whsec-test-webhook-secret-12"
+    os.environ["ENCRYPTION_KEY"] = "sqDDNXiljsDzXzwlu2WJ-z00XTD04TLW967jWrYCF18="
     os.environ["ENVIRONMENT"] = "development"
     os.environ["LOGIN_RATE_LIMIT_ENABLED"] = "false"
     get_settings.cache_clear()

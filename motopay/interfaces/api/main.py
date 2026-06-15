@@ -10,6 +10,7 @@ from motopay.domain.enums import UserRole
 from motopay.domain.exceptions import (
     ConflictError,
     ForbiddenError,
+    MercadoPagoNotConnectedError,
     MotoPayError,
     NotFoundError,
     UnauthorizedError,
@@ -251,6 +252,11 @@ async def mercadopago_api_error_handler(_: Request, exc: MercadoPagoApiError) ->
         status_code=422,
         content={"detail": mercadopago_api_error_message(exc)},
     )
+
+
+@app.exception_handler(MercadoPagoNotConnectedError)
+async def mp_not_connected_handler(_: Request, exc: MercadoPagoNotConnectedError) -> JSONResponse:
+    return JSONResponse(status_code=422, content={"detail": str(exc)})
 
 
 @app.exception_handler(MotoPayError)

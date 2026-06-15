@@ -110,11 +110,12 @@ openssl rand -hex 32   # rode 3x: JWT_SECRET, POSTGRES_PASSWORD, REDIS_PASSWORD
 | `CORS_ORIGINS` | `https://app.seudominio.com` |
 | `TRUSTED_PROXY_IPS` | `172.16.0.0/12` (rede interna do Docker — necessário para o rate-limit ver o IP real do cliente atrás do Caddy/nginx) |
 | `MERCADOPAGO_CREDENTIALS_MODE` | `production` (em `ENVIRONMENT=production` o modo teste é ignorado) |
-| `MERCADOPAGO_ACCESS_TOKEN` | Access Token de **produção** da aplicação MP (`APP_USR-…`) |
-| `MERCADOPAGO_PUBLIC_KEY` | Public Key de **produção** |
 | `MERCADOPAGO_WEBHOOK_SECRET` | preencher no passo 8 (após cadastrar o webhook) |
-| `MERCADOPAGO_VITE_PUBLIC_KEY` | igual à `MERCADOPAGO_PUBLIC_KEY` (vai para o build do frontend) |
 | `MERCADOPAGO_OAUTH_CLIENT_ID` / `MERCADOPAGO_OAUTH_CLIENT_SECRET` | da aplicação MP (botão "Conectar Mercado Pago" do dono) |
+| `MERCADOPAGO_OAUTH_REDIRECT_URI` | opcional; padrão `{API_PUBLIC_BASE_URL}/api/v1/operacoes/mp-oauth/callback` |
+| `ENCRYPTION_KEY` | chave Fernet para criptografar tokens OAuth por operação (`python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`) |
+| `MERCADOPAGO_ACCESS_TOKEN` | **não use em produção** — pagamentos caem na conta OAuth de cada operação. Só dev/teste. |
+| `MERCADOPAGO_PUBLIC_KEY` / `MERCADOPAGO_VITE_PUBLIC_KEY` | opcional em produção (cada operação usa a Public Key da conta conectada via OAuth) |
 | `TELEGRAM_BOT_TOKEN` | token **novo** do BotFather (passo 2) |
 | `VITE_API_BASE_URL` | `SAME_ORIGIN` (frontend e API no mesmo domínio) |
 | `VITE_DISABLE_PWA` | `false` (habilita instalação como app no celular) |
@@ -365,7 +366,8 @@ curl -s https://app.seudominio.com/health
 | Cobranças não geram sozinhas no vencimento | Serviço `beat` parado — `docker compose ... ps` e `logs beat`. |
 | Fotos de motos somem após redeploy | Disco efêmero com `STORAGE_BACKEND=local` — mude para `STORAGE_BACKEND=s3` (passo 11). No VPS, confirme que o volume `uploads_data` não foi removido (`docker volume ls`). |
 | API não sobe com `RuntimeError: STORAGE_BACKEND=s3 exige…` | Faltam `S3_BUCKET`/`S3_ACCESS_KEY_ID`/`S3_SECRET_ACCESS_KEY` (passo 11). |
-| `RuntimeError: MERCADOPAGO_ACCESS_TOKEN é obrigatório em produção` (deploy "Exited with status 1") | **O build funcionou** — a API se recusa a iniciar sem as credenciais de produção. Defina `MERCADOPAGO_ACCESS_TOKEN` (e os demais secrets) no ambiente. Se ainda não tem MP/Telegram prontos, use `ALLOW_PRODUCTION_WITHOUT_MERCADOPAGO=true` / `ALLOW_PRODUCTION_WITHOUT_TELEGRAM=true` temporariamente. Veja o Apêndice A. |
+| `RuntimeError: MERCADOPAGO_ACCESS_TOKEN é obrigatório em produção` (deploy "Exited with status 1") | Defina `MERCADOPAGO_OAUTH_CLIENT_ID/SECRET`, `MERCADOPAGO_WEBHOOK_SECRET` e `ENCRYPTION_KEY`. Se ainda não tem MP pronto, use `ALLOW_PRODUCTION_WITHOUT_MERCADOPAGO=true` temporariamente. Veja o Apêndice A. |
+| `Conta Mercado Pago não conectada para esta operação` | O dono precisa ir em **Ajustes → Conectar Mercado Pago** (OAuth). Login no app MP no celular não vincula a conta. |
 | `RuntimeError: REDIS_URL em produção exige autenticação` | Redis gerenciado de rede privada sem senha (Render Key Value interno): defina `ALLOW_PRODUCTION_REDIS_WITHOUT_AUTH=true`. Em Redis exposto, use senha (`rediss://:SENHA@…`). |
 
 ---
@@ -396,10 +398,10 @@ uma vez: API, worker, beat, bot, Postgres e Redis (Key Value).
 | Variável | Valor |
 |---|---|
 | `JWT_SECRET` | hex de 64 chars — gere com `openssl rand -hex 32` |
-| `MERCADOPAGO_ACCESS_TOKEN` | Access Token **de produção** (`APP_USR-…`) |
-| `MERCADOPAGO_PUBLIC_KEY` | Public Key de produção |
 | `MERCADOPAGO_WEBHOOK_SECRET` | assinatura secreta do webhook (passo 8.2) |
 | `MERCADOPAGO_OAUTH_CLIENT_ID` / `..._SECRET` | da aplicação MP (botão "Conectar" do dono) |
+| `ENCRYPTION_KEY` | chave Fernet (tokens OAuth por operação) |
+| `MERCADOPAGO_ACCESS_TOKEN` | **não definir** em produção — use OAuth por operação |
 | `TELEGRAM_BOT_TOKEN` | token do @BotFather |
 | `API_PUBLIC_BASE_URL` | URL pública do serviço **motopay-api** (ex.: `https://motopay-api.onrender.com`) |
 | `PAYER_PORTAL_BASE_URL` | URL pública do **frontend** |

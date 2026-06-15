@@ -75,7 +75,10 @@ def test_oauth_callback_persists_tokens(client, oauth_env, db_session, dono_user
     assert "mp_oauth=ok" in location
 
     db_session.refresh(operacao_a)
-    assert operacao_a.mercadopago_access_token == _OAUTH_TOKEN
+    assert operacao_a.mercadopago_connection_status == "connected"
+    from motopay.infrastructure.crypto.token_encryption import decrypt_token
+
+    assert decrypt_token(operacao_a.mercadopago_access_token) == _OAUTH_TOKEN
     assert operacao_a.mercadopago_public_key == _OAUTH_PUBLIC_KEY
     assert operacao_a.mercadopago_refresh_token == "TG-refresh-abc"
     assert operacao_a.mercadopago_oauth_user_id == "987654321"
@@ -126,8 +129,10 @@ def test_oauth_callback_with_provider_error(client, oauth_env):
 
 def test_oauth_disconnect_clears_columns(client, oauth_env, db_session, dono_user, operacao_a):
     operacao_a.mercadopago_access_token = _OAUTH_TOKEN
+    operacao_a.mercadopago_public_key = _OAUTH_PUBLIC_KEY
     operacao_a.mercadopago_refresh_token = "TG-refresh-abc"
     operacao_a.mercadopago_oauth_user_id = "987654321"
+    operacao_a.mercadopago_connection_status = "connected"
     operacao_a.mercadopago_oauth_expires_at = datetime.now(UTC) + timedelta(days=90)
     db_session.add(operacao_a)
     db_session.flush()
@@ -139,9 +144,11 @@ def test_oauth_disconnect_clears_columns(client, oauth_env, db_session, dono_use
 
     db_session.refresh(operacao_a)
     assert operacao_a.mercadopago_access_token is None
+    assert operacao_a.mercadopago_public_key is None
     assert operacao_a.mercadopago_refresh_token is None
     assert operacao_a.mercadopago_oauth_user_id is None
     assert operacao_a.mercadopago_oauth_expires_at is None
+    assert operacao_a.mercadopago_connection_status == "disconnected"
 
 
 def test_refresh_expiring_tokens_only_within_window(db_session):
@@ -151,6 +158,8 @@ def test_refresh_expiring_tokens_only_within_window(db_session):
         mercadopago_access_token=_OAUTH_TOKEN,
         mercadopago_public_key=_OAUTH_PUBLIC_KEY,
         mercadopago_refresh_token="TG-refresh-old",
+        mercadopago_oauth_user_id="1",
+        mercadopago_connection_status="connected",
         mercadopago_oauth_expires_at=datetime.now(UTC) + timedelta(days=3),
     )
     healthy = Operacao(
@@ -158,6 +167,8 @@ def test_refresh_expiring_tokens_only_within_window(db_session):
         mercadopago_access_token=_OAUTH_TOKEN,
         mercadopago_public_key=_OAUTH_PUBLIC_KEY,
         mercadopago_refresh_token="TG-refresh-ok",
+        mercadopago_oauth_user_id="2",
+        mercadopago_connection_status="connected",
         mercadopago_oauth_expires_at=datetime.now(UTC) + timedelta(days=30),
     )
     db_session.add_all([expiring, healthy])

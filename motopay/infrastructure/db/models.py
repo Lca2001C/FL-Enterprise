@@ -43,14 +43,18 @@ class Operacao(Base):
     telegram_owner_notify_enabled: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default="false"
     )
-    mercadopago_access_token: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    mercadopago_access_token: Mapped[str | None] = mapped_column(Text, nullable=True)
     mercadopago_public_key: Mapped[str | None] = mapped_column(String(128), nullable=True)
     mercadopago_webhook_secret: Mapped[str | None] = mapped_column(String(256), nullable=True)
-    mercadopago_refresh_token: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    mercadopago_refresh_token: Mapped[str | None] = mapped_column(Text, nullable=True)
     mercadopago_oauth_user_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     mercadopago_oauth_expires_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    mercadopago_connection_status: Mapped[str] = mapped_column(
+        String(32), nullable=False, server_default="disconnected"
+    )
+    mercadopago_account_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     usuarios: Mapped[list[Usuario]] = relationship(back_populates="operacao")
     motos: Mapped[list[Moto]] = relationship(back_populates="operacao")

@@ -14,6 +14,7 @@ from motopay.infrastructure.db.models import (
     Operacao,
 )
 from motopay.services.mercadopago_token_service import ensure_valid_mp_token
+from motopay.infrastructure.crypto.token_encryption import encrypt_token
 
 
 def test_ensure_valid_mp_token_refreshes_when_expired(db_session):
@@ -23,10 +24,11 @@ def test_ensure_valid_mp_token_refreshes_when_expired(db_session):
     new_token = "APP_USR-1111111111111111-new"
     op = Operacao(
         nome="OAuth Op",
-        mercadopago_access_token=old_token,
+        mercadopago_access_token=encrypt_token(old_token),
         mercadopago_public_key="APP_USR-pk-0000-1111-2222",
-        mercadopago_webhook_secret="whsec-12345678",
-        mercadopago_refresh_token="refresh-xyz",
+        mercadopago_refresh_token=encrypt_token("refresh-xyz"),
+        mercadopago_oauth_user_id="999",
+        mercadopago_connection_status="connected",
         mercadopago_oauth_expires_at=datetime.now(UTC) - timedelta(minutes=1),
     )
     db_session.add(op)
@@ -45,7 +47,9 @@ def test_ensure_valid_mp_token_refreshes_when_expired(db_session):
 
     assert token == new_token
     db_session.refresh(op)
-    assert op.mercadopago_access_token == new_token
+    from motopay.infrastructure.crypto.token_encryption import decrypt_token
+
+    assert decrypt_token(op.mercadopago_access_token) == new_token
     assert op.mercadopago_refresh_token == "refresh-new"
 
 

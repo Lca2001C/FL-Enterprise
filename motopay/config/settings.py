@@ -6,7 +6,7 @@ from functools import lru_cache
 from urllib.parse import unquote, urlparse
 from zoneinfo import ZoneInfo
 
-from pydantic import field_validator, model_validator
+from pydantic import AliasChoices, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _logger = logging.getLogger(__name__)
@@ -113,9 +113,20 @@ class Settings(BaseSettings):
     mercadopago_access_token_test: str = ""
     mercadopago_public_key_test: str = ""
     mercadopago_webhook_secret_test: str = ""
-    mercadopago_oauth_client_id: str = ""
-    mercadopago_oauth_client_secret: str = ""
-    mercadopago_oauth_redirect_uri: str = ""
+    mercadopago_oauth_client_id: str = Field(
+        default="",
+        validation_alias=AliasChoices("MERCADOPAGO_OAUTH_CLIENT_ID", "MP_CLIENT_ID"),
+    )
+    mercadopago_oauth_client_secret: str = Field(
+        default="",
+        validation_alias=AliasChoices("MERCADOPAGO_OAUTH_CLIENT_SECRET", "MP_CLIENT_SECRET"),
+    )
+    mercadopago_oauth_redirect_uri: str = Field(
+        default="",
+        validation_alias=AliasChoices("MERCADOPAGO_OAUTH_REDIRECT_URI", "MP_REDIRECT_URI"),
+    )
+    # Fernet (32 bytes base64) para criptografar access/refresh tokens OAuth por operação.
+    encryption_key: str = ""
     payer_portal_base_url: str = ""
     payer_portal_token_ttl_days: int = 30
 
@@ -205,11 +216,32 @@ class Settings(BaseSettings):
                 "JWT_SECRET: defina um segredo forte (gere com `openssl rand -hex 32`; "
                 "valores que começam com 'change-me' são recusados)."
             )
-        if not self.allow_production_without_mercadopago and not self.mercadopago_access_token.strip():
-            errors.append(
-                "MERCADOPAGO_ACCESS_TOKEN: obrigatório em produção "
-                "(ou ALLOW_PRODUCTION_WITHOUT_MERCADOPAGO=true para subir sem Mercado Pago temporariamente)."
+        if not self.allow_production_without_mercadopago:
+            oauth_ready = bool(
+                self.mercadopago_oauth_client_id.strip()
+                and self.mercadopago_oauth_client_secret.strip()
             )
+            webhook_ready = bool(self.mercadopago_webhook_secret.strip())
+            if not oauth_ready:
+                errors.append(
+                    "MERCADOPAGO_OAUTH_CLIENT_ID e MERCADOPAGO_OAUTH_CLIENT_SECRET: "
+                    "obrigatórios em produção para cobranças multi-tenant "
+                    "(ou ALLOW_PRODUCTION_WITHOUT_MERCADOPAGO=true temporariamente)."
+                )
+            if not webhook_ready:
+                errors.append(
+                    "MERCADOPAGO_WEBHOOK_SECRET: obrigatório em produção para notificações MP."
+                )
+            if not self.encryption_key.strip():
+                errors.append(
+                    "ENCRYPTION_KEY: obrigatório em produção para criptografar tokens OAuth "
+                    "(gere com: python -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\")."
+                )
+            if self.mercadopago_access_token.strip():
+                _logger.warning(
+                    "MERCADOPAGO_ACCESS_TOKEN definido em production: não será usado para "
+                    "cobranças de tenants — remova do ambiente de produção."
+                )
         if not self.allow_production_without_telegram and not self.telegram_bot_token.strip():
             errors.append(
                 "TELEGRAM_BOT_TOKEN: obrigatório em produção "
@@ -282,6 +314,10 @@ class Settings(BaseSettings):
             )
 
         return self
+
+    @property
+    def is_production(self) -> bool:
+        return self.environment == "production"
 
 
 @lru_cache
