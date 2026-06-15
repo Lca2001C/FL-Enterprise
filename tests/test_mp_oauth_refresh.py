@@ -50,7 +50,7 @@ def test_ensure_valid_mp_token_refreshes_when_expired(db_session):
     from motopay.infrastructure.crypto.token_encryption import decrypt_token
 
     assert decrypt_token(op.mercadopago_access_token) == new_token
-    assert op.mercadopago_refresh_token == "refresh-new"
+    assert decrypt_token(op.mercadopago_refresh_token) == "refresh-new"
 
 
 def test_refund_emits_domain_event(db_session):

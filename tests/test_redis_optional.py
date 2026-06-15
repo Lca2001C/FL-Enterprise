@@ -14,6 +14,8 @@ from motopay.infrastructure.redis_client import (
 )
 from motopay.infrastructure.security.refresh_tokens import create_refresh_token
 
+from tests.conftest import apply_base_production_env
+
 
 @pytest.fixture
 def no_redis(monkeypatch: pytest.MonkeyPatch):
@@ -111,11 +113,12 @@ def test_rate_limiter_does_not_crash_without_redis(no_redis):
     assert result.allowed is True
 
 
-@pytest.mark.asyncio
-async def test_health_redis_degraded_when_unconfigured(no_redis):
+def test_health_redis_degraded_when_unconfigured(no_redis):
+    import asyncio
+
     from motopay.health.checks import HealthStatus, check_redis
 
-    result = await check_redis()
+    result = asyncio.run(check_redis())
     assert result.name == "redis"
     assert result.status == HealthStatus.DEGRADED
     assert "degradado" in (result.error or "").lower()
@@ -130,13 +133,7 @@ def test_inmemory_pubsub_noop():
 
 def test_production_boots_without_redis(monkeypatch: pytest.MonkeyPatch, caplog):
     # Produção com REDIS_URL vazio: sobe (modo degradado), sem erro.
-    monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://user:pw@prod-db.example:5432/motopay")
-    monkeypatch.setenv("ENVIRONMENT", "production")
-    monkeypatch.setenv("JWT_SECRET", "x" + "a" * 48)
-    monkeypatch.setenv("MERCADOPAGO_ACCESS_TOKEN", "mp-token")
-    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "t")
-    monkeypatch.setenv("CORS_ORIGINS", "https://admin.example.test")
-    # Sem REDIS_URL no ambiente + _env_file=None → cai no default vazio (modo sem-Redis).
+    apply_base_production_env(monkeypatch)
     monkeypatch.delenv("REDIS_URL", raising=False)
     get_settings.cache_clear()
     caplog.set_level(logging.WARNING)

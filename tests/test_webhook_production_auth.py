@@ -5,19 +5,14 @@ from unittest.mock import patch
 import pytest
 from motopay.config import get_settings
 
+from tests.conftest import apply_base_production_env
 from tests.test_mercadopago_client import _signature_headers
 
 
 @pytest.fixture
 def production_webhook_env(monkeypatch: pytest.MonkeyPatch) -> None:
     get_settings.cache_clear()
-    monkeypatch.setenv("ENVIRONMENT", "production")
-    monkeypatch.setenv("JWT_SECRET", "x" + "a" * 48)
-    monkeypatch.setenv("MERCADOPAGO_ACCESS_TOKEN", "mp-token")
-    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "t")
-    monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://user:pw@prod-db.example:5432/motopay")
-    monkeypatch.setenv("REDIS_URL", "rediss://:strong-redis-secret@redis.example:6380/0")
-    monkeypatch.setenv("CORS_ORIGINS", "https://admin.example.test")
+    apply_base_production_env(monkeypatch)
     get_settings.cache_clear()
     yield
     get_settings.cache_clear()

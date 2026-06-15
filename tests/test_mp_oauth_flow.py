@@ -8,6 +8,7 @@ from urllib.parse import parse_qs, urlparse
 
 import pytest
 from motopay.config import get_settings
+from motopay.infrastructure.crypto.token_encryption import decrypt_token, encrypt_token
 from motopay.infrastructure.db.models import Operacao
 from motopay.services.mercadopago_token_service import refresh_expiring_mp_oauth_tokens
 
@@ -80,7 +81,7 @@ def test_oauth_callback_persists_tokens(client, oauth_env, db_session, dono_user
 
     assert decrypt_token(operacao_a.mercadopago_access_token) == _OAUTH_TOKEN
     assert operacao_a.mercadopago_public_key == _OAUTH_PUBLIC_KEY
-    assert operacao_a.mercadopago_refresh_token == "TG-refresh-abc"
+    assert decrypt_token(operacao_a.mercadopago_refresh_token) == "TG-refresh-abc"
     assert operacao_a.mercadopago_oauth_user_id == "987654321"
     assert operacao_a.mercadopago_oauth_expires_at is not None
 
@@ -155,18 +156,18 @@ def test_refresh_expiring_tokens_only_within_window(db_session):
     new_token = "APP_USR-2222222222222222-new"
     expiring = Operacao(
         nome="Op Expirando",
-        mercadopago_access_token=_OAUTH_TOKEN,
+        mercadopago_access_token=encrypt_token(_OAUTH_TOKEN),
         mercadopago_public_key=_OAUTH_PUBLIC_KEY,
-        mercadopago_refresh_token="TG-refresh-old",
+        mercadopago_refresh_token=encrypt_token("TG-refresh-old"),
         mercadopago_oauth_user_id="1",
         mercadopago_connection_status="connected",
         mercadopago_oauth_expires_at=datetime.now(UTC) + timedelta(days=3),
     )
     healthy = Operacao(
         nome="Op Saudável",
-        mercadopago_access_token=_OAUTH_TOKEN,
+        mercadopago_access_token=encrypt_token(_OAUTH_TOKEN),
         mercadopago_public_key=_OAUTH_PUBLIC_KEY,
-        mercadopago_refresh_token="TG-refresh-ok",
+        mercadopago_refresh_token=encrypt_token("TG-refresh-ok"),
         mercadopago_oauth_user_id="2",
         mercadopago_connection_status="connected",
         mercadopago_oauth_expires_at=datetime.now(UTC) + timedelta(days=30),
@@ -188,7 +189,7 @@ def test_refresh_expiring_tokens_only_within_window(db_session):
     refresh_mock.assert_called_once_with(refresh_token="TG-refresh-old")
     db_session.refresh(expiring)
     db_session.refresh(healthy)
-    assert expiring.mercadopago_access_token == new_token
-    assert expiring.mercadopago_refresh_token == "TG-refresh-rotated"
-    assert healthy.mercadopago_access_token == _OAUTH_TOKEN
-    assert healthy.mercadopago_refresh_token == "TG-refresh-ok"
+    assert decrypt_token(expiring.mercadopago_access_token) == new_token
+    assert decrypt_token(expiring.mercadopago_refresh_token) == "TG-refresh-rotated"
+    assert decrypt_token(healthy.mercadopago_access_token) == _OAUTH_TOKEN
+    assert decrypt_token(healthy.mercadopago_refresh_token) == "TG-refresh-ok"

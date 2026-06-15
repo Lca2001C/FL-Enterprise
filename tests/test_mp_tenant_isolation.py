@@ -20,6 +20,8 @@ from motopay.infrastructure.payments.order_utils import MercadoPagoOrderResult, 
 from motopay.services.mercadopago_token_service import ensure_valid_mp_token
 from motopay.services.payment_gateway import create_pix_for_cobranca
 
+from tests.conftest import apply_base_production_env
+
 _TOKEN_A = "APP_USR-aaaaaaaaaaaaaaaa-tenant-a"
 _TOKEN_B = "APP_USR-bbbbbbbbbbbbbbbb-tenant-b"
 _PUBLIC_KEY = "APP_USR-pk-1234-5678-oauth"
@@ -122,7 +124,7 @@ def test_create_pix_uses_correct_tenant_token(db_session, mp_tenant_ops):
 
 
 def test_production_rejects_without_oauth(db_session, monkeypatch):
-    monkeypatch.setenv("ENVIRONMENT", "production")
+    apply_base_production_env(monkeypatch)
     get_settings.cache_clear()
     op = Operacao(nome="Sem OAuth")
     db_session.add(op)
@@ -133,9 +135,8 @@ def test_production_rejects_without_oauth(db_session, monkeypatch):
 
 
 def test_global_token_not_used_for_tenant_in_production(db_session, monkeypatch, mp_tenant_ops):
-    monkeypatch.setenv("ENVIRONMENT", "production")
+    apply_base_production_env(monkeypatch)
     monkeypatch.setenv("MERCADOPAGO_ACCESS_TOKEN", "APP_USR-global-dev-should-not-use")
-    monkeypatch.setenv("MERCADOPAGO_WEBHOOK_SECRET", "whsec-prod-webhook-secret-1")
     get_settings.cache_clear()
     op_a, _ = mp_tenant_ops
     token = require_operacao_mp_token(db_session, op_a)

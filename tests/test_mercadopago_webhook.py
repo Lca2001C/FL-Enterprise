@@ -7,6 +7,8 @@ from unittest.mock import MagicMock, patch
 from motopay.domain.enums import CicloCobranca, CobrancaStatus, ContratoStatus
 from motopay.infrastructure.db.models import Cliente, Cobranca, Contrato, Moto, Operacao
 
+from tests.conftest import mp_webhook_headers
+
 
 def test_mercadopago_webhook_confirms_payment(client, db_session):
     op = Operacao(nome="MP Op")
@@ -57,7 +59,11 @@ def test_mercadopago_webhook_confirms_payment(client, db_session):
             "transaction_amount": 100.0,
         }
         mock_task.delay = MagicMock()
-        r = client.post("/webhooks/mercadopago", json={"type": "payment", "data": {"id": "999888"}})
+        r = client.post(
+            "/webhooks/mercadopago",
+            headers=mp_webhook_headers("999888"),
+            json={"type": "payment", "data": {"id": "999888"}},
+        )
         assert r.status_code == 200
         db_session.refresh(cob)
         assert cob.status == CobrancaStatus.RECEBIDO.value

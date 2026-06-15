@@ -165,9 +165,7 @@ def test_refresh_cancels_and_creates_new_pix(
     mock_client.create_online_order.return_value = order
 
     with patch(
-        "motopay.services.payment_gateway.mp_configured_for_operacao", return_value=True
-    ), patch(
-        "motopay.services.payment_gateway.mp_credentials_complete", return_value=True
+        "motopay.services.payment_gateway.mp_operacao_ready_for_payments", return_value=True
     ), patch(
         "motopay.services.payment_gateway.MercadoPagoClient", return_value=mock_client
     ):

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from motopay.domain.enums import UserRole
+from motopay.infrastructure.crypto.token_encryption import decrypt_token
 from motopay.infrastructure.telegram.templates import (
     DEFAULT_BOT_MENU_BUTTONS,
     DEFAULT_TELEGRAM_TEMPLATES,
@@ -52,7 +53,7 @@ def test_admin_can_save_mercadopago_credentials(db_session, operacao_a):
         role=UserRole.ADMIN,
     )
     db_session.refresh(operacao_a)
-    assert operacao_a.mercadopago_access_token == _FAKE_MP_TOKEN
+    assert decrypt_token(operacao_a.mercadopago_access_token) == _FAKE_MP_TOKEN
     assert operacao_a.mercadopago_public_key == _FAKE_MP_PUBLIC_KEY
     assert operacao_a.mercadopago_webhook_secret == "whsec-12345678"
 

@@ -2,8 +2,12 @@ from __future__ import annotations
 
 import os
 from collections.abc import Generator
+from typing import TYPE_CHECKING
 
 import pytest
+
+if TYPE_CHECKING:
+    from _pytest.monkeypatch import MonkeyPatch
 from fastapi.testclient import TestClient
 from motopay.config.settings import get_settings
 from motopay.domain.enums import UserRole
@@ -42,6 +46,36 @@ def _ensure_test_env() -> None:
 
 
 _ensure_test_env()
+
+TEST_MP_WEBHOOK_SECRET = "whsec-test-webhook-secret-12"
+_PRODUCTION_ENCRYPTION_KEY = "sqDDNXiljsDzXzwlu2WJ-z00XTD04TLW967jWrYCF18="
+
+
+def mp_webhook_headers(data_id: str, *, secret: str | None = None) -> dict[str, str]:
+    """Headers x-signature/x-request-id válidos para webhooks MP nos testes."""
+    from tests.test_mercadopago_client import _signature_headers
+
+    return _signature_headers(
+        secret=secret or TEST_MP_WEBHOOK_SECRET,
+        data_id=data_id,
+    )
+
+
+def apply_base_production_env(monkeypatch: MonkeyPatch) -> None:
+    """Env mínimo para Settings() em ENVIRONMENT=production (igual CI)."""
+    monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://user:pw@prod-db.example:5432/motopay")
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    monkeypatch.setenv("JWT_SECRET", "x" + "a" * 48)
+    monkeypatch.delenv("MERCADOPAGO_ACCESS_TOKEN", raising=False)
+    monkeypatch.setenv("MERCADOPAGO_OAUTH_CLIENT_ID", "mp-oauth-client-id")
+    monkeypatch.setenv("MERCADOPAGO_OAUTH_CLIENT_SECRET", "mp-oauth-client-secret")
+    monkeypatch.setenv("MERCADOPAGO_WEBHOOK_SECRET", "whsec-production-webhook-secret")
+    monkeypatch.setenv("ENCRYPTION_KEY", _PRODUCTION_ENCRYPTION_KEY)
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "t")
+    monkeypatch.setenv("REDIS_URL", "rediss://:strong-redis-secret@redis.example:6380/0")
+    monkeypatch.setenv("CORS_ORIGINS", "https://admin.example.test")
+    monkeypatch.delenv("ALLOW_PRODUCTION_WITHOUT_MERCADOPAGO", raising=False)
+    monkeypatch.delenv("ALLOW_PRODUCTION_WITHOUT_TELEGRAM", raising=False)
 
 
 @pytest.fixture(scope="session")

@@ -22,7 +22,7 @@ from motopay.services.billing_service import (
 )
 from sqlalchemy import select
 
-from tests.conftest import auth_header, login
+from tests.conftest import auth_header, login, mp_webhook_headers
 
 # Credenciais fake com formato válido (prefixo TEST-/APP_USR-, ≥20 chars;
 # webhook secret ≥8 chars) — exigido por operacao_mp_fields_complete.
@@ -303,6 +303,7 @@ def test_webhook_chargeback_topic(client, db_session):
         }
         r = client.post(
             "/webhooks/mercadopago",
+            headers=mp_webhook_headers("cb-1", secret=_SEED_MP_WEBHOOK_SECRET),
             json={"type": "chargeback", "data": {"id": "cb-1"}},
         )
     assert r.status_code == 200
@@ -336,9 +337,9 @@ def test_update_contrato_syncs_subscription_amount(
         mercadopago_subscription_id="pre-123",
     )
     db_session.add(ct)
-    operacao_a.mercadopago_access_token = "tok"
-    operacao_a.mercadopago_public_key = "pk"
-    operacao_a.mercadopago_webhook_secret = "sec"
+    operacao_a.mercadopago_access_token = _SEED_MP_TOKEN
+    operacao_a.mercadopago_public_key = _SEED_MP_PUBLIC_KEY
+    operacao_a.mercadopago_webhook_secret = _SEED_MP_WEBHOOK_SECRET
     db_session.add(operacao_a)
     db_session.commit()
 
@@ -380,9 +381,9 @@ def test_update_contrato_syncs_ciclo(client, db_session, dono_user, operacao_a):
         mercadopago_subscription_id="pre-456",
     )
     db_session.add(ct)
-    operacao_a.mercadopago_access_token = "tok"
-    operacao_a.mercadopago_public_key = "pk"
-    operacao_a.mercadopago_webhook_secret = "sec"
+    operacao_a.mercadopago_access_token = _SEED_MP_TOKEN
+    operacao_a.mercadopago_public_key = _SEED_MP_PUBLIC_KEY
+    operacao_a.mercadopago_webhook_secret = _SEED_MP_WEBHOOK_SECRET
     db_session.add(operacao_a)
     db_session.commit()
 
