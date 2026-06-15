@@ -37,6 +37,9 @@ def test_mercadopago_webhook_rejects_unsigned_when_secret_missing_in_production(
 ):
     # Fail-closed: sem MERCADOPAGO_WEBHOOK_SECRET configurado, produção deve
     # recusar o webhook em vez de aceitar qualquer requisição não assinada.
+    # ALLOW_PRODUCTION_WITHOUT_MERCADOPAGO permite Settings() subir sem o secret
+    # (deploy temporário); o endpoint de webhook ainda rejeita em runtime.
+    monkeypatch.setenv("ALLOW_PRODUCTION_WITHOUT_MERCADOPAGO", "true")
     monkeypatch.setenv("MERCADOPAGO_WEBHOOK_SECRET", "")
     get_settings.cache_clear()
     response = client.post(

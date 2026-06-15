@@ -167,6 +167,9 @@ def test_refresh_cancels_and_creates_new_pix(
     with patch(
         "motopay.services.payment_gateway.mp_operacao_ready_for_payments", return_value=True
     ), patch(
+        "motopay.services.payment_gateway.require_operacao_mp_token",
+        return_value="TEST-1234567890123456-seed",
+    ), patch(
         "motopay.services.payment_gateway.MercadoPagoClient", return_value=mock_client
     ):
         cob = refresh_overdue_pix(db_session, contrato=contrato_atrasado, today=today)

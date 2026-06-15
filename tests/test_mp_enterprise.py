@@ -303,7 +303,7 @@ def test_webhook_chargeback_topic(client, db_session):
         }
         r = client.post(
             "/webhooks/mercadopago",
-            headers=mp_webhook_headers("cb-1", secret=_SEED_MP_WEBHOOK_SECRET),
+            headers=mp_webhook_headers("cb-1"),
             json={"type": "chargeback", "data": {"id": "cb-1"}},
         )
     assert r.status_code == 200
