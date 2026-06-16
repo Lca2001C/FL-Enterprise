@@ -3,10 +3,17 @@ import { useAuth } from '../AuthContext';
 import { useAlerts, type Alert } from '../stores/AlertContext';
 import { disconnectRealtimeSocket, getRealtimeSocket, reconnectRealtimeSocketIfNeeded } from './socket';
 
+// Realtime (Socket.IO) só liga quando explicitamente habilitado no build
+// (VITE_ENABLE_REALTIME=true) — requer a API servida via asgi:app com WebSocket
+// (docker-compose/host único). Em Vercel+Render (free) fica desligado por padrão,
+// evitando tentativas de WebSocket que falham e poluem o console.
+const REALTIME_ENABLED = import.meta.env.VITE_ENABLE_REALTIME === 'true';
+
 export function useRealtime(options?: { enabled?: boolean }) {
   const { token, apiBase, user } = useAuth();
   const { addAlert } = useAlerts();
-  const enabled = options?.enabled ?? user?.tipo === 'admin';
+  const enabled =
+    REALTIME_ENABLED && (options?.enabled ?? user?.tipo === 'admin');
 
   useEffect(() => {
     if (!enabled || !token) return;
