@@ -29,6 +29,10 @@ envVarGroups:
       # Mesmo segredo em todos os serviços — gere com: openssl rand -hex 32
       - key: JWT_SECRET
         sync: false
+      # Criptografa tokens OAuth do Mercado Pago no banco (obrigatório em produção).
+      # Gere com: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+      - key: ENCRYPTION_KEY
+        sync: false
       # Redis interno do Render é rede privada e sem senha — aceitar explicitamente.
       # OPCIONAL: no free tier (sem Key Value), deixe REDIS_URL sem valor → a API sobe
       # em modo degradado (rate-limit/fila em memória). Veja DEPLOY.md, Apêndice B.
