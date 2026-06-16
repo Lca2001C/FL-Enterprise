@@ -1,3 +1,5 @@
+import { getRuntimeApiBase } from './runtimeConfig';
+
 const DEFAULT_API_PORT = '8000';
 const DEFAULT_FRONTEND_PORT =
   (typeof import.meta !== 'undefined' &&
@@ -68,6 +70,8 @@ export function isSeparateProductionApi(envUrl: string): boolean {
 }
 
 export function viteApiBaseFromEnv(): string {
+  const runtime = getRuntimeApiBase();
+  if (runtime) return runtime;
   return ((import.meta.env.VITE_API_BASE_URL as string | undefined) ?? '').trim().replace(/\/$/, '');
 }
 
@@ -159,6 +163,30 @@ export function pageOriginApiUrl(path: string): string {
   if (typeof window === 'undefined') return normalizedPath;
   const origin = normalizeLocalDevOrigin(window.location.origin.replace(/\/$/, ''));
   return `${origin}${normalizedPath}`;
+}
+
+/**
+ * Origem do Socket.IO. Em produção com API em outro host (Render/Vercel), o
+ * websocket deve ir direto para a API — o nginx do frontend só faz proxy de
+ * /socket.io no docker-compose (hostname interno `api`).
+ */
+export function resolveRealtimeBaseUrl(apiBase: string): string {
+  const env = viteApiBaseFromEnv();
+
+  if (env && env !== 'SAME_ORIGIN' && isSeparateProductionApi(env)) {
+    return sanitizeApiBase(env);
+  }
+
+  const normalized = sanitizeApiBase(apiBase.trim().replace(/\/$/, ''));
+  if (normalized && isSeparateProductionApi(normalized)) {
+    return normalized;
+  }
+
+  if (typeof window === 'undefined') {
+    return normalized || '';
+  }
+
+  return normalizeLocalDevOrigin(window.location.origin.replace(/\/$/, ''));
 }
 
 /**

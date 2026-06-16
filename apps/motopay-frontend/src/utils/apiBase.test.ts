@@ -3,12 +3,14 @@ import {
   normalizeLocalDevOrigin,
   pageOriginApiUrl,
   resolveApiBase,
+  resolveRealtimeBaseUrl,
   sameOriginApiPath,
   shouldUseRelativeApiForClient,
   shouldUseRelativeApiRequests,
   usesSameOriginApiProxy,
 } from './apiBase';
 import { absoluteApiUrl, resolveClientBaseUrl } from '../apiClient';
+import { setRuntimeApiBase } from './runtimeConfig';
 
 describe('normalizeLocalDevOrigin', () => {
   it('maps bare localhost to docker frontend port', () => {
@@ -50,6 +52,9 @@ describe('resolveApiBase', () => {
 });
 
 describe('usesSameOriginApiProxy', () => {
+  afterEach(() => {
+    setRuntimeApiBase('');
+  });
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.unstubAllEnvs();
@@ -118,5 +123,46 @@ describe('usesSameOriginApiProxy', () => {
     });
     expect(shouldUseRelativeApiForClient('https://fl-enterprise.vercel.app')).toBe(true);
     expect(resolveClientBaseUrl('https://fl-enterprise.vercel.app')).toBe('');
+  });
+
+  it('socket targets Render API when VITE_API_BASE_URL points to separate host', () => {
+    vi.stubEnv('VITE_API_BASE_URL', 'https://motopay-api.onrender.com');
+    vi.stubGlobal('window', {
+      location: {
+        origin: 'https://fl-enterprise.onrender.com',
+        hostname: 'fl-enterprise.onrender.com',
+        host: 'fl-enterprise.onrender.com',
+      },
+    });
+    expect(resolveRealtimeBaseUrl('https://fl-enterprise.onrender.com')).toBe(
+      'https://motopay-api.onrender.com'
+    );
+  });
+
+  it('socket uses page origin on docker-compose SAME_ORIGIN', () => {
+    vi.stubEnv('VITE_API_BASE_URL', 'SAME_ORIGIN');
+    vi.stubGlobal('window', {
+      location: {
+        origin: 'http://localhost:5173',
+        hostname: 'localhost',
+        host: 'localhost:5173',
+      },
+    });
+    expect(resolveRealtimeBaseUrl('http://localhost:5173')).toBe('http://localhost:5173');
+  });
+
+  it('socket uses runtime config on Render when VITE build is SAME_ORIGIN', () => {
+    vi.stubEnv('VITE_API_BASE_URL', 'SAME_ORIGIN');
+    setRuntimeApiBase('https://motopay-api.onrender.com');
+    vi.stubGlobal('window', {
+      location: {
+        origin: 'https://fl-enterprise.onrender.com',
+        hostname: 'fl-enterprise.onrender.com',
+        host: 'fl-enterprise.onrender.com',
+      },
+    });
+    expect(resolveRealtimeBaseUrl('https://fl-enterprise.onrender.com')).toBe(
+      'https://motopay-api.onrender.com'
+    );
   });
 });

@@ -1,5 +1,5 @@
 import { io, type Socket } from 'socket.io-client';
-import { normalizeBase, resolveClientBaseUrl } from '../apiClient';
+import { resolveRealtimeBaseUrl } from '../utils/apiBase';
 
 let socket: Socket | null = null;
 
@@ -7,8 +7,7 @@ export function getRealtimeSocket(token: string, apiBase: string): Socket {
   if (socket?.connected) {
     return socket;
   }
-  const resolved = resolveClientBaseUrl(normalizeBase(apiBase));
-  const base = resolved || window.location.origin;
+  const base = resolveRealtimeBaseUrl(apiBase);
   socket = io(base, {
     path: '/socket.io',
     auth: { token },

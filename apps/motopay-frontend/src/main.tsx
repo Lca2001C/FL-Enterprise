@@ -7,6 +7,7 @@ import {
   normalizeLocalDevOrigin,
   resolveApiBase,
 } from './utils/apiBase'
+import { loadRuntimeConfig } from './utils/runtimeConfig'
 import './index.css'
 
 // Docker expõe o painel em :5173; http://localhost (porta 80) quebra /alerts e /api.
@@ -33,35 +34,42 @@ if (typeof window !== 'undefined') {
   }
 }
 
-try {
-  const stored = localStorage.getItem('apiBase')
-  if (stored && isBareLocalDevUrl(stored)) {
-    localStorage.removeItem('apiBase')
-  }
-  const resolved = resolveApiBase(
-    import.meta.env.VITE_API_BASE_URL as string | undefined,
-    localStorage.getItem('apiBase')
-  )
-  localStorage.setItem('apiBase', resolved)
-  if (isLocalDevHostname(window.location.hostname)) {
-    const build =
-      (window as Window & { __MOTOPAY_BUILD__?: string }).__MOTOPAY_BUILD__ ?? 'unknown'
-    const bundle =
-      document.querySelector('script[src*="/assets/index-"]')?.getAttribute('src') ?? ''
-    console.info('[MotoPay] build:', build, '| origem:', window.location.origin, '| apiBase:', resolved, '| bundle:', bundle)
-    const staleBundles = ['INOovow5', 'BsFHlrCi', 'B-Fb7HtC', 'BANB5EUG', 'DSCgvHcv', 'Zvpo6RdN']
-    if (staleBundles.some((h) => bundle.includes(h))) {
-      console.error(
-        '[MotoPay] Bundle antigo em cache — limpe dados do site (Application → Clear site data) e recarregue.'
+async function bootstrap(): Promise<void> {
+  if (typeof window !== 'undefined') {
+    await loadRuntimeConfig()
+    try {
+      const stored = localStorage.getItem('apiBase')
+      if (stored && isBareLocalDevUrl(stored)) {
+        localStorage.removeItem('apiBase')
+      }
+      const resolved = resolveApiBase(
+        import.meta.env.VITE_API_BASE_URL as string | undefined,
+        localStorage.getItem('apiBase')
       )
+      localStorage.setItem('apiBase', resolved)
+      if (isLocalDevHostname(window.location.hostname)) {
+        const build =
+          (window as Window & { __MOTOPAY_BUILD__?: string }).__MOTOPAY_BUILD__ ?? 'unknown'
+        const bundle =
+          document.querySelector('script[src*="/assets/index-"]')?.getAttribute('src') ?? ''
+        console.info('[MotoPay] build:', build, '| origem:', window.location.origin, '| apiBase:', resolved, '| bundle:', bundle)
+        const staleBundles = ['INOovow5', 'BsFHlrCi', 'B-Fb7HtC', 'BANB5EUG', 'DSCgvHcv', 'Zvpo6RdN']
+        if (staleBundles.some((h) => bundle.includes(h))) {
+          console.error(
+            '[MotoPay] Bundle antigo em cache — limpe dados do site (Application → Clear site data) e recarregue.'
+          )
+        }
+      }
+    } catch {
+      // ignore storage errors (private mode, etc.)
     }
   }
-} catch {
-  // ignore storage errors (private mode, etc.)
+
+  ReactDOM.createRoot(document.getElementById('root')!).render(
+    <React.StrictMode>
+      <App />
+    </React.StrictMode>,
+  )
 }
 
-ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>,
-)
+void bootstrap()
