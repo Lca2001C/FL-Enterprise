@@ -30,5 +30,9 @@
     "react-dom": "^19.2.5",
     "socket.io-client": "^4.8.1",
     "styled-jsx": "^5.1.7"
+  },
+  "overrides": {
+    "form-data": ">=4.0.6",
+    "ws": ">=8.21.0"
   }
 }
