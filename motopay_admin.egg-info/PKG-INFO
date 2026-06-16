@@ -4,19 +4,22 @@ Version: 0.1.0
 Summary: MotoPay Admin — gestão de frota, cobrança e finanças
 Requires-Python: >=3.11
 Description-Content-Type: text/markdown
-Requires-Dist: fastapi>=0.109.0
-Requires-Dist: python-multipart>=0.0.9
+Requires-Dist: fastapi>=0.137.0
+Requires-Dist: python-multipart>=0.0.18
 Requires-Dist: uvicorn[standard]>=0.27.0
 Requires-Dist: sqlalchemy>=2.0.25
 Requires-Dist: alembic>=1.13.0
 Requires-Dist: psycopg[binary]>=3.1.18
 Requires-Dist: pydantic-settings>=2.1.0
-Requires-Dist: python-jose[cryptography]>=3.3.0
+Requires-Dist: pyjwt>=2.10.1
+Requires-Dist: cryptography>=44.0.1
 Requires-Dist: passlib[bcrypt]>=1.7.4
 Requires-Dist: bcrypt<4.1.0,>=4.0.1
 Requires-Dist: httpx>=0.26.0
 Requires-Dist: celery[redis]>=5.3.6
+Requires-Dist: celery-redbeat>=2.2.0
 Requires-Dist: redis>=5.0.1
+Requires-Dist: qrcode[pil]>=7.4.2
 Requires-Dist: python-telegram-bot>=21.0
 Requires-Dist: python-dateutil>=2.8.2
 Requires-Dist: email-validator>=2.1.0
@@ -24,6 +27,7 @@ Requires-Dist: prometheus-client>=0.20.0
 Requires-Dist: python-json-logger>=2.0.7
 Requires-Dist: python-socketio>=5.11.0
 Requires-Dist: reportlab>=4.0.0
+Requires-Dist: boto3>=1.34.0
 Provides-Extra: lint
 Requires-Dist: ruff>=0.1.0; extra == "lint"
 Provides-Extra: test
@@ -231,9 +235,15 @@ Reações automáticas:
   * **Ajustes** — multa fixa, juros diários e **mensagens do Telegram** (notificações e comandos do bot), editáveis por operação em *Ajustes da Operação*; placeholders como `{placa}` e `{valor_total}`; worker e bot leem do banco na próxima mensagem (sem redeploy).
 * **Admin:** mesmo painel + seletor de operação no topo; branding "MotoPay Admin".
 * Sessão renovada automaticamente via refresh token (`POST /auth/refresh`).
-* **PWA (instalável no celular):** após deploy em **HTTPS**, o mesmo painel pode ser adicionado à tela inicial (Chrome/Android: menu “Instalar app”; Safari/iOS: Compartilhar → “Adicionar à Tela de Início”).  
-  Ícones em [`public/icons`](apps/motopay-frontend/public/icons); manifest e service worker são gerados no `npm run build` por [`vite-plugin-pwa`](apps/motopay-frontend/vite.config.ts).  
-  Para **testar o SW no desenvolvimento local**: `cd apps/motopay-frontend && VITE_PWA_DEV=true npm run dev` (uso opcional).
+* **PWA (instalável no celular e desktop):** o painel pode ser adicionado à tela inicial ou barra de apps como app standalone (ícone próprio, splash iOS, service worker com shell offline).
+  * **Produção (HTTPS):** após deploy, Android Chrome exibe banner **Instalar app** (ou menu ⋮ → Instalar app); iOS Safari: **Compartilhar → Adicionar à Tela de Início**; desktop Chrome: ícone na barra de apps ou menu **Instalar MotoPay**.
+  * **Rede local:** `./scripts/start.sh --lan` e abra `http://<IP-da-máquina>:5173` no celular (mesma Wi‑Fi). Em HTTP o navegador pode não mostrar prompt automático — siga as instruções do banner ou o menu do Chrome.
+  * **Regenerar ícones e splash:** `python scripts/generate_pwa_icons.py` (gera `public/icons/`, `favicon.ico`, `public/splash/`, `public/screenshots/`). Manifest e service worker são gerados no `npm run build` ([`vite-plugin-pwa`](apps/motopay-frontend/vite.config.ts)).
+  * **Dev desktop com SW:** `cd apps/motopay-frontend && VITE_PWA_DEV=true npm run dev` (opcional).
+  * **Validar após build:** `cd apps/motopay-frontend && npm run build && npm test` — o teste `pwaManifest.build.test.ts` valida `dist/manifest.webmanifest` (ícones 192/512/maskable, screenshots).
+  * **Lighthouse (Chrome DevTools):** abra o painel em HTTPS → **Application → Manifest** (sem erros) → aba **Lighthouse** → categoria **Progressive Web App** (instalável, ícones, service worker).
+  * **Reinstalar no celular:** remova o ícone antigo da tela inicial → limpe dados do site (Chrome: Configurações → Privacidade → Dados do site) → abra a URL de produção → instale de novo. Isso evita ícone genérico ou manifest em cache.
+  * **Play Store (futuro):** publicação como TWA (Bubblewrap) + `assetlinks.json` — fora do escopo atual; o manifest já inclui screenshots wide/narrow para preparação.
 
 ---
 
@@ -384,11 +394,14 @@ npm run dev
 
 Abra `http://localhost:5173`. Use `VITE_API_BASE_URL` apontando para a API como o navegador acessa (ex.: `http://localhost:8000`). Configure `CORS_ORIGINS` na API com a origem do front (ex.: `http://localhost:5173`). Administradores usam **Operação (escopo)** no topo para filtrar por `operacao_id` nas chamadas à API.
 
-### Webhook Mercado Pago
+### Mercado Pago (Pix, cartão, webhook)
 
-`POST {API_PUBLIC_BASE_URL}/webhooks/mercadopago`
+Guia completo: [`docs/MERCADOPAGO_SETUP.md`](docs/MERCADOPAGO_SETUP.md). Validar env: `python scripts/mp_config_check.py`.
 
-Configure `MERCADOPAGO_ACCESS_TOKEN` e opcionalmente `MERCADOPAGO_WEBHOOK_SECRET` (header `x-signature`). Pagamentos Pix confirmados (`approved`) atualizam `cobrancas`, lançam `financeiro`, recalculam score e enfileiram notificação Telegram.
+- **Credenciais por operação:** dono/admin salva Access Token, Public Key e Webhook Secret em **Ajustes** (os três juntos).
+- **Fallback global:** variáveis `MERCADOPAGO_*` / `MERCADOPAGO_*_TEST` no `.env` quando a operação não tem credenciais.
+- **Webhook:** `POST {API_PUBLIC_BASE_URL}/webhooks/mercadopago` — evento **Order (Mercado Pago)** no painel MP; validação HMAC (`x-signature`). Em dev local use ngrok: `python scripts/mp_webhook_tunnel.py --url https://….ngrok-free.app`.
+- Orders confirmadas atualizam `cobrancas`, lançam `financeiro`, recalculam score e enfileiram Telegram.
 
 ### Papéis de usuário
 
@@ -409,6 +422,14 @@ Beat diário configurável: `CELERY_BEAT_HOUR` / `CELERY_BEAT_MINUTE` (padrão 1
 ### Health check da API
 
 * **GET** `/health` — retorno JSON `{"status":"ok"}`. Usado pelo `docker compose` (serviço `api`) e por balanceadores. Base path raiz (não usa prefixo `/api/v1`).
+
+### Deploy em produção (VPS + Docker Compose + HTTPS)
+
+> 📘 **Passo a passo completo: [DEPLOY.md](DEPLOY.md)** — do servidor zerado ao
+> primeiro pagamento real, incluindo Mercado Pago (webhook + OAuth), Telegram,
+> backups automáticos e checklist final. Usa o overlay
+> [`docker-compose.prod.yml`](docker-compose.prod.yml) (Redis autenticado,
+> Caddy com TLS automático, backup diário).
 
 ### Deploy nuvem (Railway · Supabase · Upstash · Vercel)
 
