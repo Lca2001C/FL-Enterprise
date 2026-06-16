@@ -103,6 +103,17 @@ const FleetView = () => {
   const handleImageSelect = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    const allowedTypes = new Set(ACCEPTED_IMAGE_TYPES.split(',').map((type) => type.trim()));
+    if (!allowedTypes.has(file.type)) {
+      setError('Formato de imagem inválido. Envie JPG, PNG ou WEBP.');
+      setImageFile(null);
+      setRemoveImage(false);
+      if (imagePreview) URL.revokeObjectURL(imagePreview);
+      setImagePreview(null);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+    setError('');
     setImageFile(file);
     setRemoveImage(false);
     if (imagePreview) URL.revokeObjectURL(imagePreview);
