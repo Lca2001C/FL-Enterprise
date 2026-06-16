@@ -276,8 +276,8 @@ def pay_cobranca_with_card(
         db.commit()
 
     if ev_id:
-        from motopay.infrastructure.messaging.tasks import handle_domain_event
-        handle_domain_event.delay(ev_id)
+        from motopay.infrastructure.messaging.dispatch import enqueue_domain_event
+        enqueue_domain_event(ev_id)
 
     db.refresh(cob)
 

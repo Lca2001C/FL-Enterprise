@@ -128,7 +128,7 @@ def update_moto(
         and m.status == MotoStatus.MANUTENCAO.value
         and old_status != MotoStatus.MANUTENCAO.value
     ):
-        from motopay.infrastructure.messaging.tasks import handle_domain_event
+        from motopay.infrastructure.messaging.dispatch import enqueue_domain_event
 
         ev = EventoDominio(
             tipo=DomainEventType.MOTO_EM_MANUTENCAO.value,
@@ -137,7 +137,7 @@ def update_moto(
         db.add(ev)
         db.commit()
         db.refresh(ev)
-        handle_domain_event.delay(ev.id)
+        enqueue_domain_event(ev.id)
     return m
 
 

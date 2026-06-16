@@ -151,6 +151,14 @@ class UsuarioCreate(BaseModel):
     operacao_id: int | None = None
 
 
+class OperacaoUsuarioCreate(BaseModel):
+    """Criação de usuário da própria operação (DONO/ADMIN). tipo e operacao_id
+    são forçados no servidor — o solicitante não pode escolher."""
+
+    email: EmailStr
+    password: str = Field(min_length=8, max_length=128)
+
+
 class MotoCreate(BaseModel):
     placa: str
     modelo: str

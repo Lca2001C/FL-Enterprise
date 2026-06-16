@@ -671,9 +671,9 @@ def refund_cobranca_mercadopago(
         refund_data=refund_data,
     )
     if ev_id:
-        from motopay.infrastructure.messaging.tasks import handle_domain_event
+        from motopay.infrastructure.messaging.dispatch import enqueue_domain_event
 
-        handle_domain_event.delay(ev_id)
+        enqueue_domain_event(ev_id)
     db.refresh(cob)
     ct = db.get(Contrato, cob.contrato_id)
     valor_base = ct.valor_recorrente if ct else cob.valor

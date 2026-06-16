@@ -30,6 +30,8 @@ envVarGroups:
       - key: JWT_SECRET
         sync: false
       # Redis interno do Render é rede privada e sem senha — aceitar explicitamente.
+      # OPCIONAL: no free tier (sem Key Value), deixe REDIS_URL sem valor → a API sobe
+      # em modo degradado (rate-limit/fila em memória). Veja DEPLOY.md, Apêndice B.
       - key: ALLOW_PRODUCTION_REDIS_WITHOUT_AUTH
         value: "true"
       # Atrás do proxy do Render: confie na faixa privada para o rate-limit ver o IP real.

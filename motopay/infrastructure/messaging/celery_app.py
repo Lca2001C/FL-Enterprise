@@ -28,6 +28,10 @@ celery_app.conf.update(
     result_serializer="json",
     timezone=_settings.app_timezone,
     enable_utc=True,
+    # Publicar tarefa não pode travar o request (webhook/endpoint) se o broker cair:
+    # falha rápida em vez de re-tentar a conexão por dezenas de segundos.
+    task_publish_retry=False,
+    broker_transport_options={"socket_connect_timeout": 5, "socket_timeout": 5},
     imports=[
         "motopay.infrastructure.messaging.tasks",
         "motopay.infrastructure.messaging.celery_observability",

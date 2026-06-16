@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from motopay.domain.enums import CicloCobranca, CobrancaStatus, ContratoStatus
 from motopay.infrastructure.db.models import Cliente, Cobranca, Contrato, Moto, Operacao
@@ -51,14 +51,13 @@ def test_mercadopago_webhook_confirms_payment(client, db_session):
 
     with (
         patch("motopay.interfaces.api.routers.webhooks.MercadoPagoClient") as mock_cls,
-        patch("motopay.interfaces.api.routers.webhooks.handle_domain_event") as mock_task,
+        patch("motopay.interfaces.api.routers.webhooks.enqueue_domain_event"),
     ):
         mock_cls.return_value.get_payment.return_value = {
             "id": "999888",
             "status": "approved",
             "transaction_amount": 100.0,
         }
-        mock_task.delay = MagicMock()
         r = client.post(
             "/webhooks/mercadopago",
             headers=mp_webhook_headers("999888"),

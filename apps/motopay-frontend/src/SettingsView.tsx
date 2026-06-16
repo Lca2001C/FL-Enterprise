@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, type FormEvent } from 'react';
-import { MessageSquare, RotateCcw, Save, Percent, ShieldCheck, Eye, CreditCard, Plus, Trash2, Copy, CheckCircle, AlertCircle, Wifi } from 'lucide-react';
+import { MessageSquare, RotateCcw, Save, Percent, ShieldCheck, Eye, CreditCard, Plus, Trash2, Copy, CheckCircle, AlertCircle, Wifi, Users } from 'lucide-react';
 import { useAuth } from './AuthContext';
 import {
   BOT_MENU_BUILTIN_COMMANDS,
@@ -162,6 +162,10 @@ const SettingsView = () => {
   const [previewResult, setPreviewResult] = useState<{ key: string; text: string } | null>(null);
   const [error, setError] = useState('');
   const [toast, setToast] = useState('');
+  const [equipe, setEquipe] = useState<{ id: number; email: string }[]>([]);
+  const [novoEmail, setNovoEmail] = useState('');
+  const [novaSenha, setNovaSenha] = useState('');
+  const [addingUser, setAddingUser] = useState(false);
 
   const isAdmin = user?.tipo === 'admin';
   const isDono = user?.tipo === 'dono';
@@ -182,6 +186,51 @@ const SettingsView = () => {
       setMpPublicKey(r.data.mercadopago_public_key_saved ?? '');
     } catch {
       setPaymentsConfig(null);
+    }
+  };
+
+  const fetchEquipe = async () => {
+    try {
+      const params =
+        isAdmin && adminTargetId != null ? { operacao_id: adminTargetId } : undefined;
+      const r = await api.get<{ items: { id: number; email: string }[] }>(
+        '/api/v1/usuarios/equipe',
+        { params }
+      );
+      setEquipe(r.data.items ?? []);
+    } catch {
+      setEquipe([]);
+    }
+  };
+
+  const addEquipeUser = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!novoEmail.trim() || novaSenha.length < 8) {
+      setError('Informe um e-mail e uma senha de pelo menos 8 caracteres.');
+      return;
+    }
+    if (isAdmin && adminTargetId == null) {
+      setError('Selecione uma operação no escopo antes de adicionar usuários.');
+      return;
+    }
+    setAddingUser(true);
+    setError('');
+    try {
+      const params =
+        isAdmin && adminTargetId != null ? { operacao_id: adminTargetId } : undefined;
+      await api.post(
+        '/api/v1/usuarios/equipe',
+        { email: novoEmail.trim(), password: novaSenha },
+        { params }
+      );
+      setNovoEmail('');
+      setNovaSenha('');
+      showToast('Usuário adicionado à operação.');
+      await fetchEquipe();
+    } catch (err) {
+      setError(parseApiError(err, 'Não foi possível adicionar o usuário.'));
+    } finally {
+      setAddingUser(false);
     }
   };
 
@@ -213,6 +262,7 @@ const SettingsView = () => {
         setConfig(applyOperacaoConfig(r.data));
       }
       await fetchPaymentsConfig();
+      await fetchEquipe();
     } catch (e) {
       setError(parseApiError(e, 'Erro ao carregar configurações'));
     } finally {
@@ -751,7 +801,66 @@ const SettingsView = () => {
             </div>
           )}
 
-          <div className="settings-section" style={{ marginTop: isDono ? 0 : 40 }} data-tour="settings-billing">
+          {(isDono || isAdmin) && (
+            <div className="settings-section" style={{ marginTop: 40 }}>
+              <h3 style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+                <Users size={20} color="var(--primary)" /> Equipe da operação
+              </h3>
+              <p className="text-muted" style={{ fontSize: '0.85rem', marginBottom: 16 }}>
+                Usuários com acesso a esta operação. Novos usuários entram como donos
+                (mesmo nível de acesso) e enxergam apenas esta operação.
+              </p>
+
+              {equipe.length > 0 && (
+                <ul className="equipe-list" style={{ listStyle: 'none', padding: 0, marginBottom: 16 }}>
+                  {equipe.map((u) => (
+                    <li
+                      key={u.id}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 8,
+                        padding: '8px 0',
+                        borderBottom: '1px solid var(--border, #eee)',
+                        fontSize: '0.9rem',
+                      }}
+                    >
+                      <ShieldCheck size={14} color="var(--primary)" />
+                      {u.email}
+                      {u.email === user?.email && (
+                        <span className="text-muted" style={{ fontSize: '0.78rem' }}>(você)</span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              <form onSubmit={addEquipeUser} className="settings-card" style={{ display: 'grid', gap: 10 }}>
+                <p style={{ fontSize: '0.85rem', fontWeight: 600, margin: 0 }}>Adicionar usuário</p>
+                <input
+                  type="email"
+                  className="input-field"
+                  placeholder="E-mail do novo usuário"
+                  value={novoEmail}
+                  onChange={(e) => setNovoEmail(e.target.value)}
+                  autoComplete="off"
+                />
+                <input
+                  type="password"
+                  className="input-field"
+                  placeholder="Senha (mín. 8 caracteres)"
+                  value={novaSenha}
+                  onChange={(e) => setNovaSenha(e.target.value)}
+                  autoComplete="new-password"
+                />
+                <button type="submit" className="btn-primary" disabled={addingUser} style={{ justifySelf: 'start' }}>
+                  <Plus size={16} /> {addingUser ? 'Adicionando…' : 'Adicionar usuário'}
+                </button>
+              </form>
+            </div>
+          )}
+
+          <div className="settings-section" style={{ marginTop: 40 }} data-tour="settings-billing">
             <h3 style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
               <Percent size={20} color="var(--warning)" /> Regras de Multa e Juros
             </h3>

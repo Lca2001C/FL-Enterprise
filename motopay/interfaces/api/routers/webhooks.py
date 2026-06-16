@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from motopay.config import get_settings
 from motopay.infrastructure.db.models import Cobranca, Operacao
 from motopay.infrastructure.db.session import get_db
-from motopay.infrastructure.messaging.tasks import handle_domain_event
+from motopay.infrastructure.messaging.dispatch import enqueue_domain_event
 from motopay.infrastructure.payments.mercadopago_client import (
     MercadoPagoApiError,
     MercadoPagoClient,
@@ -177,8 +177,7 @@ def mercadopago_webhook(
             _found,
             ev_id,
         )
-        if ev_id:
-            handle_domain_event.delay(ev_id)
+        enqueue_domain_event(ev_id)
         return {"ok": True}
 
     if "preapproval" in topic or "subscription_preapproval" in topic:
@@ -220,8 +219,7 @@ def mercadopago_webhook(
             _found,
             ev_id,
         )
-        if ev_id:
-            handle_domain_event.delay(ev_id)
+        enqueue_domain_event(ev_id)
         return {"ok": True}
 
     if "payment" in topic:
@@ -248,8 +246,7 @@ def mercadopago_webhook(
                 _found,
                 ev_id,
             )
-            if ev_id:
-                handle_domain_event.delay(ev_id)
+            enqueue_domain_event(ev_id)
             return {"ok": True}
         if status in ("rejected", "cancelled"):
             logger.info("webhook_payment_terminal resource_id=%s status=%s", resource_id, status)
@@ -282,8 +279,7 @@ def mercadopago_webhook(
                 _found,
                 ev_id,
             )
-        if ev_id:
-            handle_domain_event.delay(ev_id)
+        enqueue_domain_event(ev_id)
 
     logger.info("webhook_done topic=%s resource_id=%s", topic, resource_id)
     return {"ok": True}

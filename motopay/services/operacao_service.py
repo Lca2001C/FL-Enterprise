@@ -30,6 +30,7 @@ from motopay.interfaces.api.schemas import (
     OperacaoCreate,
     OperacaoOut,
     OperacaoUpdate,
+    OperacaoUsuarioCreate,
     TelegramBotMenuButton,
     TelegramCustomMessage,
     UserAdminOut,
@@ -89,6 +90,31 @@ def create_usuario_admin(db: Session, body: UsuarioCreate) -> Usuario:
         senha_hash=hash_password(body.password),
         tipo=body.tipo.value,
         operacao_id=body.operacao_id,
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+def create_operacao_usuario(
+    db: Session, operacao_id: int | None, body: OperacaoUsuarioCreate
+) -> Usuario:
+    """Cria um usuário (co-DONO) na própria operação. tipo e operacao_id são
+    forçados aqui — o DONO só adiciona acessos à própria operação."""
+    if operacao_id is None:
+        raise ForbiddenError("Operação não definida")
+    op = db.get(Operacao, operacao_id)
+    if not op:
+        raise NotFoundError("Operação não encontrada")
+    email = str(body.email).lower()
+    if db.scalars(select(Usuario).where(Usuario.email == email)).first():
+        raise ConflictError("E-mail já cadastrado")
+    user = Usuario(
+        email=email,
+        senha_hash=hash_password(body.password),
+        tipo=UserRole.DONO.value,
+        operacao_id=operacao_id,
     )
     db.add(user)
     db.commit()
