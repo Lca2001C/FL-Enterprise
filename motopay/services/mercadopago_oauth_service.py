@@ -4,8 +4,9 @@ import logging
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
+import jwt
 import redis
-from jose import JWTError, jwt
+from jwt import PyJWTError
 from sqlalchemy.orm import Session
 
 from motopay.config import get_settings
@@ -60,7 +61,7 @@ def _decode_oauth_state(state: str) -> tuple[int, int, str]:
         if not jti:
             raise ValueError("jti vazio")
         return int(data["operacao_id"]), int(data["user_id"]), jti
-    except (JWTError, KeyError, TypeError, ValueError) as exc:
+    except (PyJWTError, KeyError, TypeError, ValueError) as exc:
         raise ForbiddenError("State OAuth inválido ou expirado") from exc
 
 
