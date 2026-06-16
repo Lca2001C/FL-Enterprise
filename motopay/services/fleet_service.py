@@ -261,6 +261,17 @@ def update_cliente(
 
 def delete_cliente(db: Session, user: CurrentUser, operacao_scope: int | None, cliente_id: int):
     c = get_cliente(db, user, operacao_scope, cliente_id)
+    # Contrato.cliente_id é FK sem cascade: excluir um cliente com contratos
+    # estoura IntegrityError (→ 500). Bloqueia com mensagem clara (409).
+    contratos = (
+        db.scalar(select(func.count()).select_from(Contrato).where(Contrato.cliente_id == c.id))
+        or 0
+    )
+    if contratos:
+        raise ConflictError(
+            "Não é possível excluir um cliente com contratos vinculados. "
+            "Cancele ou encerre os contratos do cliente antes de excluí-lo."
+        )
     db.delete(c)
     db.commit()
 
