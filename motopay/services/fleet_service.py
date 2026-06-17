@@ -1,11 +1,20 @@
 from __future__ import annotations
 
-from sqlalchemy import Select, func, or_, select
+import logging
+
+from sqlalchemy import Select, delete, func, or_, select, update
 from sqlalchemy.orm import Session
 
 from motopay.domain.enums import ContratoStatus, DomainEventType, MotoStatus, UserRole
 from motopay.domain.exceptions import ConflictError, ForbiddenError, NotFoundError
-from motopay.infrastructure.db.models import Cliente, Contrato, EventoDominio, Moto
+from motopay.infrastructure.db.models import (
+    Cliente,
+    Cobranca,
+    Contrato,
+    EventoDominio,
+    Financeiro,
+    Moto,
+)
 from motopay.interfaces.api.deps import CurrentUser
 from motopay.interfaces.api.schemas import (
     ClienteCreate,
@@ -15,6 +24,8 @@ from motopay.interfaces.api.schemas import (
     MotoCreate,
     MotoUpdate,
 )
+
+logger = logging.getLogger(__name__)
 
 _SCOPED_ROLES = frozenset({UserRole.DONO})
 
@@ -321,6 +332,46 @@ def get_contrato(
     ):
         raise ForbiddenError("Contrato fora do escopo informado")
     return ct
+
+
+def delete_contrato(
+    db: Session, user: CurrentUser, operacao_scope: int | None, contrato_id: int
+) -> None:
+    """Exclui um contrato e suas dependências.
+
+    Ordem segura por causa das FKs:
+    - cancela a assinatura recorrente no MP (best-effort, não bloqueia);
+    - apaga as cobranças do contrato (FK não-nula);
+    - desvincula lançamentos financeiros (preserva o histórico: contrato_id = NULL);
+    - libera a moto (alugada → disponível);
+    - apaga o contrato.
+    """
+    ct = get_contrato(db, user, operacao_scope, contrato_id)
+
+    if (ct.mercadopago_subscription_id or "").strip():
+        try:
+            from motopay.services.billing_service import (
+                cancel_mercadopago_subscription_for_contract,
+            )
+
+            cancel_mercadopago_subscription_for_contract(db, ct)
+        except Exception:  # cancelamento no MP nunca pode impedir a exclusão local
+            logger.warning(
+                "Falha ao cancelar assinatura MP do contrato %s na exclusão", ct.id, exc_info=True
+            )
+
+    db.execute(delete(Cobranca).where(Cobranca.contrato_id == ct.id))
+    db.execute(
+        update(Financeiro).where(Financeiro.contrato_id == ct.id).values(contrato_id=None)
+    )
+
+    moto = db.get(Moto, ct.moto_id)
+    if moto and moto.status == MotoStatus.ALUGADA.value:
+        moto.status = MotoStatus.DISPONIVEL.value
+        db.add(moto)
+
+    db.delete(ct)
+    db.commit()
 
 
 def create_contrato(

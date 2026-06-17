@@ -11,6 +11,7 @@ import {
   X,
   Download,
   Pencil,
+  Trash2,
 } from 'lucide-react';
 import { useAuth } from './AuthContext';
 import type {
@@ -311,6 +312,28 @@ const ContractsView = () => {
     }
   };
 
+  const handleExcluir = async (id: number) => {
+    if (
+      !confirm(
+        'Excluir definitivamente este contrato? As cobranças do contrato serão apagadas ' +
+          'e a moto será liberada. Esta ação não pode ser desfeita.'
+      )
+    )
+      return;
+    setActionLoading(id);
+    setError('');
+    const wasLast = contratos.length === 1;
+    try {
+      await api.delete(`/api/v1/contratos/${id}`);
+      await fetchContratos(offsetAfterDelete(offset, PAGE_SIZE, wasLast));
+      await fetchMeta();
+    } catch (err) {
+      setError(parseApiError(err, 'Erro ao excluir contrato'));
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
   const handleGerarPix = async (contratoId: number) => {
     setActionLoading(contratoId);
     setError('');
@@ -602,6 +625,15 @@ const ContractsView = () => {
                             </button>
                           </>
                         )}
+                        <button
+                          type="button"
+                          className="icon-btn danger"
+                          title="Excluir contrato (apaga cobranças e libera a moto)"
+                          disabled={busy}
+                          onClick={() => void handleExcluir(ct.id)}
+                        >
+                          <Trash2 size={16} />
+                        </button>
                       </div>
                     </td>
                   </tr>

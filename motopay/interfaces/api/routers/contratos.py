@@ -17,6 +17,7 @@ from motopay.services.billing_service import get_mercadopago_subscription_link
 from motopay.services.contrato_document_service import generate_contrato_pdf
 from motopay.services.fleet_service import (
     create_contrato,
+    delete_contrato,
     get_contrato,
     update_contrato,
 )
@@ -84,6 +85,17 @@ def patch(
     operacao_id: int | None = Depends(resolve_operacao_id),
 ) -> ContratoOut:
     return update_contrato(db, user, operacao_id, contrato_id, body)
+
+
+@router.delete("/{contrato_id}")
+def delete_one(
+    contrato_id: int,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_operacional),
+    operacao_id: int | None = Depends(resolve_operacao_id),
+) -> dict[str, str]:
+    delete_contrato(db, user, operacao_id, contrato_id)
+    return {"status": "success"}
 
 
 @router.get("/{contrato_id}/assinatura-mercadopago", response_model=MpSubscriptionOut)
