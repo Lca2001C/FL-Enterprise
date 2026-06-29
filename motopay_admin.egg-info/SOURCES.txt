@@ -13,6 +13,8 @@ motopay/health/__init__.py
 motopay/health/checks.py
 motopay/infrastructure/__init__.py
 motopay/infrastructure/redis_client.py
+motopay/infrastructure/crypto/__init__.py
+motopay/infrastructure/crypto/token_encryption.py
 motopay/infrastructure/db/__init__.py
 motopay/infrastructure/db/base.py
 motopay/infrastructure/db/migration_url.py
@@ -21,17 +23,28 @@ motopay/infrastructure/db/session.py
 motopay/infrastructure/messaging/__init__.py
 motopay/infrastructure/messaging/celery_app.py
 motopay/infrastructure/messaging/celery_observability.py
+motopay/infrastructure/messaging/dispatch.py
 motopay/infrastructure/messaging/tasks.py
 motopay/infrastructure/messaging/worker_metrics.py
 motopay/infrastructure/payments/__init__.py
 motopay/infrastructure/payments/mercadopago_client.py
+<<<<<<< HEAD
 motopay/infrastructure/payments/mercadopago_sdk.py
+=======
+motopay/infrastructure/payments/mp_payload_builder.py
+motopay/infrastructure/payments/order_utils.py
+motopay/infrastructure/payments/payment_method_utils.py
+>>>>>>> main
 motopay/infrastructure/resilience/redis_circuit_breaker.py
 motopay/infrastructure/security/__init__.py
 motopay/infrastructure/security/client_ip.py
 motopay/infrastructure/security/rate_limit.py
 motopay/infrastructure/security/refresh_tokens.py
 motopay/infrastructure/security/webhook_auth.py
+motopay/infrastructure/storage/__init__.py
+motopay/infrastructure/storage/base.py
+motopay/infrastructure/storage/local.py
+motopay/infrastructure/storage/s3.py
 motopay/infrastructure/telegram/__init__.py
 motopay/infrastructure/telegram/ai_agent.py
 motopay/infrastructure/telegram/bot_main.py
@@ -59,6 +72,7 @@ motopay/interfaces/api/routers/health.py
 motopay/interfaces/api/routers/motos.py
 motopay/interfaces/api/routers/operacoes.py
 motopay/interfaces/api/routers/ops.py
+motopay/interfaces/api/routers/public_pay.py
 motopay/interfaces/api/routers/usuarios.py
 motopay/interfaces/api/routers/webhooks.py
 motopay/observability/__init__.py
@@ -74,13 +88,18 @@ motopay/services/__init__.py
 motopay/services/analytics_service.py
 motopay/services/auth_service.py
 motopay/services/billing_service.py
+motopay/services/card_payment_service.py
 motopay/services/contrato_document_service.py
 motopay/services/finance_service.py
 motopay/services/fleet_service.py
 motopay/services/late_fee.py
+motopay/services/mercadopago_oauth_service.py
+motopay/services/mercadopago_token_service.py
 motopay/services/moto_media_service.py
+motopay/services/mp_reconciliation.py
 motopay/services/negotiation_service.py
 motopay/services/operacao_service.py
+motopay/services/payer_portal_service.py
 motopay/services/payment_gateway.py
 motopay/services/scoring_service.py
 motopay_admin.egg-info/PKG-INFO
@@ -95,26 +114,42 @@ tests/test_celery_observability.py
 tests/test_contrato_documento.py
 tests/test_list_filters.py
 tests/test_mercadopago_client.py
+<<<<<<< HEAD
 tests/test_mercadopago_credentials.py
 tests/test_mercadopago_sdk_factory.py
+=======
+>>>>>>> main
 tests/test_mercadopago_webhook.py
 tests/test_metrics_middleware.py
 tests/test_motos_imagem.py
 tests/test_motos_km.py
+tests/test_mp_enterprise.py
+tests/test_mp_extras.py
+tests/test_mp_oauth_flow.py
+tests/test_mp_oauth_refresh.py
+tests/test_mp_payload_builder.py
+tests/test_mp_tenant_isolation.py
 tests/test_operacao_settings.py
 tests/test_ops_endpoints.py
 tests/test_overdue_pix.py
+<<<<<<< HEAD
 tests/test_payment_gateway.py
+=======
+>>>>>>> main
 tests/test_payments_config.py
 tests/test_realtime.py
+tests/test_redis_optional.py
 tests/test_scope.py
 tests/test_settings_production.py
+tests/test_storage.py
+tests/test_subscription_payment.py
 tests/test_telegram_bot_menu.py
 tests/test_telegram_circuit_breaker.py
 tests/test_telegram_conversation.py
 tests/test_telegram_integration.py
 tests/test_telegram_owner_notify.py
 tests/test_telegram_templates.py
+tests/test_usuarios_equipe.py
 tests/test_usuarios_list.py
 tests/test_webhook.py
 tests/test_webhook_production_auth.py

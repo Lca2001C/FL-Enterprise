@@ -19,13 +19,21 @@ export function isMobileDevice(userAgent = ''): boolean {
 
 export function isIosDevice(userAgent = ''): boolean {
   const ua = userAgent || (typeof navigator !== 'undefined' ? navigator.userAgent : '');
-  return /iPhone|iPad|iPod/i.test(ua);
+  if (/iPhone|iPad|iPod/i.test(ua)) return true;
+  // iPadOS 13+ em modo "desktop" reporta "Macintosh" mas tem toque
+  if (
+    /Macintosh/i.test(ua) &&
+    typeof navigator !== 'undefined' &&
+    navigator.maxTouchPoints > 1
+  ) return true;
+  return false;
 }
 
-/** Safari no iOS (único que suporta Add to Home Screen nativo). */
+/** Safari no iOS/iPadOS (único que suporta Add to Home Screen nativo). */
 export function isIosSafari(userAgent = ''): boolean {
   const ua = userAgent || (typeof navigator !== 'undefined' ? navigator.userAgent : '');
   if (!isIosDevice(ua)) return false;
+  // Chrome iOS, Firefox iOS, Edge iOS, Opera iOS, DuckDuckGo
   return !/CriOS|FxiOS|EdgiOS|OPiOS|DuckDuckGo/i.test(ua);
 }
 

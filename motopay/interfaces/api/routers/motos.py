@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, File, Query, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from motopay.domain.enums import MotoStatus
@@ -17,7 +17,7 @@ from motopay.services.fleet_service import (
 )
 from motopay.services.moto_media_service import (
     delete_moto_imagem,
-    get_moto_imagem_file,
+    get_moto_imagem_bytes,
     save_moto_imagem,
 )
 
@@ -90,9 +90,15 @@ def get_imagem(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_operacional),
     operacao_id: int | None = Depends(resolve_operacao_id),
-) -> FileResponse:
-    path, media_type = get_moto_imagem_file(db, user, operacao_id, moto_id)
-    return FileResponse(path, media_type=media_type)
+) -> Response:
+    # Streaming pela API (não redirect): preserva o controle de acesso por operação
+    # e funciona igual nos dois backends (disco local ou S3).
+    data, media_type = get_moto_imagem_bytes(db, user, operacao_id, moto_id)
+    return Response(
+        content=data,
+        media_type=media_type,
+        headers={"Cache-Control": "private, max-age=300"},
+    )
 
 
 @router.delete("/{moto_id}/imagem", response_model=MotoOut)

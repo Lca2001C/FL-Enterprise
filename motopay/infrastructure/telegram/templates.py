@@ -20,15 +20,15 @@ RESERVED_BOT_COMMANDS: frozenset[str] = frozenset({"start", *BOT_MENU_BUILTIN_CO
 MAX_BOT_MENU_RESPONSE_LENGTH = 2000
 
 DEFAULT_BOT_MENU_CONTACT_BUTTON: dict[str, str] = {
-    "label": "Quero falar com alguém",
+    "label": "📞 Falar com Atendente",
     "command": "contato",
     "response": "Entendido, {cliente}. Nossa equipe entrará em contato em breve.",
 }
 
 DEFAULT_BOT_MENU_BUTTONS: list[dict[str, str]] = [
-    {"label": "Status", "command": "status"},
-    {"label": "Pix", "command": "pix"},
-    {"label": "Ajuda", "command": "ajuda"},
+    {"label": "💳 Pagar com Pix", "command": "pix"},
+    {"label": "📋 Status", "command": "status"},
+    {"label": "❓ Ajuda", "command": "ajuda"},
     dict(DEFAULT_BOT_MENU_CONTACT_BUTTON),
 ]
 
@@ -50,6 +50,10 @@ DEFAULT_TELEGRAM_TEMPLATES: dict[str, str] = {
     "moto_manutencao": (
         "🔧 A moto {placa} entrou em manutenção. "
         "Entraremos em contato sobre prazos e substituição, se aplicável."
+    ),
+    "d3_reminder": (
+        "Olá, {cliente}! 📅 Seu pagamento de R$ {valor_recorrente} vence em 3 dias "
+        "({proximo_vencimento}). Fique tranquilo — pague até o vencimento e evite multa e juros."
     ),
     "d1_reminder": (
         "Lembrete: amanhã ({proximo_vencimento}) vence o pagamento "
@@ -75,7 +79,16 @@ DEFAULT_TELEGRAM_TEMPLATES: dict[str, str] = {
     "bot_promessa_not_found": (
         "Não localizamos seu cadastro com este Telegram. Peça ao operador para informar seu ID."
     ),
-    "bot_pix": "Pix pendente — vencimento {vencimento}\nTotal: {valor_total}\n\n{pix_copia_cola}",
+    "bot_pix": "Pix pendente — vencimento {vencimento}\n{valor_detalhado}\n\n{pix_copia_cola}",
+    "bot_pix_portal": (
+        "Pagamento pendente — vencimento {vencimento}\n{valor_detalhado}\n\n"
+        "Pague online: {portal_url}\n\n{pix_block}"
+    ),
+    "estorno_confirmado": (
+        "Confirmamos o estorno de R$ {delta} referente à cobrança #{cobranca_id}. "
+        "O valor pode levar alguns dias para aparecer na fatura."
+    ),
+    "overdue_portal_link": "Pague online pelo link: {portal_url}",
     "bot_status": (
         "Contrato: vencimento {proximo_vencimento}. Inadimplente: {inadimplente}. "
         "Promessa: {promessa_pagamento_em}."
@@ -178,6 +191,13 @@ TELEGRAM_TEMPLATE_META: dict[str, TelegramTemplateMeta] = {
         placeholders=("placa",),
         group="notificacoes",
     ),
+    "d3_reminder": TelegramTemplateMeta(
+        key="d3_reminder",
+        label="Lembrete D-3",
+        description="Lembrete enviado três dias antes do vencimento.",
+        placeholders=("cliente", "proximo_vencimento", "valor_recorrente"),
+        group="notificacoes",
+    ),
     "d1_reminder": TelegramTemplateMeta(
         key="d1_reminder",
         label="Lembrete D-1",
@@ -196,7 +216,7 @@ TELEGRAM_TEMPLATE_META: dict[str, TelegramTemplateMeta] = {
         key="bot_pix",
         label="Bot — /pix",
         description="Resposta com Pix pendente.",
-        placeholders=("valor_total", "pix_copia_cola", "vencimento"),
+        placeholders=("valor_detalhado", "valor_total", "pix_copia_cola", "vencimento"),
         group="bot",
     ),
     "bot_status": TelegramTemplateMeta(
@@ -314,7 +334,7 @@ TELEGRAM_TEMPLATE_META: dict[str, TelegramTemplateMeta] = {
 
 
 CUSTOM_MESSAGE_TRIGGER_KEYS: frozenset[str] = frozenset(
-    {"pagamento_confirmado", "d1_reminder", "d0_reminder", "moto_manutencao"}
+    {"pagamento_confirmado", "d3_reminder", "d1_reminder", "d0_reminder", "moto_manutencao"}
 )
 
 
@@ -399,6 +419,7 @@ def build_overdue_html(
     juros = Decimal(str(payload.get("juros", 0)))
     valor_total = Decimal(str(payload.get("valor_total", 0)))
     pix = payload.get("pix_copia_cola") or ""
+    portal_url = payload.get("portal_url") or ""
 
     intro = html.escape(templates[intro_key])
     body = render_template(
@@ -413,6 +434,14 @@ def build_overdue_html(
     )
 
     lines = [intro, ""] + body.split("\n")
+    if portal_url:
+        portal_line = render_template(
+            "overdue_portal_link",
+            templates=templates,
+            escape_html=True,
+            portal_url=portal_url,
+        )
+        lines.extend(["", portal_line])
     if pix:
         lines.extend(
             [
@@ -446,9 +475,9 @@ def list_template_meta() -> list[dict[str, Any]]:
 
 def sample_context_for_key(key: str) -> dict[str, Any]:
     """Contexto de exemplo para pré-visualização no admin."""
-    from datetime import date
+    from motopay.config import app_today
 
-    today = date.today()
+    today = app_today()
     samples: dict[str, dict[str, Any]] = {
         "overdue_intro_0": {},
         "overdue_body": {
@@ -457,6 +486,11 @@ def sample_context_for_key(key: str) -> dict[str, Any]:
             "multa": "7,00",
             "juros": "1,05",
             "valor_total": "358,05",
+        },
+        "d3_reminder": {
+            "cliente": "João Silva",
+            "proximo_vencimento": today.isoformat(),
+            "valor_recorrente": "350,00",
         },
         "d1_reminder": {
             "proximo_vencimento": today.isoformat(),
@@ -471,7 +505,8 @@ def sample_context_for_key(key: str) -> dict[str, Any]:
         "moto_manutencao": {"placa": "ABC1D23"},
         "bot_pix": {
             "vencimento": today.isoformat(),
-            "valor_total": "350,00",
+            "valor_detalhado": "Total: R$ 350,00",
+            "valor_total": "R$ 350,00",
             "pix_copia_cola": "000201010212...",
         },
         "bot_status": {

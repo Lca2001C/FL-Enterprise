@@ -6,13 +6,20 @@ from celery import Celery
 from celery.schedules import crontab
 
 from motopay.config import get_settings
+from motopay.infrastructure.redis_client import redis_enabled
 
 _settings = get_settings()
 
+# Sem REDIS_URL (modo degradado), usa broker em memória: .delay() não quebra a API.
+# Como nenhum worker consome a fila em memória, as tasks ficam pendentes até o
+# Redis ser configurado — adequado para subir a API antes de provisionar o Redis.
+_broker_url = _settings.redis_url or "memory://"
+_backend_url = _settings.redis_url or None
+
 celery_app = Celery(
     "motopay",
-    broker=_settings.redis_url,
-    backend=_settings.redis_url,
+    broker=_broker_url,
+    backend=_backend_url,
 )
 
 celery_app.conf.update(
@@ -20,7 +27,11 @@ celery_app.conf.update(
     accept_content=["json"],
     result_serializer="json",
     timezone=_settings.app_timezone,
-    enable_utc=False,
+    enable_utc=True,
+    # Publicar tarefa não pode travar o request (webhook/endpoint) se o broker cair:
+    # falha rápida em vez de re-tentar a conexão por dezenas de segundos.
+    task_publish_retry=False,
+    broker_transport_options={"socket_connect_timeout": 5, "socket_timeout": 5},
     imports=[
         "motopay.infrastructure.messaging.tasks",
         "motopay.infrastructure.messaging.celery_observability",
@@ -28,8 +39,15 @@ celery_app.conf.update(
     task_routes={
         "motopay.infrastructure.messaging.tasks.daily_automation_tick": {"queue": "default"},
         "motopay.infrastructure.messaging.tasks.handle_domain_event": {"queue": "telegram"},
+        "motopay.infrastructure.messaging.tasks.send_d3_reminder": {"queue": "telegram"},
         "motopay.infrastructure.messaging.tasks.send_d1_reminder": {"queue": "telegram"},
         "motopay.infrastructure.messaging.tasks.send_d0_reminder": {"queue": "telegram"},
+        "motopay.infrastructure.messaging.tasks.reconcile_mercadopago_payments": {
+            "queue": "default"
+        },
+        "motopay.infrastructure.messaging.tasks.refresh_expiring_mp_oauth_tokens": {
+            "queue": "default"
+        },
         "motopay.infrastructure.messaging.celery_observability.monitor_queues": {"queue": "default"},
         "motopay.infrastructure.messaging.celery_observability.collect_business_metrics": {
             "queue": "default"
@@ -38,7 +56,7 @@ celery_app.conf.update(
     task_default_queue="default",
 )
 
-if _settings.redis_url.startswith("rediss://"):
+if _settings.redis_url and _settings.redis_url.startswith("rediss://"):
     ssl_backend = {"ssl_cert_reqs": ssl.CERT_REQUIRED}
     celery_app.conf.broker_use_ssl = ssl_backend
     celery_app.conf.redis_backend_use_ssl = ssl_backend
@@ -62,6 +80,11 @@ if _settings.sentry_dsn.strip():
     except ImportError:
         pass
 
+if redis_enabled():
+    celery_app.conf.beat_scheduler = "redbeat.schedulers:RedBeatScheduler"
+    celery_app.conf.redbeat_redis_url = _settings.redis_url
+    celery_app.conf.redbeat_key_prefix = "motopay:redbeat:"
+
 celery_app.conf.beat_schedule = {
     "daily-motopay-automation": {
         "task": "motopay.infrastructure.messaging.tasks.daily_automation_tick",
@@ -74,5 +97,15 @@ celery_app.conf.beat_schedule = {
     "collect-business-metrics": {
         "task": "motopay.infrastructure.messaging.celery_observability.collect_business_metrics",
         "schedule": 60.0,
+    },
+    "reconcile-mercadopago-payments": {
+        "task": "motopay.infrastructure.messaging.tasks.reconcile_mercadopago_payments",
+        "schedule": 900.0,
+    },
+    # Diário, fora do horário do daily_automation — renova tokens OAuth MP
+    # que expiram nos próximos 7 dias (refresh token MP é single-use).
+    "refresh-expiring-mp-oauth-tokens": {
+        "task": "motopay.infrastructure.messaging.tasks.refresh_expiring_mp_oauth_tokens",
+        "schedule": crontab(hour=4, minute=15),
     },
 }

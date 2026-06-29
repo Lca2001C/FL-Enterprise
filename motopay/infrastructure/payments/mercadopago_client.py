@@ -2,12 +2,22 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+<<<<<<< HEAD
 import re
 import uuid
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Any, Literal
 from zoneinfo import ZoneInfo
+=======
+import logging
+import re
+import uuid
+from decimal import ROUND_HALF_UP, Decimal
+from typing import Any, Literal
+
+import httpx
+>>>>>>> main
 
 from motopay.config import get_settings
 from motopay.config.mercadopago_credentials import (
@@ -16,6 +26,7 @@ from motopay.config.mercadopago_credentials import (
     effective_mercadopago_public_key,
     effective_mercadopago_webhook_secret,
 )
+<<<<<<< HEAD
 from motopay.infrastructure.db.models import Operacao
 from motopay.infrastructure.payments.mercadopago_sdk import (
     MercadoPagoApiError,
@@ -61,6 +72,204 @@ def mercadopago_api_error_message(exc: MercadoPagoApiError) -> str:
             first = errors[0]
             if isinstance(first, dict) and first.get("message"):
                 return str(first["message"])
+=======
+from motopay.domain.enums import CicloCobranca
+from motopay.domain.exceptions import MercadoPagoNotConnectedError
+from motopay.infrastructure.crypto.token_encryption import decrypt_token
+from motopay.infrastructure.db.models import Cliente, Operacao
+from motopay.infrastructure.payments.order_utils import (
+    MercadoPagoOrderResult,
+    parse_order_response,
+)
+
+_log = logging.getLogger(__name__)
+
+__all__ = [
+    "MercadoPagoApiError",
+    "MercadoPagoClient",
+    "MercadoPagoOrderResult",
+    "MP_NOT_CONNECTED_MSG",
+    "build_webhook_manifest",
+    "compute_webhook_signature",
+    "fetch_mp_user_profile",
+    "is_valid_mp_access_token",
+    "is_valid_mp_public_key",
+    "mercadopago_api_error_message",
+    "mp_configured_for_operacao",
+    "mp_credentials_complete",
+    "mp_credentials_source",
+    "mp_has_operacao_token",
+    "mp_operacao_ready_for_payments",
+    "mp_public_key_for_operacao",
+    "mp_token_for_operacao",
+    "mp_webhook_secret_for_operacao",
+    "operacao_access_token_plain",
+    "operacao_mp_oauth_connected",
+    "payer_email_for_mercadopago",
+    "require_operacao_mp_token",
+    "uses_operacao_mercadopago_credentials",
+    "verify_webhook_signature",
+]
+
+MP_NOT_CONNECTED_MSG = "Conta Mercado Pago não conectada para esta operação."
+
+
+class MercadoPagoApiError(Exception):
+    def __init__(self, status_code: int, message: str, response: Any = None) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+        self.response = response
+
+
+def assert_payer_email_ready(cliente: Cliente) -> None:
+    from motopay.domain.exceptions import MotoPayError
+
+    if effective_mercadopago_credentials_mode() == "test":
+        return
+    email = (cliente.email or "").strip()
+    if not email or "@" not in email:
+        raise MotoPayError(
+            "Cadastre o e-mail do cliente para pagamentos Mercado Pago em produção."
+        )
+
+
+def payer_email_for_mercadopago(cliente: Cliente | int) -> str:
+    if isinstance(cliente, int):
+        cliente_id = cliente
+        email: str | None = None
+    else:
+        cliente_id = cliente.id
+        email = (cliente.email or "").strip() or None
+
+    if effective_mercadopago_credentials_mode() == "test":
+        return f"test_user_{cliente_id}@testuser.com"
+    if email and "@" in email:
+        return email.lower()
+    return f"cliente{cliente_id}@motopay.local"
+
+
+_STATUS_DETAIL_PT: dict[str, str] = {
+    "rejected_by_issuer": (
+        "Cartão recusado pelo banco emissor. No sandbox, use cartão de teste aprovado "
+        "(ex.: Visa 4509 9535 6623 3704, titular APRO, CVV 123)."
+    ),
+    "cc_rejected_insufficient_amount": "Saldo ou limite insuficiente no cartão.",
+    "cc_rejected_bad_filled_security_code": "CVV inválido.",
+    "cc_rejected_bad_filled_date": "Data de validade inválida.",
+    "cc_rejected_bad_filled_card_number": "Número do cartão inválido.",
+    "cc_rejected_call_for_authorize": "Pagamento requer autorização do banco — ligue para o emissor.",
+    "cc_rejected_card_disabled": "Cartão desabilitado.",
+    "cc_rejected_high_risk": "Pagamento recusado por análise de risco.",
+}
+
+
+def mercadopago_status_detail_message(status_detail: str) -> str:
+    code = (status_detail or "").strip()
+    if not code:
+        return "Pagamento recusado. Tente outro cartão ou forma de pagamento."
+    if code in _STATUS_DETAIL_PT:
+        return _STATUS_DETAIL_PT[code]
+    if code.startswith("cc_rejected"):
+        return "Pagamento recusado pelo emissor do cartão."
+    return f"Pagamento não aprovado ({code})."
+
+
+def _status_detail_from_mp_response(response: dict[str, Any]) -> str | None:
+    order_data = response.get("data")
+    if isinstance(order_data, dict):
+        payment = (order_data.get("transactions") or {}).get("payments")
+        if isinstance(payment, list) and payment:
+            detail = payment[0].get("status_detail")
+            if detail:
+                return str(detail)
+        detail = order_data.get("status_detail")
+        if detail:
+            return str(detail)
+    errors = response.get("errors")
+    if isinstance(errors, list) and errors:
+        first = errors[0]
+        if isinstance(first, dict):
+            details = first.get("details")
+            if isinstance(details, list):
+                for item in details:
+                    text = str(item)
+                    if ": " in text:
+                        return text.split(": ", 1)[1].strip()
+                    if text.strip():
+                        return text.strip()
+    return None
+
+
+def _order_data_from_mp_error(exc: MercadoPagoApiError) -> dict[str, Any] | None:
+    """Orders API returns HTTP 402 with failed order payload in `data`."""
+    if exc.status_code != 402:
+        return None
+    response = exc.response
+    if not isinstance(response, dict):
+        return None
+    order_data = response.get("data")
+    if isinstance(order_data, dict) and order_data.get("id"):
+        return order_data
+    return None
+
+
+def is_valid_mp_access_token(token: str | None) -> bool:
+    value = (token or "").strip()
+    if len(value) < 20:
+        return False
+    return value.startswith("APP_USR-") or value.startswith("TEST-")
+
+
+def is_valid_mp_public_key(key: str | None) -> bool:
+    value = (key or "").strip()
+    if len(value) < 20:
+        return False
+    return value.startswith("APP_USR-") or value.startswith("TEST-")
+
+
+def mercadopago_api_error_message(exc: MercadoPagoApiError) -> str:
+    response = exc.response
+    if isinstance(response, dict):
+        code = response.get("code")
+        if code == "PA_UNAUTHORIZED_RESULT_FROM_POLICIES":
+            return (
+                "Mercado Pago recusou a operação (política da conta ou token inválido). "
+                "Em Ajustes, confira o Access Token completo (APP_USR-... ou TEST-...) "
+                "e se a conta tem Pix habilitado."
+            )
+        status_detail = _status_detail_from_mp_response(response)
+        if status_detail:
+            return mercadopago_status_detail_message(status_detail)
+        # Orders API retorna causa detalhada em "cause[].description" e "cause[].data" (campo rejeitado)
+        cause = response.get("cause")
+        if isinstance(cause, list) and cause:
+            first = cause[0]
+            if isinstance(first, dict):
+                desc = str(first.get("description") or "")
+                data_field = str(first.get("data") or "")
+                if desc and data_field:
+                    return f"{desc} (campo: {data_field})"
+                if desc:
+                    return desc
+        # Payments API retorna lista em "errors[].message"
+        errors = response.get("errors")
+        if isinstance(errors, list) and errors:
+            first = errors[0]
+            if isinstance(first, dict):
+                details = first.get("details")
+                if isinstance(details, list):
+                    for item in details:
+                        text = str(item)
+                        if "payment_method.token" in text and "length must be" in text:
+                            return (
+                                "Token do cartão inválido. Se estiver usando cartão salvo, "
+                                "informe o CVV no formulário e tente novamente."
+                            )
+                if first.get("message"):
+                    return str(first["message"])
+        if response.get("error") == "resource not found":
+            return "Recurso não encontrado no Mercado Pago. Verifique se o pagamento foi criado pela API de Orders."
+>>>>>>> main
         message = response.get("message")
         if message:
             return str(message)
@@ -78,6 +287,7 @@ def _format_amount(value: Decimal) -> str:
     return str(value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
 
 
+<<<<<<< HEAD
 def _pix_expiration_duration(due_date: date) -> str:
     tz = ZoneInfo(get_settings().app_timezone)
     now = datetime.now(tz)
@@ -100,12 +310,18 @@ def _panel_back_url() -> str:
     return settings.api_public_base_url.rstrip("/")
 
 
+=======
+>>>>>>> main
 def build_webhook_manifest(*, data_id: str, request_id: str, ts: str) -> str:
     return f"id:{data_id};request-id:{request_id};ts:{ts};"
 
 
 def compute_webhook_signature(*, manifest: str, secret: str) -> str:
+<<<<<<< HEAD
     digest = hmac.new(secret.encode("utf-8"), manifest.encode("utf-8"), hashlib.sha256).hexdigest()
+=======
+    digest = hmac.new(secret.encode(), manifest.encode(), hashlib.sha256).hexdigest()
+>>>>>>> main
     return digest
 
 
@@ -116,6 +332,7 @@ def verify_webhook_signature(
     x_request_id: str,
     data_id: str,
 ) -> bool:
+<<<<<<< HEAD
     if not secret.strip() or not x_signature.strip():
         return False
 
@@ -138,6 +355,167 @@ def verify_webhook_signature(
     )
     expected = compute_webhook_signature(manifest=manifest, secret=secret.strip())
     return hmac.compare_digest(expected, v1)
+=======
+    if not secret.strip():
+        return False
+    ts = ""
+    v1 = ""
+    for part in x_signature.split(","):
+        part = part.strip()
+        if part.startswith("ts="):
+            ts = part[3:]
+        elif part.startswith("v1="):
+            v1 = part[3:]
+    if not ts or not v1:
+        return False
+    from motopay.infrastructure.payments.order_utils import normalize_webhook_data_id
+
+    manifest_id = normalize_webhook_data_id(data_id)
+    manifest = build_webhook_manifest(data_id=manifest_id, request_id=x_request_id, ts=ts)
+    expected = compute_webhook_signature(manifest=manifest, secret=secret)
+    return hmac.compare_digest(expected, v1)
+
+
+def _allow_global_mp_token() -> bool:
+    """Token global do .env só em desenvolvimento/teste — nunca em produção."""
+    return not get_settings().is_production
+
+
+def operacao_access_token_plain(op: Operacao | None) -> str:
+    if not op:
+        return ""
+    return decrypt_token(op.mercadopago_access_token)
+
+
+def operacao_refresh_token_plain(op: Operacao) -> str:
+    return decrypt_token(op.mercadopago_refresh_token)
+
+
+def operacao_mp_oauth_connected(op: Operacao) -> bool:
+    status = (op.mercadopago_connection_status or "disconnected").strip().lower()
+    token = operacao_access_token_plain(op)
+    has_pk = is_valid_mp_public_key(op.mercadopago_public_key)
+    has_oauth_id = bool((op.mercadopago_oauth_user_id or "").strip())
+    if status == "connected":
+        return bool(is_valid_mp_access_token(token) and has_pk and has_oauth_id)
+    if status in ("disconnected", "expired"):
+        return False
+    # Legado: linhas sem status explícito
+    return bool(is_valid_mp_access_token(token) and has_pk and has_oauth_id)
+
+
+def mp_operacao_ready_for_payments(op: Operacao) -> bool:
+    if operacao_mp_oauth_connected(op):
+        return bool(mp_webhook_secret_for_operacao(op))
+    if _allow_global_mp_token() and operacao_mp_fields_complete(op):
+        return bool(mp_webhook_secret_for_operacao(op))
+    return False
+
+
+def require_operacao_mp_token(db, op: Operacao) -> str:
+    """Retorna access_token do tenant; nunca usa token global em produção."""
+    from motopay.services.mercadopago_token_service import ensure_valid_mp_token
+
+    if not mp_operacao_ready_for_payments(op):
+        raise MercadoPagoNotConnectedError(MP_NOT_CONNECTED_MSG)
+    token = ensure_valid_mp_token(db, op)
+    if not is_valid_mp_access_token(token):
+        raise MercadoPagoNotConnectedError(MP_NOT_CONNECTED_MSG)
+    return token
+
+
+def _operacao_has_any_mp_credential(op: Operacao) -> bool:
+    return bool(
+        operacao_access_token_plain(op)
+        or (op.mercadopago_public_key or "").strip()
+        or (op.mercadopago_webhook_secret or "").strip()
+    )
+
+
+def operacao_mp_fields_complete(op: Operacao) -> bool:
+    """Token + Public Key válidos NA OPERAÇÃO (via OAuth ou manual em dev).
+
+    O webhook secret NÃO é exigido por operação: no fluxo OAuth as notificações
+    chegam no webhook da APLICAÇÃO e são assinadas com o secret global dela.
+    Um secret por operação é opcional e tem precedência quando definido.
+    """
+    token = operacao_access_token_plain(op)
+    return bool(is_valid_mp_access_token(token) and is_valid_mp_public_key(op.mercadopago_public_key))
+
+
+def uses_operacao_mercadopago_credentials(op: Operacao | None) -> bool:
+    return op is not None and _operacao_has_any_mp_credential(op)
+
+
+def mp_token_for_operacao(op: Operacao | None) -> str:
+    if op:
+        token = operacao_access_token_plain(op)
+        if is_valid_mp_access_token(token) and operacao_mp_fields_complete(op):
+            return token
+        if not _allow_global_mp_token():
+            return ""
+    if _allow_global_mp_token():
+        return effective_mercadopago_access_token()
+    return ""
+
+
+def mp_public_key_for_operacao(op: Operacao | None) -> str:
+    if op:
+        public_key = (op.mercadopago_public_key or "").strip()
+        if is_valid_mp_public_key(public_key):
+            return public_key
+        if not _allow_global_mp_token():
+            return ""
+    if _allow_global_mp_token():
+        return effective_mercadopago_public_key()
+    return ""
+
+
+def mp_webhook_secret_for_operacao(op: Operacao | None) -> str:
+    # Secret da operação tem precedência; sem ele, cai para o secret global da
+    # aplicação (fluxo OAuth: notificações são assinadas pelo secret da app).
+    if op and (op.mercadopago_webhook_secret or "").strip():
+        return op.mercadopago_webhook_secret.strip()
+    return effective_mercadopago_webhook_secret()
+
+
+def mp_credentials_complete(op: Operacao | None) -> bool:
+    if op and mp_operacao_ready_for_payments(op):
+        return True
+    if op is not None:
+        return False
+    if not _allow_global_mp_token():
+        return False
+    return bool(
+        effective_mercadopago_access_token()
+        and effective_mercadopago_public_key()
+        and effective_mercadopago_webhook_secret()
+    )
+
+
+def mp_credentials_source(op: Operacao | None) -> str:
+    if op and operacao_mp_oauth_connected(op):
+        return "operacao_oauth"
+    if op and operacao_mp_fields_complete(op):
+        return "operacao"
+    if _allow_global_mp_token() and effective_mercadopago_access_token():
+        return "global"
+    return "none"
+
+
+def mp_configured_for_operacao(op: Operacao | None) -> bool:
+    if op:
+        return mp_operacao_ready_for_payments(op)
+    return bool(_allow_global_mp_token() and effective_mercadopago_access_token())
+
+
+def mp_has_operacao_token(op: Operacao | None) -> bool:
+    return bool(op and is_valid_mp_access_token(operacao_access_token_plain(op)))
+
+
+def fetch_mp_user_profile(*, access_token: str) -> dict[str, Any]:
+    return MercadoPagoClient(access_token=access_token)._request("GET", "/users/me", timeout=30.0)
+>>>>>>> main
 
 
 class MercadoPagoClient:
@@ -147,6 +525,7 @@ class MercadoPagoClient:
             raise ValueError("MERCADOPAGO_ACCESS_TOKEN não configurado")
         self._sdk = get_mercadopago_sdk(token)
 
+<<<<<<< HEAD
     def _order_request_options(self, idempotency_key: str) -> RequestOptions:
         request_options = RequestOptions()
         request_options.custom_headers = {"x-idempotency-key": idempotency_key}
@@ -166,6 +545,57 @@ class MercadoPagoClient:
         if cpf:
             payer["identification"] = {"type": "CPF", "number": cpf}
         return payer
+=======
+    def _headers(
+        self,
+        *,
+        idempotency_key: str | None = None,
+        device_id: str | None = None,
+    ) -> dict[str, str]:
+        headers = {
+            "Authorization": f"Bearer {self._token}",
+            "Content-Type": "application/json",
+        }
+        if idempotency_key:
+            headers["X-Idempotency-Key"] = idempotency_key
+        if device_id:
+            # Header oficial recomendado pelo MP para device fingerprint
+            headers["X-meli-session-id"] = device_id
+        return headers
+
+    def _request(
+        self,
+        method: str,
+        path: str,
+        *,
+        json: dict[str, Any] | None = None,
+        idempotency_key: str | None = None,
+        device_id: str | None = None,
+        timeout: float = 60.0,
+    ) -> dict[str, Any]:
+        r = httpx.request(
+            method,
+            f"{self._base}{path}",
+            headers=self._headers(
+                idempotency_key=idempotency_key, device_id=device_id
+            ),
+            json=json,
+            timeout=timeout,
+        )
+        if r.status_code >= 400:
+            try:
+                body = r.json()
+            except Exception:
+                body = r.text
+            _log.warning("MercadoPago API error %s %s: %s", method, path, r.text[:2000])
+            raise MercadoPagoApiError(r.status_code, r.text, body)
+        if not r.content:
+            return {}
+        try:
+            return r.json()
+        except Exception:
+            return {}
+>>>>>>> main
 
     def create_online_order(
         self,
@@ -174,6 +604,7 @@ class MercadoPagoClient:
         value: Decimal,
         payer_email: str,
         payer_cpf: str | None = None,
+<<<<<<< HEAD
         customer_id: str | None = None,
         payment_kind: Literal["pix", "credit_card", "debit_card"],
         payment_method_id: str | None = None,
@@ -241,6 +672,155 @@ class MercadoPagoClient:
     def cancel_order(self, order_id: str) -> None:
         result = self._sdk.order().cancel(order_id)
         raise_for_sdk_error(result)
+=======
+        payment_method_id: Literal["pix", "visa", "master", "elo", "amex", "debvisa", "debmaster"] | str = "pix",
+        payment_method_type: Literal["bank_transfer", "credit_card", "debit_card"] = "bank_transfer",
+        token: str | None = None,
+        installments: int = 1,
+        customer_id: str | None = None,
+        payer_extra: dict[str, Any] | None = None,
+        items: list[dict[str, Any]] | None = None,
+        additional_info: dict[str, Any] | None = None,
+        statement_descriptor: str | None = None,
+        device_id: str | None = None,
+        description: str | None = None,
+    ) -> MercadoPagoOrderResult:
+        # Payer: Orders API v2 aceita apenas email, identification e customer_id.
+        # first_name/last_name pertencem à Payments API e causam "Properties not supported".
+        payer: dict[str, Any] = {}
+        payer["email"] = payer_email
+        cpf = _normalize_cpf(payer_cpf)
+        if cpf:
+            payer["identification"] = {"type": "CPF", "number": cpf}
+        elif payer_extra and isinstance(payer_extra.get("identification"), dict):
+            payer["identification"] = payer_extra["identification"]
+        if customer_id:
+            payer["customer_id"] = customer_id
+
+        pm: dict[str, Any] = {"id": payment_method_id, "type": payment_method_type}
+        if token:
+            pm["token"] = token
+        if payment_method_type == "credit_card":
+            pm["installments"] = installments
+        # statement_descriptor: válido em payment_method apenas para cartão (não PIX/bank_transfer)
+        if statement_descriptor and payment_method_type in ("credit_card", "debit_card"):
+            pm["statement_descriptor"] = statement_descriptor
+
+        payload: dict[str, Any] = {
+            "type": "online",
+            "external_reference": external_reference,
+            "processing_mode": "automatic",
+            "total_amount": _format_amount(value),
+            "transactions": {
+                "payments": [
+                    {
+                        "amount": _format_amount(value),
+                        "payment_method": pm,
+                    }
+                ]
+            },
+            "payer": payer,
+        }
+        if items:
+            payload["items"] = items
+        if additional_info:
+            payload["additional_info"] = additional_info
+
+        try:
+            data = self._request(
+                "POST",
+                "/v1/orders",
+                json=payload,
+                idempotency_key=str(uuid.uuid4()),
+                device_id=device_id,
+            )
+        except MercadoPagoApiError as exc:
+            order_data = _order_data_from_mp_error(exc)
+            if order_data is not None:
+                return parse_order_response(order_data)
+            raise
+        return parse_order_response(data)
+
+    def get_order(self, order_id: str) -> dict[str, Any]:
+        return self._request("GET", f"/v1/orders/{order_id}", timeout=30.0)
+
+    def cancel_order(self, order_id: str) -> dict[str, Any]:
+        return self._request("POST", f"/v1/orders/{order_id}/cancel", json={}, timeout=30.0)
+
+    def get_payment(self, payment_id: str) -> dict[str, Any]:
+        return self._request("GET", f"/v1/payments/{payment_id}", timeout=30.0)
+
+    def create_customer(self, *, email: str, first_name: str, cpf: str | None = None) -> str:
+        payload: dict[str, Any] = {
+            "email": email,
+            "first_name": first_name[:255],
+        }
+        cpf_digits = _normalize_cpf(cpf)
+        if cpf_digits:
+            payload["identification"] = {"type": "CPF", "number": cpf_digits}
+        data = self._request("POST", "/v1/customers", json=payload)
+        return str(data["id"])
+
+    def search_customer_by_email(self, email: str) -> str | None:
+        from urllib.parse import urlencode
+
+        data = self._request("GET", f"/v1/customers/search?{urlencode({'email': email})}", timeout=30.0)
+        results = data.get("results") or []
+        if results:
+            return str(results[0]["id"])
+        return None
+
+    def get_or_create_customer(
+        self, *, email: str, first_name: str, cpf: str | None = None
+    ) -> str:
+        existing = self.search_customer_by_email(email)
+        if existing:
+            return existing
+        return self.create_customer(email=email, first_name=first_name, cpf=cpf)
+
+    def save_card(self, *, customer_id: str, token: str) -> dict[str, Any]:
+        return self._request(
+            "POST",
+            f"/v1/customers/{customer_id}/cards",
+            json={"token": token},
+        )
+
+    def create_saved_card_payment_token(
+        self,
+        *,
+        customer_id: str,
+        card_id: str,
+        security_code: str,
+    ) -> str:
+        """Gera token de pagamento a partir do CVV de um cartão salvo no customer MP."""
+        data = self._request(
+            "POST",
+            "/v1/card_tokens",
+            json={
+                "customer_id": customer_id,
+                "card_id": card_id,
+                "security_code": security_code,
+            },
+            idempotency_key=str(uuid.uuid4()),
+        )
+        token_id = data.get("id")
+        if not token_id:
+            raise MercadoPagoApiError(422, "card token missing id", data)
+        return str(token_id)
+
+    def list_cards(self, customer_id: str) -> list[dict[str, Any]]:
+        data = self._request("GET", f"/v1/customers/{customer_id}/cards", timeout=30.0)
+        return list(data if isinstance(data, list) else [])
+
+    def delete_card(self, *, customer_id: str, card_id: str) -> None:
+        self._request("DELETE", f"/v1/customers/{customer_id}/cards/{card_id}", timeout=30.0)
+
+    @staticmethod
+    def preapproval_frequency(ciclo: str) -> tuple[int, str]:
+        if ciclo == CicloCobranca.SEMANAL.value:
+            return 1, "weeks"
+        return 1, "months"
+>>>>>>> main
 
     def create_preapproval(
         self,
@@ -249,17 +829,26 @@ class MercadoPagoClient:
         value: Decimal,
         reason: str,
         payer_email: str,
-    ) -> str:
-        payload = {
-            "reason": reason,
+        ciclo: str = CicloCobranca.MENSAL.value,
+        statement_descriptor: str | None = None,
+    ) -> dict[str, Any]:
+        settings = get_settings()
+        back_url = settings.api_public_base_url.rstrip("/")
+        cors = [x.strip() for x in settings.cors_origins.split(",") if x.strip()]
+        if cors and cors[0] != "*":
+            back_url = cors[0]
+        freq, freq_type = self.preapproval_frequency(ciclo)
+        payload: dict[str, Any] = {
+            "reason": reason[:80] if reason else "Locacao",
             "external_reference": external_reference,
             "status": "pending",
             "auto_recurring": {
-                "frequency": 1,
-                "frequency_type": "months",
+                "frequency": freq,
+                "frequency_type": freq_type,
                 "transaction_amount": float(value),
                 "currency_id": "BRL",
             },
+<<<<<<< HEAD
             "payer_email": payer_email or "cliente@motopay.local",
             "back_url": _panel_back_url(),
         }
@@ -404,3 +993,174 @@ def mp_configured_for_operacao(op: Operacao | None) -> bool:
 
 def mp_has_operacao_token(op: Operacao | None) -> bool:
     return bool(op and (op.mercadopago_access_token or "").strip())
+=======
+            "payer_email": payer_email,
+            "back_url": back_url,
+            "status": "pending",
+        }
+        if statement_descriptor:
+            payload["statement_descriptor"] = statement_descriptor
+        return self._request("POST", "/preapproval", json=payload)
+
+    def get_preapproval(self, preapproval_id: str) -> dict[str, Any]:
+        return self._request("GET", f"/preapproval/{preapproval_id}", timeout=30.0)
+
+    def cancel_preapproval(self, preapproval_id: str) -> dict[str, Any]:
+        return self._request(
+            "PUT",
+            f"/preapproval/{preapproval_id}",
+            json={"status": "cancelled"},
+            timeout=30.0,
+        )
+
+    def update_preapproval_amount(
+        self, preapproval_id: str, *, value: Decimal, ciclo: str
+    ) -> dict[str, Any]:
+        freq, freq_type = self.preapproval_frequency(ciclo)
+        return self._request(
+            "PUT",
+            f"/preapproval/{preapproval_id}",
+            json={
+                "auto_recurring": {
+                    "frequency": freq,
+                    "frequency_type": freq_type,
+                    "transaction_amount": float(value),
+                    "currency_id": "BRL",
+                }
+            },
+            timeout=30.0,
+        )
+
+    def get_chargeback(self, chargeback_id: str) -> dict[str, Any]:
+        return self._request("GET", f"/v1/chargebacks/{chargeback_id}", timeout=30.0)
+
+    def create_order_refund(
+        self,
+        order_id: str,
+        *,
+        payment_id: str | None = None,
+        amount: Decimal | None = None,
+    ) -> dict[str, Any]:
+        """Estorno via Orders API (pagamentos PAY01/ORD01). Corpo vazio = estorno total."""
+        payload: dict[str, Any] = {}
+        if amount is not None and payment_id:
+            payload = {
+                "transactions": [
+                    {
+                        "id": payment_id,
+                        "amount": _format_amount(amount),
+                    }
+                ]
+            }
+        return self._request(
+            "POST",
+            f"/v1/orders/{order_id}/refund",
+            json=payload,
+            idempotency_key=str(uuid.uuid4()),
+            timeout=60.0,
+        )
+
+    def create_refund(
+        self,
+        payment_id: str,
+        *,
+        amount: Decimal | None = None,
+        order_id: str | None = None,
+    ) -> dict[str, Any]:
+        if order_id or str(payment_id).upper().startswith("PAY01"):
+            if not order_id:
+                raise ValueError("order_id é obrigatório para estornar pagamentos da Orders API")
+            return self.create_order_refund(
+                order_id,
+                payment_id=payment_id,
+                amount=amount,
+            )
+        payload: dict[str, Any] = {}
+        if amount is not None:
+            payload["amount"] = float(amount)
+        return self._request(
+            "POST",
+            f"/v1/payments/{payment_id}/refunds",
+            json=payload if payload else {},
+            idempotency_key=str(uuid.uuid4()),
+            timeout=60.0,
+        )
+
+    @staticmethod
+    def preapproval_init_point(data: dict[str, Any]) -> str | None:
+        mode = effective_mercadopago_credentials_mode()
+        if mode == "test":
+            url = data.get("sandbox_init_point") or data.get("init_point")
+        else:
+            url = data.get("init_point") or data.get("sandbox_init_point")
+        return str(url) if url else None
+
+
+def exchange_oauth_code(*, code: str, redirect_uri: str) -> dict[str, Any]:
+    settings = get_settings()
+    client_id = settings.mercadopago_oauth_client_id.strip()
+    client_secret = settings.mercadopago_oauth_client_secret.strip()
+    if not client_id or not client_secret:
+        raise ValueError("MERCADOPAGO_OAUTH_CLIENT_ID/SECRET não configurados")
+    r = httpx.post(
+        "https://api.mercadopago.com/oauth/token",
+        data={
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "grant_type": "authorization_code",
+            "code": code,
+            "redirect_uri": redirect_uri,
+        },
+        timeout=60.0,
+    )
+    if r.status_code >= 400:
+        raise MercadoPagoApiError(r.status_code, r.text, r.json() if r.content else None)
+    return r.json()
+
+
+def refresh_oauth_token(*, refresh_token: str) -> dict[str, Any]:
+    settings = get_settings()
+    r = httpx.post(
+        "https://api.mercadopago.com/oauth/token",
+        data={
+            "client_id": settings.mercadopago_oauth_client_id.strip(),
+            "client_secret": settings.mercadopago_oauth_client_secret.strip(),
+            "grant_type": "refresh_token",
+            "refresh_token": refresh_token,
+        },
+        timeout=60.0,
+    )
+    if r.status_code >= 400:
+        raise MercadoPagoApiError(r.status_code, r.text, r.json() if r.content else None)
+    return r.json()
+
+
+def build_oauth_authorization_url(*, state: str, redirect_uri: str) -> str:
+    from urllib.parse import urlencode
+
+    settings = get_settings()
+    client_id = settings.mercadopago_oauth_client_id.strip()
+    if not client_id:
+        raise ValueError("MERCADOPAGO_OAUTH_CLIENT_ID não configurado")
+    params = urlencode(
+        {
+            "client_id": client_id,
+            "response_type": "code",
+            "platform_id": "mp",
+            "state": state,
+            "redirect_uri": redirect_uri,
+        }
+    )
+    return f"https://auth.mercadopago.com/authorization?{params}"
+
+
+def parse_mp_card(card: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "mp_card_id": str(card.get("id", "")),
+        "payment_method_id": str(card.get("payment_method", {}).get("id", card.get("payment_method_id", ""))),
+        "last_four_digits": str(card.get("last_four_digits", ""))[-4:],
+        "cardholder_name": card.get("cardholder", {}).get("name") if isinstance(card.get("cardholder"), dict) else None,
+        "expiration_month": card.get("expiration_month"),
+        "expiration_year": card.get("expiration_year"),
+    }
+>>>>>>> main

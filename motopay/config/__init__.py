@@ -1,3 +1,3 @@
-from motopay.config.settings import Settings, get_settings
+from motopay.config.settings import Settings, app_today, get_settings
 
-__all__ = ["Settings", "get_settings"]
+__all__ = ["Settings", "app_today", "get_settings"]

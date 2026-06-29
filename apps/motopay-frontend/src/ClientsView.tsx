@@ -1,6 +1,10 @@
 import { useState, useEffect, useCallback, type FormEvent } from 'react';
 import { Plus, Search, Star, Phone, Trash2, Bike, FileText, CreditCard } from 'lucide-react';
+<<<<<<< HEAD
 import CardPaymentSaveBrick from './integrations/mercadopago/CardPaymentSaveBrick';
+=======
+import ClientMpCardsModal from './components/ClientMpCardsModal';
+>>>>>>> main
 import { useAuth } from './AuthContext';
 import type { ClienteMpCardOut, ClienteOut, Paginated, PaymentsConfig } from './apiTypes';
 import { mercadoPagoPayerEmail } from './utils/mercadopagoPayer';
@@ -21,11 +25,20 @@ const ClientsView = () => {
   const [search, setSearch] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [editCliente, setEditCliente] = useState<ClienteOut | null>(null);
+  const [cardsCliente, setCardsCliente] = useState<ClienteOut | null>(null);
   const [formData, setFormData] = useState({
     nome: '',
+    sobrenome: '',
     cpf: '',
     telefone: '',
+    email: '',
     telegram_id: '',
+    endereco_logradouro: '',
+    endereco_numero: '',
+    endereco_bairro: '',
+    endereco_cidade: '',
+    endereco_estado: '',
+    endereco_cep: '',
   });
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [mpCards, setMpCards] = useState<ClienteMpCardOut[]>([]);
@@ -93,7 +106,20 @@ const ClientsView = () => {
 
   const openCreate = () => {
     setEditCliente(null);
-    setFormData({ nome: '', cpf: '', telefone: '', telegram_id: '' });
+    setFormData({
+      nome: '',
+      sobrenome: '',
+      cpf: '',
+      telefone: '',
+      email: '',
+      telegram_id: '',
+      endereco_logradouro: '',
+      endereco_numero: '',
+      endereco_bairro: '',
+      endereco_cidade: '',
+      endereco_estado: '',
+      endereco_cep: '',
+    });
     setShowModal(true);
   };
 
@@ -101,12 +127,30 @@ const ClientsView = () => {
     setEditCliente(c);
     setFormData({
       nome: c.nome,
+      sobrenome: c.sobrenome ?? '',
       cpf: c.cpf,
       telefone: c.telefone,
+      email: c.email ?? '',
       telegram_id: c.telegram_id ?? '',
+      endereco_logradouro: c.endereco_logradouro ?? '',
+      endereco_numero: c.endereco_numero ?? '',
+      endereco_bairro: c.endereco_bairro ?? '',
+      endereco_cidade: c.endereco_cidade ?? '',
+      endereco_estado: c.endereco_estado ?? '',
+      endereco_cep: c.endereco_cep ?? '',
     });
     setShowModal(true);
   };
+
+  const buildEnderecoPayload = () => ({
+    sobrenome: formData.sobrenome.trim() || null,
+    endereco_logradouro: formData.endereco_logradouro.trim() || null,
+    endereco_numero: formData.endereco_numero.trim() || null,
+    endereco_bairro: formData.endereco_bairro.trim() || null,
+    endereco_cidade: formData.endereco_cidade.trim() || null,
+    endereco_estado: formData.endereco_estado.trim().toUpperCase() || null,
+    endereco_cep: formData.endereco_cep.replace(/\D/g, '') || null,
+  });
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -116,14 +160,18 @@ const ClientsView = () => {
         await api.patch(`/api/v1/clientes/${editCliente.id}`, {
           nome: formData.nome,
           telefone: formData.telefone,
+          email: formData.email.trim() || null,
           telegram_id: formData.telegram_id || null,
+          ...buildEnderecoPayload(),
         });
       } else {
         await api.post('/api/v1/clientes', {
           nome: formData.nome,
           cpf: formData.cpf,
           telefone: formData.telefone,
+          email: formData.email.trim() || null,
           telegram_id: formData.telegram_id || null,
+          ...buildEnderecoPayload(),
         });
       }
       setShowModal(false);
@@ -277,6 +325,14 @@ const ClientsView = () => {
                     <button
                       type="button"
                       className="icon-btn"
+                      title="Cartões Mercado Pago"
+                      onClick={() => setCardsCliente(c)}
+                    >
+                      <CreditCard size={16} />
+                    </button>
+                    <button
+                      type="button"
+                      className="icon-btn"
                       title="Ver contratos"
                       onClick={() => navigateToContracts('todos', c.id)}
                     >
@@ -324,6 +380,15 @@ const ClientsView = () => {
         </div>
       )}
 
+      {cardsCliente && (
+        <ClientMpCardsModal
+          cliente={cardsCliente}
+          api={api}
+          onClose={() => setCardsCliente(null)}
+          onError={setError}
+        />
+      )}
+
       {showModal && (
         <div className="modal-overlay">
           <div className="glass modal-content animate-fade">
@@ -351,6 +416,16 @@ const ClientsView = () => {
                 </div>
               )}
               <div className="input-group">
+                <label className="input-label">E-mail (Mercado Pago)</label>
+                <input
+                  className="input-field"
+                  type="email"
+                  value={formData.email}
+                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  placeholder="pagador@email.com (produção)"
+                />
+              </div>
+              <div className="input-group">
                 <label className="input-label">Telefone (WhatsApp)</label>
                 <input
                   className="input-field"
@@ -372,6 +447,7 @@ const ClientsView = () => {
                   Necessário para lembretes, Pix em atraso e confirmação de pagamento.
                 </small>
               </div>
+<<<<<<< HEAD
               {editCliente && (
                 <div
                   className="settings-section"
@@ -454,6 +530,68 @@ const ClientsView = () => {
                   )}
                 </div>
               )}
+=======
+
+              <div style={{ marginTop: 14, marginBottom: 8 }}>
+                <strong style={{ fontFamily: 'Outfit' }}>Endereço (recomendado pelo Mercado Pago)</strong>
+                <p className="text-muted" style={{ fontSize: '0.8rem', margin: '4px 0 0' }}>
+                  Aumenta a taxa de aprovação dos pagamentos. CEP, cidade e estado vão como
+                  additional_info.shipments.
+                </p>
+              </div>
+              <div className="input-group" style={{ display: 'flex', gap: 8 }}>
+                <input
+                  className="input-field"
+                  style={{ flex: 1 }}
+                  placeholder="Logradouro"
+                  value={formData.endereco_logradouro}
+                  onChange={(e) => setFormData({ ...formData, endereco_logradouro: e.target.value })}
+                />
+                <input
+                  className="input-field"
+                  style={{ width: 110 }}
+                  placeholder="Número"
+                  value={formData.endereco_numero}
+                  onChange={(e) => setFormData({ ...formData, endereco_numero: e.target.value })}
+                />
+              </div>
+              <div className="input-group" style={{ display: 'flex', gap: 8 }}>
+                <input
+                  className="input-field"
+                  style={{ flex: 1 }}
+                  placeholder="Bairro"
+                  value={formData.endereco_bairro}
+                  onChange={(e) => setFormData({ ...formData, endereco_bairro: e.target.value })}
+                />
+                <input
+                  className="input-field"
+                  style={{ width: 140 }}
+                  placeholder="CEP"
+                  maxLength={9}
+                  value={formData.endereco_cep}
+                  onChange={(e) => setFormData({ ...formData, endereco_cep: e.target.value })}
+                />
+              </div>
+              <div className="input-group" style={{ display: 'flex', gap: 8 }}>
+                <input
+                  className="input-field"
+                  style={{ flex: 1 }}
+                  placeholder="Cidade"
+                  value={formData.endereco_cidade}
+                  onChange={(e) => setFormData({ ...formData, endereco_cidade: e.target.value })}
+                />
+                <input
+                  className="input-field"
+                  style={{ width: 80, textTransform: 'uppercase' }}
+                  placeholder="UF"
+                  maxLength={2}
+                  value={formData.endereco_estado}
+                  onChange={(e) =>
+                    setFormData({ ...formData, endereco_estado: e.target.value.toUpperCase() })
+                  }
+                />
+              </div>
+>>>>>>> main
               <div className="modal-actions">
                 <button type="button" className="btn-secondary" onClick={() => setShowModal(false)}>
                   Cancelar

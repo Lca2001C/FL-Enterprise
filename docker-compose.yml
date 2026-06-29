@@ -1,6 +1,7 @@
 services:
   db:
     image: postgres:16-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
@@ -15,8 +16,10 @@ services:
 
   redis:
     image: redis:7-alpine
+    restart: unless-stopped
     ports:
-      - "6379:6379"
+      # Redis sem senha — nunca expor além do host local.
+      - "127.0.0.1:6379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -27,6 +30,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    restart: unless-stopped
     command: uvicorn motopay.interfaces.api.asgi:app --host 0.0.0.0 --port 8000
     ports:
       - "0.0.0.0:8000:8000"
@@ -59,9 +63,11 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    restart: unless-stopped
     command: celery -A motopay.infrastructure.messaging.celery_app worker -l INFO -Q default,telegram,billing
     ports:
-      - "9808:9808"
+      # Métricas Prometheus internas — não expor além do host local.
+      - "127.0.0.1:9808:9808"
     env_file: .env
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-motopay}
@@ -89,6 +95,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    restart: unless-stopped
     command: celery -A motopay.infrastructure.messaging.celery_app beat -l INFO --schedule=/data/celerybeat-schedule
     env_file: .env
     environment:
@@ -107,6 +114,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    restart: unless-stopped
     command: python -m motopay.infrastructure.telegram.bot_main
     env_file: .env
     environment:
@@ -130,7 +138,13 @@ services:
       dockerfile: Dockerfile
       args:
         VITE_API_BASE_URL: ${VITE_API_BASE_URL:-SAME_ORIGIN}
+<<<<<<< HEAD
         VITE_MERCADOPAGO_PUBLIC_KEY: ${MERCADOPAGO_VITE_PUBLIC_KEY:-${MERCADOPAGO_PUBLIC_KEY:-}}
+=======
+        VITE_MERCADOPAGO_PUBLIC_KEY: ${MERCADOPAGO_VITE_PUBLIC_KEY:-${MERCADOPAGO_PUBLIC_KEY_TEST:-}}
+        VITE_DISABLE_PWA: ${VITE_DISABLE_PWA:-true}
+    restart: unless-stopped
+>>>>>>> main
     ports:
       - "0.0.0.0:5173:80"
     depends_on:

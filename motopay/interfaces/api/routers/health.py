@@ -6,8 +6,9 @@ from fastapi.responses import Response
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 from motopay.alerts import AlertSeverity, alert_manager
+from motopay.domain.enums import UserRole
 from motopay.health import SystemHealthStatus, get_system_health
-from motopay.interfaces.api.deps import require_metrics_or_admin
+from motopay.interfaces.api.deps import CurrentUser, require_metrics_or_admin, require_operacional
 
 router = APIRouter(prefix="/health", tags=["health"])
 
@@ -38,7 +39,7 @@ async def list_alerts(
     severity: str | None = None,
     tenant_id: int | None = None,
     limit: int = 100,
-    _: object = Depends(require_metrics_or_admin),
+    user: CurrentUser = Depends(require_operacional),
 ) -> list[dict]:
     severity_enum = None
     if severity:
@@ -47,9 +48,14 @@ async def list_alerts(
         except ValueError:
             pass
 
+    # Dono enxerga apenas alertas da sua operação
+    effective_tenant = tenant_id
+    if user.role == UserRole.DONO:
+        effective_tenant = user.operacao_id
+
     alerts = alert_manager.get_alerts(
         severity=severity_enum,
-        tenant_id=tenant_id,
+        tenant_id=effective_tenant,
         limit=limit,
     )
 
@@ -67,8 +73,20 @@ async def list_alerts(
     ]
 
 
+def _alert_visible_to(alert: object, user: CurrentUser) -> bool:
+    # Dono só enxerga alertas da própria operação; admin enxerga todos.
+    if user.role == UserRole.DONO:
+        return getattr(alert, "tenant_id", None) == user.operacao_id
+    return True
+
+
 @alert_router.post("/{alert_id}/acknowledge")
-async def acknowledge_alert(alert_id: str, _: object = Depends(require_metrics_or_admin)) -> dict:
+async def acknowledge_alert(
+    alert_id: str, user: CurrentUser = Depends(require_operacional)
+) -> dict:
+    alert = alert_manager.get_alert(alert_id)
+    if not alert or not _alert_visible_to(alert, user):
+        return {"acknowledged": False}
     success = alert_manager.acknowledge(alert_id)
     return {"acknowledged": success}
 
@@ -76,10 +94,10 @@ async def acknowledge_alert(alert_id: str, _: object = Depends(require_metrics_o
 @alert_router.get("/{alert_id}", response_model=dict | None)
 async def get_alert(
     alert_id: str,
-    _: object = Depends(require_metrics_or_admin),
+    user: CurrentUser = Depends(require_operacional),
 ) -> dict | None:
     alert = alert_manager.get_alert(alert_id)
-    if not alert:
+    if not alert or not _alert_visible_to(alert, user):
         return None
 
     return {

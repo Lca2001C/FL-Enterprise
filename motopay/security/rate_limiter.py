@@ -3,16 +3,15 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
+from typing import Any
 
-import redis
-
-from motopay.config.settings import get_settings
+from motopay.infrastructure.redis_client import get_redis_connection
 
 
 @dataclass
 class RateLimitResult:
     """Rate limit check result."""
-    
+
     allowed: bool
     remaining: int
     reset_at: float
@@ -20,10 +19,14 @@ class RateLimitResult:
 
 
 class RateLimiter:
-    """Redis-backed rate limiter using token bucket algorithm."""
-    
-    def __init__(self, redis_client: redis.Redis | None = None):
-        self.redis = redis_client or redis.from_url(get_settings().redis_url)
+    """Redis-backed rate limiter using token bucket algorithm.
+
+    Usa get_redis_connection(): com REDIS_URL vazio cai no shim em memória,
+    então nunca falha na construção (antes quebrava com URL vazia).
+    """
+
+    def __init__(self, redis_client: Any | None = None):
+        self.redis = redis_client or get_redis_connection()
     
     def check(
         self,

@@ -354,10 +354,11 @@ npm run dev
 
 Abra `http://localhost:5173`. Use `VITE_API_BASE_URL` apontando para a API como o navegador acessa (ex.: `http://localhost:8000`). Configure `CORS_ORIGINS` na API com a origem do front (ex.: `http://localhost:5173`). Administradores usam **Operação (escopo)** no topo para filtrar por `operacao_id` nas chamadas à API.
 
-### Webhook Mercado Pago
+### Mercado Pago (Pix, cartão, webhook)
 
-`POST {API_PUBLIC_BASE_URL}/webhooks/mercadopago`
+Guia completo: [`docs/MERCADOPAGO_SETUP.md`](docs/MERCADOPAGO_SETUP.md). Validar env: `python scripts/mp_config_check.py`.
 
+<<<<<<< HEAD
 Variáveis em [`.env.example`](.env.example):
 
 * **`MERCADOPAGO_ACCESS_TOKEN`** — Access Token de produção ou teste ([Mercado Pago Developers](https://www.mercadopago.com.br/developers)).
@@ -435,6 +436,12 @@ Não misture Access Token de produção com Public Key de teste — sempre o par
 **Segurança:** se tokens reais vazaram em chat ou commit, rotacione `MERCADOPAGO_ACCESS_TOKEN` e `TELEGRAM_BOT_TOKEN` nos respectivos painéis.
 
 **Reinstalar / limpar cache:** após trocar credenciais, reinicie containers e limpe dados do site no navegador se testar PWA instalado.
+=======
+- **Credenciais por operação:** dono/admin salva Access Token, Public Key e Webhook Secret em **Ajustes** (os três juntos).
+- **Fallback global:** variáveis `MERCADOPAGO_*` / `MERCADOPAGO_*_TEST` no `.env` quando a operação não tem credenciais.
+- **Webhook:** `POST {API_PUBLIC_BASE_URL}/webhooks/mercadopago` — evento **Order (Mercado Pago)** no painel MP; validação HMAC (`x-signature`). Em dev local use ngrok: `python scripts/mp_webhook_tunnel.py --url https://….ngrok-free.app`.
+- Orders confirmadas atualizam `cobrancas`, lançam `financeiro`, recalculam score e enfileiram Telegram.
+>>>>>>> main
 
 ### Papéis de usuário
 
@@ -455,6 +462,14 @@ Beat diário configurável: `CELERY_BEAT_HOUR` / `CELERY_BEAT_MINUTE` (padrão 1
 ### Health check da API
 
 * **GET** `/health` — retorno JSON `{"status":"ok"}`. Usado pelo `docker compose` (serviço `api`) e por balanceadores. Base path raiz (não usa prefixo `/api/v1`).
+
+### Deploy em produção (VPS + Docker Compose + HTTPS)
+
+> 📘 **Passo a passo completo: [DEPLOY.md](DEPLOY.md)** — do servidor zerado ao
+> primeiro pagamento real, incluindo Mercado Pago (webhook + OAuth), Telegram,
+> backups automáticos e checklist final. Usa o overlay
+> [`docker-compose.prod.yml`](docker-compose.prod.yml) (Redis autenticado,
+> Caddy com TLS automático, backup diário).
 
 ### Deploy nuvem (Railway · Supabase · Upstash · Vercel)
 

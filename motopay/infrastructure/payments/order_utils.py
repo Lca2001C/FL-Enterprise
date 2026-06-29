@@ -27,8 +27,13 @@ class MercadoPagoOrderResult:
     @property
     def is_paid(self) -> bool:
         return (
+<<<<<<< HEAD
             self.order_status in _ORDER_PAID_STATUSES
             or self.payment_status in _ORDER_PAID_STATUSES
+=======
+            self.order_status.lower() in _ORDER_PAID_STATUSES
+            or self.payment_status.lower() in _ORDER_PAID_STATUSES
+>>>>>>> main
         )
 
 

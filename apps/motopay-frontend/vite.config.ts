@@ -8,6 +8,7 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
   const proxyTarget = env.VITE_DEV_PROXY_TARGET || 'http://localhost:8000';
   const enablePwaInDev = env.VITE_PWA_DEV === 'true';
+  const disablePwa = env.VITE_DISABLE_PWA === 'true';
 
   return {
     plugins: [
@@ -17,6 +18,7 @@ export default defineConfig(({ mode }) => {
         },
       }),
       VitePWA({
+        disable: disablePwa,
         registerType: 'autoUpdate',
         injectRegister: false,
         strategies: 'generateSW',
@@ -42,8 +44,8 @@ export default defineConfig(({ mode }) => {
           start_url: '/',
           display: 'standalone',
           display_override: ['standalone', 'minimal-ui'],
-          background_color: '#020617',
-          theme_color: '#020617',
+          background_color: '#0a0a0f',
+          theme_color: '#d4a574',
           orientation: 'portrait-primary',
           categories: ['business', 'utilities'],
           prefer_related_applications: false,
@@ -55,21 +57,6 @@ export default defineConfig(({ mode }) => {
           navigateFallback: 'index.html',
           navigateFallbackDenylist: [/^\/api\/?/],
           runtimeCaching: [
-            {
-              urlPattern: /^\/api\/.*/i,
-              handler: 'NetworkFirst',
-              options: {
-                cacheName: 'api-cache',
-                networkTimeoutSeconds: 10,
-                expiration: {
-                  maxEntries: 50,
-                  maxAgeSeconds: 60 * 5,
-                },
-                cacheableResponse: {
-                  statuses: [0, 200],
-                },
-              },
-            },
             {
               urlPattern: /^\/api\/motos\/[^/]+\/imagem$/i,
               handler: 'StaleWhileRevalidate',
@@ -119,7 +106,9 @@ export default defineConfig(({ mode }) => {
     },
     server: {
       host: true,
-      port: 5173,
+      // 5173 = Docker/nginx; dev local usa 5174 para não disputar a porta.
+      port: Number(env.VITE_DEV_PORT) || 5174,
+      strictPort: false,
       proxy: {
         '/api': {
           target: proxyTarget,

@@ -1,11 +1,20 @@
 from __future__ import annotations
 
-from sqlalchemy import Select, func, or_, select
+import logging
+
+from sqlalchemy import Select, delete, func, or_, select, update
 from sqlalchemy.orm import Session
 
 from motopay.domain.enums import ContratoStatus, DomainEventType, MotoStatus, UserRole
 from motopay.domain.exceptions import ConflictError, ForbiddenError, NotFoundError
-from motopay.infrastructure.db.models import Cliente, Contrato, EventoDominio, Moto
+from motopay.infrastructure.db.models import (
+    Cliente,
+    Cobranca,
+    Contrato,
+    EventoDominio,
+    Financeiro,
+    Moto,
+)
 from motopay.interfaces.api.deps import CurrentUser
 from motopay.interfaces.api.schemas import (
     ClienteCreate,
@@ -15,6 +24,8 @@ from motopay.interfaces.api.schemas import (
     MotoCreate,
     MotoUpdate,
 )
+
+logger = logging.getLogger(__name__)
 
 _SCOPED_ROLES = frozenset({UserRole.DONO})
 
@@ -60,15 +71,15 @@ def list_motos(
 def get_moto(db: Session, user: CurrentUser, operacao_scope: int | None, moto_id: int) -> Moto:
     m = db.get(Moto, moto_id)
     if not m:
-        raise NotFoundError("Moto não encontrada")
+        raise NotFoundError("Veículo não encontrado")
     if user.role in _SCOPED_ROLES and m.operacao_id != user.operacao_id:
-        raise ForbiddenError("Moto fora do escopo")
+        raise ForbiddenError("Veículo fora do escopo")
     if (
         user.role == UserRole.ADMIN
         and operacao_scope is not None
         and m.operacao_id != operacao_scope
     ):
-        raise ForbiddenError("Moto fora do escopo informado")
+        raise ForbiddenError("Veículo fora do escopo informado")
     return m
 
 
@@ -87,6 +98,7 @@ def create_moto(
         operacao_id=operacao_id,
         placa=body.placa.upper().strip(),
         modelo=body.modelo.strip(),
+        tipo=body.tipo.value,
         status=body.status.value,
         km=body.km,
     )
@@ -113,6 +125,8 @@ def update_moto(
         m.placa = placa
     if body.modelo is not None:
         m.modelo = body.modelo.strip()
+    if body.tipo is not None:
+        m.tipo = body.tipo.value
     if body.status is not None:
         m.status = body.status.value
     if body.km is not None:
@@ -125,7 +139,7 @@ def update_moto(
         and m.status == MotoStatus.MANUTENCAO.value
         and old_status != MotoStatus.MANUTENCAO.value
     ):
-        from motopay.infrastructure.messaging.tasks import handle_domain_event
+        from motopay.infrastructure.messaging.dispatch import enqueue_domain_event
 
         ev = EventoDominio(
             tipo=DomainEventType.MOTO_EM_MANUTENCAO.value,
@@ -134,7 +148,7 @@ def update_moto(
         db.add(ev)
         db.commit()
         db.refresh(ev)
-        handle_domain_event.delay(ev.id)
+        enqueue_domain_event(ev.id)
     return m
 
 
@@ -206,9 +220,17 @@ def create_cliente(
     c = Cliente(
         operacao_id=operacao_id,
         nome=body.nome.strip(),
+        sobrenome=body.sobrenome.strip() if body.sobrenome else None,
         cpf=cpf,
         telefone=body.telefone.strip(),
+        email=body.email.strip().lower() if body.email else None,
         telegram_id=body.telegram_id.strip() if body.telegram_id else None,
+        endereco_logradouro=(body.endereco_logradouro or "").strip() or None,
+        endereco_numero=(body.endereco_numero or "").strip() or None,
+        endereco_bairro=(body.endereco_bairro or "").strip() or None,
+        endereco_cidade=(body.endereco_cidade or "").strip() or None,
+        endereco_estado=((body.endereco_estado or "").strip().upper() or None),
+        endereco_cep=(body.endereco_cep or "").strip() or None,
     )
     db.add(c)
     db.commit()
@@ -222,10 +244,26 @@ def update_cliente(
     c = get_cliente(db, user, operacao_scope, cliente_id)
     if body.nome is not None:
         c.nome = body.nome.strip()
+    if body.sobrenome is not None:
+        c.sobrenome = body.sobrenome.strip() if body.sobrenome else None
     if body.telefone is not None:
         c.telefone = body.telefone.strip()
+    if body.email is not None:
+        c.email = body.email.strip().lower() if body.email else None
     if body.telegram_id is not None:
         c.telegram_id = body.telegram_id.strip() if body.telegram_id else None
+    if body.endereco_logradouro is not None:
+        c.endereco_logradouro = body.endereco_logradouro.strip() or None
+    if body.endereco_numero is not None:
+        c.endereco_numero = body.endereco_numero.strip() or None
+    if body.endereco_bairro is not None:
+        c.endereco_bairro = body.endereco_bairro.strip() or None
+    if body.endereco_cidade is not None:
+        c.endereco_cidade = body.endereco_cidade.strip() or None
+    if body.endereco_estado is not None:
+        c.endereco_estado = body.endereco_estado.strip().upper() or None
+    if body.endereco_cep is not None:
+        c.endereco_cep = body.endereco_cep.strip() or None
     db.add(c)
     db.commit()
     db.refresh(c)
@@ -234,6 +272,17 @@ def update_cliente(
 
 def delete_cliente(db: Session, user: CurrentUser, operacao_scope: int | None, cliente_id: int):
     c = get_cliente(db, user, operacao_scope, cliente_id)
+    # Contrato.cliente_id é FK sem cascade: excluir um cliente com contratos
+    # estoura IntegrityError (→ 500). Bloqueia com mensagem clara (409).
+    contratos = (
+        db.scalar(select(func.count()).select_from(Contrato).where(Contrato.cliente_id == c.id))
+        or 0
+    )
+    if contratos:
+        raise ConflictError(
+            "Não é possível excluir um cliente com contratos vinculados. "
+            "Cancele ou encerre os contratos do cliente antes de excluí-lo."
+        )
     db.delete(c)
     db.commit()
 
@@ -285,6 +334,46 @@ def get_contrato(
     return ct
 
 
+def delete_contrato(
+    db: Session, user: CurrentUser, operacao_scope: int | None, contrato_id: int
+) -> None:
+    """Exclui um contrato e suas dependências.
+
+    Ordem segura por causa das FKs:
+    - cancela a assinatura recorrente no MP (best-effort, não bloqueia);
+    - apaga as cobranças do contrato (FK não-nula);
+    - desvincula lançamentos financeiros (preserva o histórico: contrato_id = NULL);
+    - libera a moto (alugada → disponível);
+    - apaga o contrato.
+    """
+    ct = get_contrato(db, user, operacao_scope, contrato_id)
+
+    if (ct.mercadopago_subscription_id or "").strip():
+        try:
+            from motopay.services.billing_service import (
+                cancel_mercadopago_subscription_for_contract,
+            )
+
+            cancel_mercadopago_subscription_for_contract(db, ct)
+        except Exception:  # cancelamento no MP nunca pode impedir a exclusão local
+            logger.warning(
+                "Falha ao cancelar assinatura MP do contrato %s na exclusão", ct.id, exc_info=True
+            )
+
+    db.execute(delete(Cobranca).where(Cobranca.contrato_id == ct.id))
+    db.execute(
+        update(Financeiro).where(Financeiro.contrato_id == ct.id).values(contrato_id=None)
+    )
+
+    moto = db.get(Moto, ct.moto_id)
+    if moto and moto.status == MotoStatus.ALUGADA.value:
+        moto.status = MotoStatus.DISPONIVEL.value
+        db.add(moto)
+
+    db.delete(ct)
+    db.commit()
+
+
 def create_contrato(
     db: Session, user: CurrentUser, operacao_scope: int | None, body: ContratoCreate
 ) -> Contrato:
@@ -296,9 +385,15 @@ def create_contrato(
         raise NotFoundError("Cliente inválido para esta operação")
     moto = db.get(Moto, body.moto_id)
     if not moto or moto.operacao_id != operacao_id:
-        raise NotFoundError("Moto inválida para esta operação")
+        raise NotFoundError("Veículo inválido para esta operação")
+    max_numero = db.scalar(
+        select(func.coalesce(func.max(Contrato.numero), 0)).where(
+            Contrato.operacao_id == operacao_id
+        )
+    ) or 0
     ct = Contrato(
         operacao_id=operacao_id,
+        numero=max_numero + 1,
         cliente_id=body.cliente_id,
         moto_id=body.moto_id,
         valor_recorrente=body.valor_recorrente,
@@ -323,11 +418,28 @@ def update_contrato(
     contrato_id: int,
     body: ContratoUpdate,
 ) -> Contrato:
+    from motopay.domain.enums import ContratoStatus as CS
+    from motopay.services.billing_service import (
+        cancel_mercadopago_subscription_for_contract,
+        sync_mercadopago_subscription_amount,
+    )
+
     ct = get_contrato(db, user, operacao_scope, contrato_id)
+    ending = (
+        body.status is not None
+        and body.status.value in (CS.FINALIZADO.value, CS.CANCELADO.value)
+        and ct.status == CS.ATIVO.value
+    )
+    valor_changed = False
+    ciclo_changed = False
     if body.status is not None:
         ct.status = body.status.value
     if body.valor_recorrente is not None:
+        valor_changed = body.valor_recorrente != ct.valor_recorrente
         ct.valor_recorrente = body.valor_recorrente
+    if body.ciclo is not None:
+        ciclo_changed = body.ciclo.value != ct.ciclo
+        ct.ciclo = body.ciclo.value
     if body.data_fim_vigencia is not None:
         if body.data_fim_vigencia < ct.data_inicio:
             raise ConflictError("data_fim_vigencia deve ser igual ou posterior a data_inicio")
@@ -336,7 +448,15 @@ def update_contrato(
         if body.proximo_vencimento < ct.data_inicio:
             raise ConflictError("proximo_vencimento deve ser igual ou posterior a data_inicio")
         ct.proximo_vencimento = body.proximo_vencimento
+    if ending:
+        cancel_mercadopago_subscription_for_contract(db, ct)
+        moto = db.get(Moto, ct.moto_id)
+        if moto:
+            moto.status = MotoStatus.DISPONIVEL.value
+            db.add(moto)
     db.add(ct)
     db.commit()
     db.refresh(ct)
+    if (valor_changed or ciclo_changed) and ct.mercadopago_subscription_id and not ending:
+        sync_mercadopago_subscription_amount(db, ct)
     return ct

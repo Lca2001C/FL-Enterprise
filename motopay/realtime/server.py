@@ -9,6 +9,7 @@ import socketio
 
 from motopay.config import get_settings
 from motopay.domain.enums import UserRole
+from motopay.infrastructure.redis_client import redis_enabled
 from motopay.observability.logger import get_logger
 from motopay.realtime.publish import PLATFORM_CHANNEL
 from motopay.services.auth_service import decode_token
@@ -23,14 +24,15 @@ def get_sio() -> socketio.AsyncServer:
     global _sio
     if _sio is None:
         settings = get_settings()
-        mgr = socketio.AsyncRedisManager(settings.redis_url)
-        _sio = socketio.AsyncServer(
-            async_mode="asgi",
-            cors_allowed_origins="*",
-            client_manager=mgr,
-            logger=False,
-            engineio_logger=False,
-        )
+        server_kwargs: dict[str, Any] = {
+            "async_mode": "asgi",
+            "cors_allowed_origins": "*",
+            "logger": False,
+            "engineio_logger": False,
+        }
+        if redis_enabled():
+            server_kwargs["client_manager"] = socketio.AsyncRedisManager(settings.redis_url)
+        _sio = socketio.AsyncServer(**server_kwargs)
         _register_events(_sio)
     return _sio
 
@@ -109,6 +111,9 @@ def start_realtime_listener() -> None:
     if _listener_started:
         return
     _listener_started = True
+    if not redis_enabled():
+        logger.info("Realtime Redis listener skipped (REDIS_URL not configured)")
+        return
     threading.Thread(target=_redis_listener_thread, daemon=True, name="realtime-redis").start()
 
 

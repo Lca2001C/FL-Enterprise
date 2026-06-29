@@ -1,4 +1,3 @@
-# syntax=docker/dockerfile:1
 FROM node:22-alpine AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
@@ -6,11 +5,21 @@ RUN npm ci
 COPY . .
 ARG VITE_API_BASE_URL=SAME_ORIGIN
 ARG VITE_MERCADOPAGO_PUBLIC_KEY=
+<<<<<<< HEAD
 ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
 ENV VITE_MERCADOPAGO_PUBLIC_KEY=${VITE_MERCADOPAGO_PUBLIC_KEY}
+=======
+ARG VITE_DISABLE_PWA=true
+ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
+ENV VITE_MERCADOPAGO_PUBLIC_KEY=${VITE_MERCADOPAGO_PUBLIC_KEY}
+ENV VITE_DISABLE_PWA=${VITE_DISABLE_PWA}
+>>>>>>> main
 RUN npm run build
 
 FROM nginx:1.27-alpine
 COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
 COPY --from=build /app/dist /usr/share/nginx/html
 EXPOSE 80
+ENTRYPOINT ["/docker-entrypoint.sh"]

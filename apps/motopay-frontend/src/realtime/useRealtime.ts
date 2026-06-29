@@ -1,12 +1,19 @@
 import { useEffect } from 'react';
 import { useAuth } from '../AuthContext';
 import { useAlerts, type Alert } from '../stores/AlertContext';
-import { disconnectRealtimeSocket, getRealtimeSocket } from './socket';
+import { disconnectRealtimeSocket, getRealtimeSocket, reconnectRealtimeSocketIfNeeded } from './socket';
+
+// Realtime (Socket.IO) só liga quando explicitamente habilitado no build
+// (VITE_ENABLE_REALTIME=true) — requer a API servida via asgi:app com WebSocket
+// (docker-compose/host único). Em Vercel+Render (free) fica desligado por padrão,
+// evitando tentativas de WebSocket que falham e poluem o console.
+const REALTIME_ENABLED = import.meta.env.VITE_ENABLE_REALTIME === 'true';
 
 export function useRealtime(options?: { enabled?: boolean }) {
   const { token, apiBase, user } = useAuth();
   const { addAlert } = useAlerts();
-  const enabled = options?.enabled ?? user?.tipo === 'admin';
+  const enabled =
+    REALTIME_ENABLED && (options?.enabled ?? user?.tipo === 'admin');
 
   useEffect(() => {
     if (!enabled || !token) return;
@@ -32,9 +39,18 @@ export function useRealtime(options?: { enabled?: boolean }) {
     socket.on('alert.new', onAlert);
     socket.on('celery.queue_stats', onQueueStats);
 
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        reconnectRealtimeSocketIfNeeded();
+      }
+    };
+
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
     return () => {
       socket.off('alert.new', onAlert);
       socket.off('celery.queue_stats', onQueueStats);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
       disconnectRealtimeSocket();
     };
   }, [addAlert, apiBase, enabled, token]);

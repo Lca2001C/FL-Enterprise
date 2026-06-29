@@ -43,9 +43,24 @@ class Operacao(Base):
     telegram_owner_notify_enabled: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default="false"
     )
+<<<<<<< HEAD
     mercadopago_access_token: Mapped[str | None] = mapped_column(String(512), nullable=True)
     mercadopago_public_key: Mapped[str | None] = mapped_column(String(128), nullable=True)
     mercadopago_webhook_secret: Mapped[str | None] = mapped_column(String(256), nullable=True)
+=======
+    mercadopago_access_token: Mapped[str | None] = mapped_column(Text, nullable=True)
+    mercadopago_public_key: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    mercadopago_webhook_secret: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    mercadopago_refresh_token: Mapped[str | None] = mapped_column(Text, nullable=True)
+    mercadopago_oauth_user_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    mercadopago_oauth_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    mercadopago_connection_status: Mapped[str] = mapped_column(
+        String(32), nullable=False, server_default="disconnected"
+    )
+    mercadopago_account_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+>>>>>>> main
 
     usuarios: Mapped[list[Usuario]] = relationship(back_populates="operacao")
     motos: Mapped[list[Moto]] = relationship(back_populates="operacao")
@@ -78,6 +93,7 @@ class Moto(Base):
     )
     placa: Mapped[str] = mapped_column(String(16), nullable=False)
     modelo: Mapped[str] = mapped_column(String(128), nullable=False)
+    tipo: Mapped[str] = mapped_column(String(32), nullable=False, server_default="moto")
     status: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
     km: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0, server_default="0")
     imagem_path: Mapped[str | None] = mapped_column(String(512), nullable=True)
@@ -101,15 +117,30 @@ class Cliente(Base):
         BigInteger, ForeignKey("operacoes.id", ondelete="CASCADE"), nullable=False, index=True
     )
     nome: Mapped[str] = mapped_column(String(255), nullable=False)
+    sobrenome: Mapped[str | None] = mapped_column(String(255), nullable=True)
     cpf: Mapped[str] = mapped_column(String(14), nullable=False)
     telefone: Mapped[str] = mapped_column(String(32), nullable=False)
+    email: Mapped[str | None] = mapped_column(String(320), nullable=True)
     telegram_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     score: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default="100")
+<<<<<<< HEAD
     mercadopago_customer_id: Mapped[str | None] = mapped_column(
         String(64), nullable=True, index=True
+=======
+    mercadopago_customer_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    endereco_logradouro: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    endereco_numero: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    endereco_bairro: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    endereco_cidade: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    endereco_estado: Mapped[str | None] = mapped_column(String(2), nullable=True)
+    endereco_cep: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+>>>>>>> main
     )
 
     operacao: Mapped[Operacao] = relationship(back_populates="clientes")
+    mp_cards: Mapped[list[ClienteMpCard]] = relationship(back_populates="cliente")
     contratos: Mapped[list[Contrato]] = relationship(back_populates="cliente")
     mp_cards: Mapped[list[ClienteMpCard]] = relationship(back_populates="cliente")
 
@@ -148,6 +179,7 @@ class Contrato(Base):
     __tablename__ = "contratos"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    numero: Mapped[int | None] = mapped_column(BigInteger, nullable=True, index=True)
     operacao_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("operacoes.id", ondelete="CASCADE"), nullable=False, index=True
     )
@@ -170,6 +202,7 @@ class Contrato(Base):
     promessa_notas: Mapped[str | None] = mapped_column(Text, nullable=True)
     ultima_cobranca_telegram_em: Mapped[date | None] = mapped_column(Date, nullable=True)
     mercadopago_subscription_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    mercadopago_subscription_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -222,17 +255,56 @@ class Cobranca(Base):
     mercadopago_payment_id: Mapped[str | None] = mapped_column(
         String(64), nullable=True, index=True
     )
+    mercadopago_order_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     payment_gateway: Mapped[str] = mapped_column(
         String(32), nullable=False, server_default="mercadopago"
     )
+    payment_method_type: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
     pix_copia_cola: Mapped[str | None] = mapped_column(Text, nullable=True)
     payment_method_type: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
     status: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    payment_portal_token: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    valor_estornado: Mapped[Decimal] = mapped_column(
+        Numeric(14, 2), nullable=False, server_default="0"
+    )
+    mercadopago_dispute_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    payment_portal_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    mercadopago_payment_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
     contrato: Mapped[Contrato] = relationship(back_populates="cobrancas")
+
+
+class ClienteMpCard(Base):
+    __tablename__ = "cliente_mp_cards"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    cliente_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("clientes.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    operacao_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("operacoes.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    mp_card_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    payment_method_id: Mapped[str] = mapped_column(String(32), nullable=False)
+    last_four_digits: Mapped[str] = mapped_column(String(4), nullable=False)
+    cardholder_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    expiration_month: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    expiration_year: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    is_default: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    cliente: Mapped[Cliente] = relationship(back_populates="mp_cards")
+
+    __table_args__ = (
+        UniqueConstraint("cliente_id", "mp_card_id", name="uq_cliente_mp_cards_cliente_mp_card"),
+    )
 
 
 class EventoDominio(Base):

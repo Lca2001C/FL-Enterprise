@@ -1,10 +1,24 @@
 import { useState, useEffect, useCallback, type FormEvent } from 'react';
 import { Plus, Copy, CheckCircle, Clock, AlertTriangle, Check, Filter, Wallet } from 'lucide-react';
 import { useAuth } from './AuthContext';
+<<<<<<< HEAD
 import type { ClienteMpCardOut, ClienteOut, CobrancaOut, ContratoOut, Paginated } from './apiTypes';
+=======
+import type {
+  ClienteMpCardOut,
+  ClienteOut,
+  CobrancaOut,
+  ContratoOut,
+  Paginated,
+  PaymentsConfig,
+  PortalLinkOut,
+} from './apiTypes';
+import PayCobrancaModal from './components/PayCobrancaModal';
+>>>>>>> main
 import { PAGE_SIZE } from './apiTypes';
 import { formatBrl, formatDate } from './utils/format';
 import { parseApiError } from './utils/apiError';
+import { getMercadoPagoDeviceId } from './integrations/mercadopago/deviceId';
 import { fetchAllPaginated } from './utils/fetchPaginated';
 import { paymentMethodLabel } from './utils/paymentMethods';
 import EmptyState from './components/EmptyState';
@@ -18,6 +32,7 @@ const ChargesView = () => {
   const { api } = useAuth();
   const [cobrancas, setCobrancas] = useState<CobrancaOut[]>([]);
   const [contratos, setContratos] = useState<ContratoOut[]>([]);
+  const [mpPayments, setMpPayments] = useState<PaymentsConfig | null>(null);
   const [total, setTotal] = useState(0);
   const [offset, setOffset] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -26,9 +41,20 @@ const ChargesView = () => {
   const [contratoId, setContratoId] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('todos');
   const [copiedId, setCopiedId] = useState<number | null>(null);
+<<<<<<< HEAD
   const [payCob, setPayCob] = useState<CobrancaOut | null>(null);
   const [payCliente, setPayCliente] = useState<ClienteOut | null>(null);
   const [savedCards, setSavedCards] = useState<ClienteMpCardOut[]>([]);
+=======
+  const [copiedPortalId, setCopiedPortalId] = useState<number | null>(null);
+  const [refundCob, setRefundCob] = useState<CobrancaOut | null>(null);
+  const [refundAmount, setRefundAmount] = useState('');
+  const [refundLoading, setRefundLoading] = useState(false);
+  const [payCob, setPayCob] = useState<CobrancaOut | null>(null);
+  const [payCliente, setPayCliente] = useState<ClienteOut | null>(null);
+  const [payCards, setPayCards] = useState<ClienteMpCardOut[]>([]);
+  const [payError, setPayError] = useState('');
+>>>>>>> main
 
   const contratosAtivos = contratos.filter((c) => c.status === 'ativo');
 
@@ -39,14 +65,16 @@ const ChargesView = () => {
       try {
         const cobParams: Record<string, unknown> = { limit: PAGE_SIZE, offset: pageOffset };
         if (statusFilter !== 'todos') cobParams.status = statusFilter;
-        const [cobRes, ctItems] = await Promise.all([
+        const [cobRes, ctItems, mpRes] = await Promise.all([
           api.get<Paginated<CobrancaOut>>('/api/v1/cobrancas', { params: cobParams }),
           fetchAllPaginated<ContratoOut>(api, '/api/v1/contratos', { status: 'ativo' }),
+          api.get<PaymentsConfig>('/api/v1/config/payments'),
         ]);
         setCobrancas(cobRes.data.items);
         setTotal(cobRes.data.total);
         setOffset(pageOffset);
         setContratos(ctItems);
+        setMpPayments(mpRes.data);
       } catch (e) {
         setError(parseApiError(e, 'Erro ao carregar cobranças'));
       } finally {
@@ -60,11 +88,30 @@ const ChargesView = () => {
     void fetchData(0);
   }, [fetchData]);
 
+  const mpReady = Boolean(
+    mpPayments?.mercadopago_credentials_complete || mpPayments?.mercadopago_oauth_connected
+  );
+
+  const openChargeModal = () => {
+    if (!mpReady) {
+      setError(
+        'Conta Mercado Pago não conectada para esta operação. Vá em Ajustes e use o botão "Conectar Mercado Pago".'
+      );
+      return;
+    }
+    setShowModal(true);
+  };
+
   const handleCreateCharge = async (e: FormEvent) => {
     e.preventDefault();
     setError('');
+    if (!mpReady) {
+      setError('Conta Mercado Pago não conectada para esta operação.');
+      return;
+    }
     try {
-      await api.post('/api/v1/cobrancas/pix', { contrato_id: parseInt(contratoId, 10) });
+      const device_id = getMercadoPagoDeviceId();
+      await api.post('/api/v1/cobrancas/pix', { contrato_id: parseInt(contratoId, 10), device_id });
       setShowModal(false);
       setContratoId('');
       await fetchData(offset);
@@ -85,6 +132,7 @@ const ChargesView = () => {
   const canCopyPix = (cob: CobrancaOut) =>
     cob.pix_copia_cola && (cob.status === 'pendente' || cob.status === 'atrasado');
 
+<<<<<<< HEAD
   const canPay = (cob: CobrancaOut) => cob.status === 'pendente' || cob.status === 'atrasado';
 
   const closePayModal = () => {
@@ -110,6 +158,78 @@ const ChargesView = () => {
       setSavedCards(cardsRes.data);
     } catch (e) {
       setError(parseApiError(e, 'Erro ao carregar dados do pagamento'));
+=======
+  const canPay = (cob: CobrancaOut) =>
+    cob.status === 'pendente' || cob.status === 'atrasado';
+
+  const revokePortalLink = async (cobrancaId: number) => {
+    if (!confirm('Revogar o link público desta cobrança?')) return;
+    setError('');
+    try {
+      await api.delete(`/api/v1/cobrancas/${cobrancaId}/portal-link`);
+    } catch (e) {
+      setError(parseApiError(e, 'Erro ao revogar link'));
+    }
+  };
+
+  const copyPortalLink = async (cobrancaId: number) => {
+    setError('');
+    try {
+      const r = await api.post<PortalLinkOut>(`/api/v1/cobrancas/${cobrancaId}/portal-link`);
+      await navigator.clipboard.writeText(r.data.url);
+      setCopiedPortalId(cobrancaId);
+      setTimeout(() => setCopiedPortalId(null), 2000);
+    } catch (e) {
+      setError(parseApiError(e, 'Erro ao gerar link de pagamento'));
+    }
+  };
+
+  const refundableAmount = (cob: CobrancaOut) =>
+    Math.max(0, cob.valor - (cob.valor_estornado ?? 0));
+
+  const handleRefund = async () => {
+    if (!refundCob) return;
+    setRefundLoading(true);
+    setError('');
+    try {
+      const remaining = refundableAmount(refundCob);
+      const body =
+        refundAmount.trim() === ''
+          ? {}
+          : { amount: parseFloat(refundAmount.replace(',', '.')) };
+      if (body.amount != null && (body.amount <= 0 || body.amount > remaining)) {
+        setError(`Valor deve ser entre 0,01 e ${remaining.toFixed(2)}`);
+        return;
+      }
+      await api.post(`/api/v1/cobrancas/${refundCob.id}/refund`, body);
+      setRefundCob(null);
+      setRefundAmount('');
+      await fetchData(offset);
+    } catch (e) {
+      setError(parseApiError(e, 'Erro ao estornar cobrança'));
+    } finally {
+      setRefundLoading(false);
+    }
+  };
+
+  const openPay = async (cob: CobrancaOut) => {
+    setPayError('');
+    const ct = contratos.find((c) => c.id === cob.contrato_id);
+    if (!ct) {
+      setError('Contrato não encontrado para esta cobrança');
+      return;
+    }
+    try {
+      const [clRes, cardsRes] = await Promise.all([
+        api.get<ClienteOut>(`/api/v1/clientes/${ct.cliente_id}`),
+        api.get<ClienteMpCardOut[]>(`/api/v1/clientes/${ct.cliente_id}/mp-cards`),
+      ]);
+      setPayCliente(clRes.data);
+      setPayCards(cardsRes.data);
+      setPayCob(cob);
+    } catch (e) {
+      setError(parseApiError(e, 'Erro ao abrir pagamento'));
+>>>>>>> main
     }
   };
 
@@ -120,10 +240,20 @@ const ChargesView = () => {
           <h2>Gestão de Cobranças</h2>
           <p className="text-muted">Acompanhamento de pagamentos e faturamento</p>
         </div>
-        <button className="btn-primary" onClick={() => setShowModal(true)}>
+        <button className="btn-primary" onClick={openChargeModal} disabled={mpPayments !== null && !mpReady}>
           <Plus size={20} /> Gerar Cobrança
         </button>
       </div>
+
+      {mpPayments && !mpReady && (
+        <div className="glass" style={{ padding: '12px 16px', marginBottom: 16, borderLeft: '3px solid var(--warning)' }}>
+          <p style={{ margin: 0, fontSize: '0.85rem' }}>
+            <AlertTriangle size={14} style={{ verticalAlign: 'middle', marginRight: 6 }} />
+            Mercado Pago não conectado para esta operação. Conecte em{' '}
+            <a href="/ajustes" style={{ color: 'var(--primary)' }}>Ajustes</a> antes de gerar cobranças.
+          </p>
+        </div>
+      )}
 
       {error && <ErrorBanner message={error} onDismiss={() => setError('')} />}
       <AdminScopeBanner />
@@ -150,7 +280,7 @@ const ChargesView = () => {
             title="Nenhuma cobrança encontrada"
             description="Gere uma cobrança Pix para um contrato ativo."
             action={
-              <button className="btn-primary" onClick={() => setShowModal(true)}>
+              <button className="btn-primary" onClick={openChargeModal} disabled={!mpReady}>
                 <Plus size={18} /> Gerar Cobrança
               </button>
             }
@@ -195,6 +325,22 @@ const ChargesView = () => {
                       )}
                       {cob.status.toUpperCase()}
                     </span>
+                    {cob.mercadopago_dispute_status && (
+                      <a
+                        className="dispute-badge"
+                        title="Ver no Mercado Pago"
+                        href="https://www.mercadopago.com.br/activities/chargebacks"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        Disputa: {cob.mercadopago_dispute_status}
+                      </a>
+                    )}
+                    {(cob.valor_estornado ?? 0) > 0 && (
+                      <div className="text-muted" style={{ fontSize: '0.75rem', marginTop: 4 }}>
+                        Estornado {formatBrl(cob.valor_estornado ?? 0)}
+                      </div>
+                    )}
                   </td>
                   <td>
                     <div className="contrato-tag">Contrato #{cob.contrato_id}</div>
@@ -213,6 +359,7 @@ const ChargesView = () => {
                     )}
                   </td>
                   <td style={{ textAlign: 'right' }}>
+<<<<<<< HEAD
                     <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
                       {canPay(cob) && (
                         <button
@@ -234,6 +381,63 @@ const ChargesView = () => {
                         </button>
                       )}
                     </div>
+=======
+                    {canPay(cob) && (
+                      <>
+                        <button
+                          type="button"
+                          className="btn-secondary"
+                          style={{ marginRight: 8 }}
+                          onClick={() => void openPay(cob)}
+                        >
+                          Pagar
+                        </button>
+                        <button
+                          type="button"
+                          className="action-btn-pix"
+                          style={{ marginRight: 8 }}
+                          title="Copiar link público de pagamento"
+                          onClick={() => void copyPortalLink(cob.id)}
+                        >
+                          {copiedPortalId === cob.id ? <Check size={14} /> : <Copy size={14} />}
+                          {copiedPortalId === cob.id ? 'Link copiado' : 'Link'}
+                        </button>
+                        <button
+                          type="button"
+                          className="icon-btn"
+                          style={{ marginRight: 8 }}
+                          title="Revogar link público"
+                          onClick={() => void revokePortalLink(cob.id)}
+                        >
+                          Revogar
+                        </button>
+                      </>
+                    )}
+                    {canCopyPix(cob) && (
+                      <button
+                        type="button"
+                        className="action-btn-pix"
+                        onClick={() => void copyPix(cob.id, cob.pix_copia_cola!)}
+                      >
+                        {copiedId === cob.id ? <Check size={14} /> : <Copy size={14} />}
+                        {copiedId === cob.id ? 'Copiado' : 'PIX'}
+                      </button>
+                    )}
+                    {cob.status === 'recebido' && refundableAmount(cob) > 0 && (
+                      <button
+                        type="button"
+                        className="icon-btn danger"
+                        style={{ marginLeft: 8 }}
+                        title="Estornar no Mercado Pago"
+                        onClick={() => {
+                          setRefundCob(cob);
+                          setRefundAmount('');
+                        }}
+                      >
+                        Estornar
+                      </button>
+                    )}
+>>>>>>> main
                   </td>
                 </tr>
               ))}
@@ -270,6 +474,7 @@ const ChargesView = () => {
         <PayCobrancaModal
           cob={payCob}
           cliente={payCliente}
+<<<<<<< HEAD
           savedCards={savedCards}
           api={api}
           displayValor={displayValor(payCob)}
@@ -281,6 +486,67 @@ const ChargesView = () => {
           onError={setError}
         />
       )}
+=======
+          savedCards={payCards}
+          api={api}
+          displayValor={displayValor(payCob)}
+          onClose={() => {
+            setPayCob(null);
+            setPayCliente(null);
+            setPayCards([]);
+          }}
+          onPaid={() => {
+            setPayCob(null);
+            setPayCliente(null);
+            void fetchData(offset);
+          }}
+          onError={setPayError}
+        />
+      )}
+      {payError && <ErrorBanner message={payError} onDismiss={() => setPayError('')} />}
+
+      {refundCob && (
+        <div className="modal-overlay">
+          <div className="glass modal-content animate-fade">
+            <h3>Estornar cobrança #{refundCob.id}</h3>
+            <p className="text-muted" style={{ fontSize: '0.85rem', marginBottom: 16 }}>
+              Valor máximo estornável: {formatBrl(refundableAmount(refundCob))}. Deixe em branco para
+              estorno total do saldo restante.
+            </p>
+            <div className="input-group">
+              <label className="input-label">Valor parcial (opcional)</label>
+              <input
+                type="text"
+                className="input-field"
+                value={refundAmount}
+                onChange={(e) => setRefundAmount(e.target.value)}
+                placeholder={refundableAmount(refundCob).toFixed(2)}
+              />
+            </div>
+            <div className="modal-actions">
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => {
+                  setRefundCob(null);
+                  setRefundAmount('');
+                }}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className="btn-primary danger"
+                disabled={refundLoading}
+                onClick={() => void handleRefund()}
+              >
+                {refundLoading ? 'Estornando…' : 'Confirmar estorno'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+>>>>>>> main
 
       {showModal && (
         <div className="modal-overlay">
@@ -442,6 +708,24 @@ const ChargesView = () => {
           padding: 10px 20px;
           border-radius: 8px;
           cursor: pointer;
+        }
+        .dispute-badge {
+          display: inline-block;
+          margin-top: 6px;
+          font-size: 0.65rem;
+          font-weight: 700;
+          color: var(--danger);
+          background: rgba(239, 68, 68, 0.1);
+          padding: 2px 6px;
+          border-radius: 4px;
+          width: fit-content;
+          text-decoration: none;
+        }
+        .dispute-badge:hover {
+          text-decoration: underline;
+        }
+        .btn-primary.danger {
+          background: var(--danger);
         }
       `}</style>
     </div>

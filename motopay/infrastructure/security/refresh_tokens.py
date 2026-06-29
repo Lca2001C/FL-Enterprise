@@ -6,7 +6,7 @@ import secrets
 import redis
 
 from motopay.config import get_settings
-from motopay.infrastructure.redis_client import get_redis_connection
+from motopay.infrastructure.redis_client import get_redis_connection, reset_redis_connection
 
 logger = logging.getLogger(__name__)
 
@@ -19,11 +19,24 @@ def _ttl_seconds() -> int:
 
 def create_refresh_token(user_id: int) -> str:
     token = secrets.token_urlsafe(32)
-    try:
-        get_redis_connection().setex(f"{_PREFIX}{token}", _ttl_seconds(), str(user_id))
-    except redis.RedisError as e:
-        logger.error("refresh_token_create_failed user_id=%s: %s", user_id, e)
-        raise
+    key = f"{_PREFIX}{token}"
+    ttl = _ttl_seconds()
+    for attempt in range(2):
+        try:
+            get_redis_connection().setex(key, ttl, str(user_id))
+            return token
+        except redis.RedisError as e:
+            if attempt == 0:
+                logger.warning(
+                    "refresh_token_create_failed user_id=%s (tentativa %s): %s — reconectando",
+                    user_id,
+                    attempt + 1,
+                    e,
+                )
+                reset_redis_connection()
+                continue
+            logger.error("refresh_token_create_failed user_id=%s: %s", user_id, e)
+            raise
     return token
 
 

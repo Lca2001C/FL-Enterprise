@@ -1,10 +1,11 @@
-import { useState, useEffect, type FormEvent } from 'react';
-import { MessageSquare, RotateCcw, Save, Percent, ShieldCheck, Eye, CreditCard, Plus, Trash2 } from 'lucide-react';
+import { useState, useEffect, useCallback, type FormEvent } from 'react';
+import { MessageSquare, RotateCcw, Save, Percent, ShieldCheck, Eye, CreditCard, Plus, Trash2, Copy, CheckCircle, AlertCircle, Wifi, Users } from 'lucide-react';
 import { useAuth } from './AuthContext';
 import {
   BOT_MENU_BUILTIN_COMMANDS,
   isBuiltinBotMenuCommand,
   type OperacaoConfig,
+  type PaymentsConfig,
   type TelegramBotMenuButton,
   type TelegramTemplateMeta,
   type PaymentsConfig,
@@ -21,17 +22,119 @@ const GROUP_LABELS: Record<string, string> = {
 
 
 const DEFAULT_BOT_MENU_CONTACT_BUTTON: TelegramBotMenuButton = {
-  label: 'Quero falar com alguém',
+  label: '📞 Falar com Atendente',
   command: 'contato',
   response: 'Entendido, {cliente}. Nossa equipe entrará em contato em breve.',
 };
 
 const DEFAULT_BOT_MENU_BUTTONS: TelegramBotMenuButton[] = [
-  { label: 'Status', command: 'status' },
-  { label: 'Pix', command: 'pix' },
-  { label: 'Ajuda', command: 'ajuda' },
+  { label: '💳 Pagar com Pix', command: 'pix' },
+  { label: '📋 Status', command: 'status' },
+  { label: '❓ Ajuda', command: 'ajuda' },
   DEFAULT_BOT_MENU_CONTACT_BUTTON,
 ];
+
+const sanitizePercent = (value: number) => (Number.isFinite(value) ? value : 0);
+
+const applyOperacaoConfig = (data: OperacaoConfig): OperacaoConfig => ({
+  ...data,
+  multa_fixa_percentual: sanitizePercent(Number(data.multa_fixa_percentual)),
+  juros_diario_percentual: sanitizePercent(Number(data.juros_diario_percentual)),
+  telegram_custom_messages: data.telegram_custom_messages ?? [],
+  telegram_bot_menu_buttons: data.telegram_bot_menu_buttons ?? DEFAULT_BOT_MENU_BUTTONS,
+  telegram_owner_notify_id: data.telegram_owner_notify_id ?? null,
+  telegram_owner_notify_enabled: data.telegram_owner_notify_enabled ?? false,
+});
+
+const sanitizeMenuButtonsForPatch = (
+  buttons: TelegramBotMenuButton[]
+): TelegramBotMenuButton[] =>
+  buttons.map((btn) => {
+    const command = btn.command.trim().toLowerCase();
+    if (isBuiltinBotMenuCommand(command)) {
+      return { label: btn.label.trim(), command };
+    }
+    return {
+      label: btn.label.trim(),
+      command,
+      response: (btn.response ?? '').trim(),
+    };
+  });
+
+function collectUsedMenuCommands(buttons: TelegramBotMenuButton[]): Set<string> {
+  return new Set(buttons.map((b) => b.command.trim().toLowerCase()).filter(Boolean));
+}
+
+function nextUniqueCustomCommand(buttons: TelegramBotMenuButton[]): string {
+  const used = collectUsedMenuCommands(buttons);
+  let n = 1;
+  while (used.has(`custom_${n}`)) n += 1;
+  return `custom_${n}`;
+}
+
+function validateMenuButtonsForSave(buttons: TelegramBotMenuButton[]): string | null {
+  const seenLabels = new Set<string>();
+  const seenCommands = new Set<string>();
+  for (const btn of buttons) {
+    const label = btn.label.trim();
+    const command = btn.command.trim().toLowerCase();
+    if (!label) return 'Todos os botões do menu precisam de um texto.';
+    if (seenLabels.has(label)) return `Label duplicado no menu: ${label}`;
+    if (seenCommands.has(command)) return `Comando duplicado no menu: ${command}`;
+    seenLabels.add(label);
+    seenCommands.add(command);
+    if (!isBuiltinBotMenuCommand(command) && !(btn.response ?? '').trim()) {
+      return `Comando personalizado "${command}" precisa de uma resposta.`;
+    }
+  }
+  return null;
+}
+
+type SettingsPatchBody = {
+  multa_fixa_percentual?: number;
+  juros_diario_percentual?: number;
+  telegram_templates?: Record<string, string>;
+  telegram_bot_menu_buttons?: TelegramBotMenuButton[];
+  telegram_owner_notify_id?: string | null;
+  telegram_owner_notify_enabled?: boolean;
+};
+
+function verifySettingsPersisted(
+  body: SettingsPatchBody,
+  loaded: OperacaoConfig,
+  meta: TelegramTemplateMeta[]
+): boolean {
+  if (
+    sanitizePercent(body.multa_fixa_percentual ?? 0) !== sanitizePercent(loaded.multa_fixa_percentual)
+  ) {
+    return false;
+  }
+  if (
+    sanitizePercent(body.juros_diario_percentual ?? 0) !==
+    sanitizePercent(loaded.juros_diario_percentual)
+  ) {
+    return false;
+  }
+  if (body.telegram_owner_notify_enabled !== loaded.telegram_owner_notify_enabled) {
+    return false;
+  }
+  if ((body.telegram_owner_notify_id ?? null) !== (loaded.telegram_owner_notify_id ?? null)) {
+    return false;
+  }
+  if (body.telegram_templates && meta.length > 0) {
+    for (const item of meta) {
+      const sentVal = body.telegram_templates[item.key] ?? item.default;
+      const loadedVal = loaded.telegram_templates[item.key] ?? item.default;
+      if (sentVal !== loadedVal) return false;
+    }
+  }
+  if (body.telegram_bot_menu_buttons) {
+    const sent = JSON.stringify(sanitizeMenuButtonsForPatch(body.telegram_bot_menu_buttons));
+    const got = JSON.stringify(sanitizeMenuButtonsForPatch(loaded.telegram_bot_menu_buttons));
+    if (sent !== got) return false;
+  }
+  return true;
+}
 
 const SettingsView = () => {
   const { api, user, operacaoScopeId } = useAuth();
@@ -49,13 +152,24 @@ const SettingsView = () => {
   const [mpPublicKey, setMpPublicKey] = useState('');
   const [mpWebhookSecret, setMpWebhookSecret] = useState('');
   const [paymentsConfig, setPaymentsConfig] = useState<PaymentsConfig | null>(null);
+<<<<<<< HEAD
+=======
+  const [webhookCopied, setWebhookCopied] = useState(false);
+  const [oauthLoading, setOauthLoading] = useState(false);
+  const [disconnectLoading, setDisconnectLoading] = useState(false);
+>>>>>>> main
   const [templateMeta, setTemplateMeta] = useState<TelegramTemplateMeta[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [testingOwnerNotify, setTestingOwnerNotify] = useState(false);
   const [previewing, setPreviewing] = useState<string | null>(null);
   const [previewResult, setPreviewResult] = useState<{ key: string; text: string } | null>(null);
   const [error, setError] = useState('');
   const [toast, setToast] = useState('');
+  const [equipe, setEquipe] = useState<{ id: number; email: string }[]>([]);
+  const [novoEmail, setNovoEmail] = useState('');
+  const [novaSenha, setNovaSenha] = useState('');
+  const [addingUser, setAddingUser] = useState(false);
 
   const isAdmin = user?.tipo === 'admin';
   const isDono = user?.tipo === 'dono';
@@ -67,20 +181,76 @@ const SettingsView = () => {
   };
 
   const fetchPaymentsConfig = async () => {
+<<<<<<< HEAD
     if (isAdmin && adminTargetId == null) {
       setPaymentsConfig(null);
       return;
     }
+=======
+>>>>>>> main
     try {
       const params =
         isAdmin && adminTargetId != null ? { operacao_id: adminTargetId } : undefined;
       const r = await api.get<PaymentsConfig>('/api/v1/config/payments', { params });
       setPaymentsConfig(r.data);
+<<<<<<< HEAD
+=======
+      // Public Key não é segredo: preenche o campo com o valor salvo para confirmar persistência.
+      setMpPublicKey(r.data.mercadopago_public_key_saved ?? '');
+>>>>>>> main
     } catch {
       setPaymentsConfig(null);
     }
   };
 
+<<<<<<< HEAD
+=======
+  const fetchEquipe = async () => {
+    try {
+      const params =
+        isAdmin && adminTargetId != null ? { operacao_id: adminTargetId } : undefined;
+      const r = await api.get<{ items: { id: number; email: string }[] }>(
+        '/api/v1/usuarios/equipe',
+        { params }
+      );
+      setEquipe(r.data.items ?? []);
+    } catch {
+      setEquipe([]);
+    }
+  };
+
+  const addEquipeUser = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!novoEmail.trim() || novaSenha.length < 8) {
+      setError('Informe um e-mail e uma senha de pelo menos 8 caracteres.');
+      return;
+    }
+    if (isAdmin && adminTargetId == null) {
+      setError('Selecione uma operação no escopo antes de adicionar usuários.');
+      return;
+    }
+    setAddingUser(true);
+    setError('');
+    try {
+      const params =
+        isAdmin && adminTargetId != null ? { operacao_id: adminTargetId } : undefined;
+      await api.post(
+        '/api/v1/usuarios/equipe',
+        { email: novoEmail.trim(), password: novaSenha },
+        { params }
+      );
+      setNovoEmail('');
+      setNovaSenha('');
+      showToast('Usuário adicionado à operação.');
+      await fetchEquipe();
+    } catch (err) {
+      setError(parseApiError(err, 'Não foi possível adicionar o usuário.'));
+    } finally {
+      setAddingUser(false);
+    }
+  };
+
+>>>>>>> main
   const fetchConfig = async () => {
     setLoading(true);
     try {
@@ -99,35 +269,25 @@ const SettingsView = () => {
             telegram_owner_notify_id: null,
             telegram_owner_notify_enabled: false,
           });
+<<<<<<< HEAD
           setMpToken('');
           setPaymentsConfig(null);
+=======
+>>>>>>> main
           setLoading(false);
           return;
         }
         const r = await api.get<OperacaoConfig>(`/api/v1/operacoes/${adminTargetId}`);
-        setConfig({
-          ...r.data,
-          telegram_custom_messages: r.data.telegram_custom_messages ?? [],
-          telegram_bot_menu_buttons: r.data.telegram_bot_menu_buttons ?? DEFAULT_BOT_MENU_BUTTONS,
-          telegram_owner_notify_id: r.data.telegram_owner_notify_id ?? null,
-          telegram_owner_notify_enabled: r.data.telegram_owner_notify_enabled ?? false,
-        });
-        setMpToken('');
+        setConfig(applyOperacaoConfig(r.data));
       } else {
         const r = await api.get<OperacaoConfig>('/api/v1/operacoes/me');
-        setConfig({
-          nome: r.data.nome,
-          multa_fixa_percentual: r.data.multa_fixa_percentual,
-          juros_diario_percentual: r.data.juros_diario_percentual,
-          telegram_templates: r.data.telegram_templates,
-          telegram_custom_messages: [],
-          telegram_bot_menu_buttons: r.data.telegram_bot_menu_buttons ?? DEFAULT_BOT_MENU_BUTTONS,
-          telegram_owner_notify_id: r.data.telegram_owner_notify_id ?? null,
-          telegram_owner_notify_enabled: r.data.telegram_owner_notify_enabled ?? false,
-        });
-        setMpToken('');
+        setConfig(applyOperacaoConfig(r.data));
       }
       await fetchPaymentsConfig();
+<<<<<<< HEAD
+=======
+      await fetchEquipe();
+>>>>>>> main
     } catch (e) {
       setError(parseApiError(e, 'Erro ao carregar configurações'));
     } finally {
@@ -139,6 +299,7 @@ const SettingsView = () => {
     void fetchConfig();
   }, [user?.tipo, adminTargetId, api]);
 
+<<<<<<< HEAD
   const appendMercadoPagoFields = (body: Record<string, unknown>) => {
     if (mpToken.trim()) body.mercadopago_access_token = mpToken.trim();
     if (mpPublicKey.trim()) body.mercadopago_public_key = mpPublicKey.trim();
@@ -170,23 +331,181 @@ const SettingsView = () => {
     };
     appendMercadoPagoFields(body);
     return body;
+=======
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const oauth = params.get('mp_oauth');
+    if (!oauth) return;
+    if (oauth === 'ok') {
+      showToast('Conta Mercado Pago conectada com sucesso.');
+      void fetchPaymentsConfig();
+    } else {
+      const detail = params.get('detail');
+      setError(detail ? decodeURIComponent(detail) : 'Falha ao conectar Mercado Pago.');
+    }
+    params.delete('mp_oauth');
+    params.delete('detail');
+    const qs = params.toString();
+    const next = `${window.location.pathname}${qs ? `?${qs}` : ''}`;
+    window.history.replaceState({}, '', next);
+  }, []);
+
+  const copyWebhookUrl = useCallback(async () => {
+    const url = paymentsConfig?.webhook_url;
+    if (!url) return;
+    try {
+      await navigator.clipboard.writeText(url);
+      setWebhookCopied(true);
+      setTimeout(() => setWebhookCopied(false), 2500);
+    } catch {
+      setWebhookCopied(false);
+    }
+  }, [paymentsConfig?.webhook_url]);
+
+  const disconnectMercadoPagoOAuth = async () => {
+    if (!confirm('Desconectar conta Mercado Pago desta operação?')) return;
+    if (isAdmin && adminTargetId == null) {
+      setError('Selecione uma operação no escopo.');
+      return;
+    }
+    setDisconnectLoading(true);
+    setError('');
+    try {
+      const params =
+        isAdmin && adminTargetId != null ? { operacao_id: adminTargetId } : undefined;
+      await api.post('/api/v1/operacoes/mp-oauth/disconnect', null, { params });
+      showToast('Conta Mercado Pago desconectada.');
+      await fetchPaymentsConfig();
+    } catch (e) {
+      setError(parseApiError(e, 'Erro ao desconectar'));
+    } finally {
+      setDisconnectLoading(false);
+    }
+>>>>>>> main
   };
 
-  const handleSave = async (e: FormEvent) => {
-    e.preventDefault();
-    setSaving(true);
+  const connectMercadoPagoOAuth = async () => {
+    if (isAdmin && adminTargetId == null) {
+      setError('Selecione uma operação no escopo antes de conectar o Mercado Pago.');
+      return;
+    }
+    setOauthLoading(true);
+    setError('');
+    try {
+      const params =
+        isAdmin && adminTargetId != null ? { operacao_id: adminTargetId } : undefined;
+      const r = await api.get<{ authorization_url: string }>('/api/v1/operacoes/mp-oauth/start', {
+        params,
+      });
+      window.location.href = r.data.authorization_url;
+    } catch (e) {
+      setError(parseApiError(e, 'Não foi possível iniciar conexão OAuth'));
+      setOauthLoading(false);
+    }
+  };
+
+  const buildTemplateOverrides = () => {
+    const overrides: Record<string, string> = {};
+    for (const meta of templateMeta) {
+      overrides[meta.key] = config.telegram_templates[meta.key] ?? meta.default;
+    }
+    return overrides;
+  };
+
+  const buildPatchBody = () => {
+    const menuButtons = sanitizeMenuButtonsForPatch(config.telegram_bot_menu_buttons);
+    const shared = {
+      multa_fixa_percentual: sanitizePercent(config.multa_fixa_percentual),
+      juros_diario_percentual: sanitizePercent(config.juros_diario_percentual),
+      telegram_templates: buildTemplateOverrides(),
+      telegram_bot_menu_buttons: menuButtons,
+      telegram_owner_notify_id: config.telegram_owner_notify_id ?? null,
+      telegram_owner_notify_enabled: config.telegram_owner_notify_enabled,
+    };
+    const mpFields: Record<string, string> = {};
+    if (mpToken.trim()) mpFields.mercadopago_access_token = mpToken.trim();
+    if (mpPublicKey.trim()) mpFields.mercadopago_public_key = mpPublicKey.trim();
+    if (mpWebhookSecret.trim()) mpFields.mercadopago_webhook_secret = mpWebhookSecret.trim();
+
+    if (isDono) {
+      // Dono conecta o MP exclusivamente via OAuth — o backend ignora
+      // credenciais manuais no PATCH do dono.
+      return shared;
+    }
+    return {
+      nome: config.nome.trim(),
+      telegram_custom_messages: config.telegram_custom_messages,
+      ...shared,
+      ...mpFields,
+    };
+  };
+
+  const testOwnerNotify = async () => {
+    if (config.telegram_owner_notify_enabled && !(config.telegram_owner_notify_id ?? '').trim()) {
+      setError('Informe seu Telegram ID antes de enviar o teste.');
+      return;
+    }
+    setTestingOwnerNotify(true);
     setError('');
     try {
       if (isAdmin) {
         if (adminTargetId == null) {
-          showToast('Selecione uma operação no topo da página.');
+          setError('Selecione uma operação no escopo.');
           return;
         }
-        await api.patch(`/api/v1/operacoes/${adminTargetId}`, buildPatchBody());
+        await api.post(`/api/v1/operacoes/${adminTargetId}/telegram-owner-notify-test`);
       } else {
-        await api.patch('/api/v1/operacoes/me', buildPatchBody());
+        await api.post('/api/v1/operacoes/me/telegram-owner-notify-test');
       }
+      showToast('Mensagem de teste enviada ao seu Telegram.');
+    } catch (e) {
+      setError(parseApiError(e, 'Não foi possível enviar o teste. Salve as alterações e tente novamente.'));
+    } finally {
+      setTestingOwnerNotify(false);
+    }
+  };
+
+  const handleSave = async (e: FormEvent) => {
+    e.preventDefault();
+    if (config.telegram_owner_notify_enabled && !(config.telegram_owner_notify_id ?? '').trim()) {
+      setError('Informe seu Telegram ID para ativar notificações ao dono.');
+      return;
+    }
+    const menuError = validateMenuButtonsForSave(config.telegram_bot_menu_buttons);
+    if (menuError) {
+      setError(menuError);
+      return;
+    }
+    setSaving(true);
+    setError('');
+    try {
+      const body = buildPatchBody();
+      if (isAdmin) {
+        if (adminTargetId == null) {
+          setError('Selecione uma operação no topo da página.');
+          return;
+        }
+        await api.patch<OperacaoConfig>(`/api/v1/operacoes/${adminTargetId}`, body);
+      } else {
+        await api.patch<OperacaoConfig>('/api/v1/operacoes/me', body);
+      }
+
+      const verifiedRes = isAdmin
+        ? await api.get<OperacaoConfig>(`/api/v1/operacoes/${adminTargetId}`)
+        : await api.get<OperacaoConfig>('/api/v1/operacoes/me');
+      const verified = applyOperacaoConfig(verifiedRes.data);
+
+      if (!verifySettingsPersisted(body, verified, templateMeta)) {
+        setConfig(verified);
+        setError('Salvo na API mas não confirmado — recarregue a página e tente novamente.');
+        return;
+      }
+
+      setConfig(verified);
+      setMpToken('');
+      setMpWebhookSecret('');
       showToast('Configurações salvas com sucesso!');
+      void fetchPaymentsConfig();
     } catch (e) {
       setError(parseApiError(e, 'Erro ao salvar configurações'));
     } finally {
@@ -228,11 +547,16 @@ const SettingsView = () => {
   const addMenuButton = () => {
     setConfig((prev) => {
       if (prev.telegram_bot_menu_buttons.length >= 6) return prev;
+      const command = nextUniqueCustomCommand(prev.telegram_bot_menu_buttons);
       return {
         ...prev,
         telegram_bot_menu_buttons: [
           ...prev.telegram_bot_menu_buttons,
-          { label: 'Novo botão', command: 'ajuda' },
+          {
+            label: 'Novo botão',
+            command,
+            response: 'Olá, {cliente}! Como posso ajudar?',
+          },
         ],
       };
     });
@@ -327,6 +651,7 @@ const SettingsView = () => {
             </div>
           )}
 
+<<<<<<< HEAD
           {(isAdmin || isDono) && paymentsConfig && (
             <div className="settings-section" style={{ marginTop: isAdmin ? 40 : 0 }}>
               <h3 style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
@@ -416,11 +741,277 @@ const SettingsView = () => {
                     ? 'Há credenciais parciais desta operação — complete os três campos para ativar.'
                     : 'Configure as credenciais desta operação ou MERCADOPAGO_* no .env da API (conta global).'}
                 </p>
+=======
+          {(isAdmin || isDono) && (
+            <div className="settings-section" style={{ marginTop: 40 }}>
+              <h3 style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
+                <CreditCard size={20} color="var(--primary)" /> Mercado Pago
+              </h3>
+
+              {/* Status badges */}
+              {paymentsConfig && (
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 20 }}>
+                  <span className={`mp-badge ${paymentsConfig.mercadopago_credentials_complete ? 'badge-ok' : 'badge-warn'}`}>
+                    {paymentsConfig.mercadopago_credentials_complete
+                      ? <><CheckCircle size={13} /> Credenciais OK</>
+                      : <><AlertCircle size={13} /> Credenciais incompletas</>}
+                  </span>
+                  <span className={`mp-badge ${paymentsConfig.mercadopago_webhook_ready ? 'badge-ok' : 'badge-warn'}`}>
+                    {paymentsConfig.mercadopago_webhook_ready
+                      ? <><Wifi size={13} /> Webhook configurado</>
+                      : <><Wifi size={13} /> Webhook secret pendente</>}
+                  </span>
+                  <span className={`mp-badge ${paymentsConfig.credentials_mode === 'test' ? 'badge-info' : 'badge-ok'}`}>
+                    {paymentsConfig.credentials_mode === 'test' ? 'Modo Teste' : 'Produção'}
+                  </span>
+                  {paymentsConfig.mercadopago_oauth_connected && (
+                    <span className="mp-badge badge-ok">
+                      <CheckCircle size={13} /> OAuth conectado
+                      {paymentsConfig.mercadopago_oauth_user_id && (
+                        <> · ID {paymentsConfig.mercadopago_oauth_user_id}</>
+                      )}
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {/* Webhook URL com botão de cópia — configuração da aplicação (admin).
+                  O dono não configura webhook: as notificações chegam no webhook
+                  global da aplicação MP. */}
+              {isAdmin && paymentsConfig?.webhook_url && (
+                <div className="settings-card" style={{ marginBottom: 20 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 8 }}>
+                    <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>URL do Webhook</span>
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      style={{ fontSize: '0.8rem', padding: '4px 10px', display: 'flex', alignItems: 'center', gap: 6 }}
+                      onClick={() => void copyWebhookUrl()}
+                    >
+                      {webhookCopied ? <><CheckCircle size={13} /> Copiado!</> : <><Copy size={13} /> Copiar</>}
+                    </button>
+                  </div>
+                  <code style={{ fontSize: '0.78rem', wordBreak: 'break-all', display: 'block', color: 'var(--primary)' }}>
+                    {paymentsConfig.webhook_url}
+                  </code>
+                  {!paymentsConfig.mercadopago_webhook_ready && (
+                    <div style={{ marginTop: 12 }}>
+                      <p className="text-muted" style={{ fontSize: '0.82rem', marginBottom: 6 }}>
+                        <strong>Como configurar o Webhook no Mercado Pago:</strong>
+                      </p>
+                      <ol className="webhook-steps">
+                        <li>Acesse <strong>Painel MP → Seu negócio → Configurações → Notificações</strong></li>
+                        <li>Cole a URL acima no campo <em>URL para notificações</em></li>
+                        <li>Selecione o tópico <strong>Pagamentos</strong> e <strong>Pedidos</strong></li>
+                        <li>Copie o <strong>Webhook Secret</strong> gerado e cole no campo abaixo</li>
+                      </ol>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Credenciais manuais — somente admin (fallback/suporte).
+                  Dono conecta exclusivamente via OAuth abaixo. */}
+              {isAdmin && (
+                <>
+                  <div className="input-group">
+                    <label className="input-label">Access Token</label>
+                    <input
+                      type="password"
+                      className="input-field"
+                      value={mpToken}
+                      onChange={(e) => setMpToken(e.target.value)}
+                      placeholder={
+                        paymentsConfig?.mercadopago_access_token_preview
+                          ? 'Deixe em branco para manter o atual'
+                          : 'APP_USR-… (cole o Access Token)'
+                      }
+                      autoComplete="off"
+                    />
+                    {paymentsConfig?.mercadopago_access_token_preview && (
+                      <small className="mp-saved-hint">
+                        <CheckCircle size={12} /> Salvo: {paymentsConfig.mercadopago_access_token_preview}
+                      </small>
+                    )}
+                  </div>
+                  <div className="input-group">
+                    <label className="input-label">Public Key</label>
+                    <input
+                      type="text"
+                      className="input-field"
+                      value={mpPublicKey}
+                      onChange={(e) => setMpPublicKey(e.target.value)}
+                      placeholder="APP_USR-… ou TEST-…"
+                      autoComplete="off"
+                    />
+                    {paymentsConfig?.mercadopago_public_key_saved && (
+                      <small className="mp-saved-hint">
+                        <CheckCircle size={12} /> Salvo nesta operação
+                      </small>
+                    )}
+                  </div>
+                  <div className="input-group">
+                    <label className="input-label">Webhook Secret</label>
+                    <input
+                      type="password"
+                      className="input-field"
+                      value={mpWebhookSecret}
+                      onChange={(e) => setMpWebhookSecret(e.target.value)}
+                      placeholder={
+                        paymentsConfig?.mercadopago_webhook_secret_preview
+                          ? 'Deixe em branco para manter o atual'
+                          : 'Secret do painel MP (evento Order)'
+                      }
+                      autoComplete="off"
+                    />
+                    {paymentsConfig?.mercadopago_webhook_secret_preview && (
+                      <small className="mp-saved-hint">
+                        <CheckCircle size={12} /> Salvo: {paymentsConfig.mercadopago_webhook_secret_preview}
+                      </small>
+                    )}
+                    <small className="text-muted">
+                      Obtido no painel MP após registrar a URL de webhook acima.
+                    </small>
+                  </div>
+                </>
+              )}
+
+              {/* OAuth — único método de conexão para o dono */}
+              {paymentsConfig && (
+                <div className="settings-card" style={{ marginTop: 20 }}>
+                  <p style={{ fontSize: '0.85rem', fontWeight: 600, marginBottom: 6 }}>
+                    Conectar conta Mercado Pago
+                  </p>
+                  {!paymentsConfig.mercadopago_oauth_available ? (
+                    <>
+                      <span className="mp-badge badge-warn">
+                        <AlertCircle size={13} /> Não configurado no servidor
+                      </span>
+                      <p className="text-muted" style={{ fontSize: '0.82rem', margin: '10px 0 12px' }}>
+                        {isAdmin
+                          ? 'Para habilitar o login com Mercado Pago, configure MERCADOPAGO_OAUTH_CLIENT_ID e MERCADOPAGO_OAUTH_CLIENT_SECRET no .env do servidor (credenciais da aplicação no painel de desenvolvedor do MP) e reinicie a API.'
+                          : 'A conexão com o Mercado Pago ainda não foi habilitada no servidor. Fale com o administrador.'}
+                      </p>
+                      <button type="button" className="btn-secondary" disabled>
+                        Conectar Mercado Pago
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-muted" style={{ fontSize: '0.82rem', marginBottom: 12 }}>
+                        {paymentsConfig.mercadopago_oauth_connected
+                          ? `Conta Mercado Pago conectada${paymentsConfig.mercadopago_oauth_user_id ? ` (ID: ${paymentsConfig.mercadopago_oauth_user_id}` : ''}${paymentsConfig.mercadopago_account_email ? `${paymentsConfig.mercadopago_oauth_user_id ? ', ' : ' ('}${paymentsConfig.mercadopago_account_email}` : ''}${paymentsConfig.mercadopago_oauth_user_id || paymentsConfig.mercadopago_account_email ? ')' : ''}. O token é renovado automaticamente.`
+                          : 'Use o botão abaixo para autorizar a conta Mercado Pago desta operação. Entrar no app Mercado Pago no celular não conecta a conta ao sistema.'}
+                      </p>
+                      <p className="text-muted" style={{ fontSize: '0.78rem', marginBottom: 10 }}>
+                        Status:{' '}
+                        <strong>
+                          {paymentsConfig.mercadopago_connection_status === 'connected'
+                            ? 'Conectado'
+                            : paymentsConfig.mercadopago_connection_status === 'expired'
+                              ? 'Expirado — reconecte'
+                              : 'Desconectado'}
+                        </strong>
+                      </p>
+                      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                        <button
+                          type="button"
+                          className="btn-secondary"
+                          disabled={oauthLoading}
+                          onClick={() => void connectMercadoPagoOAuth()}
+                        >
+                          {oauthLoading
+                            ? 'Redirecionando…'
+                            : paymentsConfig.mercadopago_oauth_connected
+                              ? 'Reconectar Mercado Pago'
+                              : 'Conectar Mercado Pago'}
+                        </button>
+                        {paymentsConfig.mercadopago_oauth_connected && (
+                          <button
+                            type="button"
+                            className="btn-secondary"
+                            disabled={disconnectLoading}
+                            onClick={() => void disconnectMercadoPagoOAuth()}
+                          >
+                            {disconnectLoading ? '…' : 'Desconectar'}
+                          </button>
+                        )}
+                      </div>
+                      {paymentsConfig.mercadopago_oauth_connected && !paymentsConfig.mercadopago_webhook_ready && (
+                        <p className="text-muted" style={{ fontSize: '0.8rem', marginTop: 10 }}>
+                          {isAdmin
+                            ? 'OAuth conectado, mas o Webhook Secret ainda precisa ser configurado manualmente acima.'
+                            : 'OAuth conectado, mas o webhook ainda não foi configurado no servidor — fale com o administrador.'}
+                        </p>
+                      )}
+                    </>
+                  )}
+                </div>
+>>>>>>> main
               )}
             </div>
           )}
 
-          <div className="settings-section" style={{ marginTop: isDono ? 0 : 40 }} data-tour="settings-billing">
+          {(isDono || isAdmin) && (
+            <div className="settings-section" style={{ marginTop: 40 }}>
+              <h3 style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+                <Users size={20} color="var(--primary)" /> Equipe da operação
+              </h3>
+              <p className="text-muted" style={{ fontSize: '0.85rem', marginBottom: 16 }}>
+                Usuários com acesso a esta operação. Novos usuários entram como donos
+                (mesmo nível de acesso) e enxergam apenas esta operação.
+              </p>
+
+              {equipe.length > 0 && (
+                <ul className="equipe-list" style={{ listStyle: 'none', padding: 0, marginBottom: 16 }}>
+                  {equipe.map((u) => (
+                    <li
+                      key={u.id}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 8,
+                        padding: '8px 0',
+                        borderBottom: '1px solid var(--border, #eee)',
+                        fontSize: '0.9rem',
+                      }}
+                    >
+                      <ShieldCheck size={14} color="var(--primary)" />
+                      {u.email}
+                      {u.email === user?.email && (
+                        <span className="text-muted" style={{ fontSize: '0.78rem' }}>(você)</span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              <form onSubmit={addEquipeUser} className="settings-card" style={{ display: 'grid', gap: 10 }}>
+                <p style={{ fontSize: '0.85rem', fontWeight: 600, margin: 0 }}>Adicionar usuário</p>
+                <input
+                  type="email"
+                  className="input-field"
+                  placeholder="E-mail do novo usuário"
+                  value={novoEmail}
+                  onChange={(e) => setNovoEmail(e.target.value)}
+                  autoComplete="off"
+                />
+                <input
+                  type="password"
+                  className="input-field"
+                  placeholder="Senha (mín. 8 caracteres)"
+                  value={novaSenha}
+                  onChange={(e) => setNovaSenha(e.target.value)}
+                  autoComplete="new-password"
+                />
+                <button type="submit" className="btn-primary" disabled={addingUser} style={{ justifySelf: 'start' }}>
+                  <Plus size={16} /> {addingUser ? 'Adicionando…' : 'Adicionar usuário'}
+                </button>
+              </form>
+            </div>
+          )}
+
+          <div className="settings-section" style={{ marginTop: 40 }} data-tour="settings-billing">
             <h3 style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
               <Percent size={20} color="var(--warning)" /> Regras de Multa e Juros
             </h3>
@@ -438,7 +1029,10 @@ const SettingsView = () => {
                     className="input-field"
                     value={config.multa_fixa_percentual}
                     onChange={(e) =>
-                      setConfig({ ...config, multa_fixa_percentual: parseFloat(e.target.value) })
+                      setConfig({
+                        ...config,
+                        multa_fixa_percentual: sanitizePercent(parseFloat(e.target.value)),
+                      })
                     }
                   />
                   <span className="input-suffix">%</span>
@@ -455,7 +1049,10 @@ const SettingsView = () => {
                     className="input-field"
                     value={config.juros_diario_percentual}
                     onChange={(e) =>
-                      setConfig({ ...config, juros_diario_percentual: parseFloat(e.target.value) })
+                      setConfig({
+                        ...config,
+                        juros_diario_percentual: sanitizePercent(parseFloat(e.target.value)),
+                      })
                     }
                   />
                   <span className="input-suffix">%</span>
@@ -612,8 +1209,13 @@ const SettingsView = () => {
                       onChange={(e) => {
                         const value = e.target.value;
                         if (value === '__custom__') {
+                          const command = nextUniqueCustomCommand(
+                            config.telegram_bot_menu_buttons.map((b, i) =>
+                              i === index ? { ...b, command: '' } : b
+                            )
+                          );
                           updateMenuButton(index, {
-                            command: 'contato',
+                            command,
                             response:
                               'Entendido, {cliente}. Nossa equipe entrará em contato em breve.',
                           });
@@ -678,7 +1280,7 @@ const SettingsView = () => {
               <h4 style={{ fontFamily: 'Outfit', margin: '0 0 8px' }}>Notificar dono no Telegram</h4>
               <p className="text-muted" style={{ fontSize: '0.85rem', marginBottom: 16 }}>
                 Receba uma cópia no seu Telegram quando um locatário pedir contato ou tocar em um botão
-                como &quot;Quero falar com alguém&quot;. Use o @userinfobot para descobrir seu ID.
+                como &quot;📞 Falar com Atendente&quot;. Use o @userinfobot para descobrir seu ID.
               </p>
               <label className="checkbox-row" style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
                 <input
@@ -709,6 +1311,23 @@ const SettingsView = () => {
                   }
                 />
               </div>
+              <div style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  disabled={
+                    testingOwnerNotify ||
+                    !config.telegram_owner_notify_enabled ||
+                    !(config.telegram_owner_notify_id ?? '').trim()
+                  }
+                  onClick={() => void testOwnerNotify()}
+                >
+                  {testingOwnerNotify ? 'Enviando teste…' : 'Enviar teste no Telegram'}
+                </button>
+                <span className="text-muted" style={{ fontSize: '0.8rem', alignSelf: 'center' }}>
+                  Salve antes se acabou de alterar o ID.
+                </span>
+              </div>
             </div>
           </div>
 
@@ -738,6 +1357,52 @@ const SettingsView = () => {
         .settings-section h3 {
           font-family: 'Outfit';
           font-size: 1.1rem;
+        }
+        .mp-badge {
+          display: inline-flex;
+          align-items: center;
+          gap: 5px;
+          font-size: 0.78rem;
+          padding: 4px 10px;
+          border-radius: 20px;
+          font-weight: 500;
+        }
+        .badge-ok {
+          background: rgba(16, 185, 129, 0.12);
+          color: var(--accent, #10b981);
+          border: 1px solid rgba(16, 185, 129, 0.25);
+        }
+        .badge-warn {
+          background: rgba(245, 158, 11, 0.12);
+          color: var(--warning, #f59e0b);
+          border: 1px solid rgba(245, 158, 11, 0.25);
+        }
+        .badge-info {
+          background: rgba(99, 102, 241, 0.12);
+          color: var(--primary, #6366f1);
+          border: 1px solid rgba(99, 102, 241, 0.25);
+        }
+        .settings-card {
+          background: rgba(255,255,255,0.03);
+          border: 1px solid var(--glass-border);
+          border-radius: 10px;
+          padding: 14px 16px;
+        }
+        .mp-saved-hint {
+          display: inline-flex;
+          align-items: center;
+          gap: 5px;
+          margin-top: 6px;
+          color: var(--accent, #10b981);
+          font-size: 0.78rem;
+          font-weight: 500;
+        }
+        .webhook-steps {
+          margin: 0;
+          padding-left: 18px;
+          font-size: 0.82rem;
+          color: var(--text-muted);
+          line-height: 1.8;
         }
         .input-group {
           margin-bottom: 15px;

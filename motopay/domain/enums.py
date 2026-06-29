@@ -13,6 +13,16 @@ class MotoStatus(str, Enum):
     INATIVA = "inativa"
 
 
+class VeiculoTipo(str, Enum):
+    MOTO = "moto"
+    CARRO = "carro"
+    CAMINHONETE = "caminhonete"
+    VAN = "van"
+    CAMINHAO = "caminhao"
+    ONIBUS = "onibus"
+    OUTROS = "outros"
+
+
 class ContratoStatus(str, Enum):
     ATIVO = "ativo"
     FINALIZADO = "finalizado"
@@ -41,6 +51,8 @@ class DomainEventType(str, Enum):
     PAGAMENTO_CONFIRMADO = "PAGAMENTO_CONFIRMADO"
     CLIENTE_INADIMPLENTE = "CLIENTE_INADIMPLENTE"
     MOTO_EM_MANUTENCAO = "MOTO_EM_MANUTENCAO"
+    ESTORNO_CONFIRMADO = "ESTORNO_CONFIRMADO"
+    CHARGEBACK_ATUALIZADO = "CHARGEBACK_ATUALIZADO"
 
 
 class PaymentGateway(str, Enum):

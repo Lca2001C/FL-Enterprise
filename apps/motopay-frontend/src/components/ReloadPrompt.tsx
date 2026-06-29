@@ -1,10 +1,17 @@
 import { useEffect } from 'react';
 import { useRegisterSW } from 'virtual:pwa-register/react';
+import { isLocalDevHostname } from '../utils/apiBase';
+
+function isLocalDevPanel(): boolean {
+  if (typeof window === 'undefined') return false;
+  return isLocalDevHostname(window.location.hostname);
+}
 
 /**
  * Prompt de atualização quando nova build do PWA está disponível.
+ * Em localhost não registra SW (evita cache de bundles antigos no dev).
  */
-export default function ReloadPrompt() {
+function ReloadPromptInner() {
   const {
     offlineReady: [offlineReady, setOfflineReady],
     needRefresh: [needRefresh],
@@ -19,11 +26,17 @@ export default function ReloadPrompt() {
     return () => window.clearTimeout(t);
   }, [offlineReady, setOfflineReady]);
 
+  // Painel local: aplica nova build sem esperar clique (evita JS antigo no cache do PWA).
+  useEffect(() => {
+    if (!needRefresh || !isLocalDevPanel()) return;
+    void updateServiceWorker(true);
+  }, [needRefresh, updateServiceWorker]);
+
   return (
     <>
       {offlineReady && (
         <div className="reload-prompt reload-prompt--info" role="status">
-          <span>Disponível para uso offline neste dispositivo.</span>
+          <span>App instalado. Conexão necessária para dados ao vivo.</span>
           <button type="button" onClick={() => setOfflineReady(false)}>
             OK
           </button>
@@ -141,4 +154,9 @@ export default function ReloadPrompt() {
       )}
     </>
   );
+}
+
+export default function ReloadPrompt() {
+  if (isLocalDevPanel()) return null;
+  return <ReloadPromptInner />;
 }

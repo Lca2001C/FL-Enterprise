@@ -4,17 +4,38 @@ from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 
+from sqlalchemy.orm import Session
+
+from motopay.config import get_settings
 from motopay.domain.enums import PaymentGateway
+<<<<<<< HEAD
 from motopay.domain.exceptions import ForbiddenError
 from motopay.infrastructure.db.models import Cliente, Operacao
+=======
+from motopay.domain.exceptions import MercadoPagoNotConnectedError, MotoPayError
+from motopay.infrastructure.db.models import Cliente, Contrato, Operacao
+>>>>>>> main
 from motopay.infrastructure.payments.mercadopago_client import (
+    MP_NOT_CONNECTED_MSG,
+    MercadoPagoApiError,
     MercadoPagoClient,
+<<<<<<< HEAD
     mercadopago_api_error_message,
     mp_configured_for_operacao,
     mp_credentials_complete,
     mp_token_for_operacao,
     payer_email_for_mercadopago,
     uses_operacao_mercadopago_credentials,
+=======
+    assert_payer_email_ready,
+    mp_operacao_ready_for_payments,
+    payer_email_for_mercadopago,
+    require_operacao_mp_token,
+)
+from motopay.infrastructure.payments.mp_payload_builder import (
+    MercadoPagoDataError,
+    build_items_for_contrato,
+>>>>>>> main
 )
 from motopay.infrastructure.payments.mercadopago_sdk import MercadoPagoApiError
 
@@ -34,6 +55,83 @@ def _synthetic_pix(*, cobranca_id: int, valor_total: Decimal) -> PixOrderResult:
         pix_copia_cola=(
             f"00020101021226870014br.gov.bcb.pix2565demo/p/v2/COB_{cobranca_id}_{cents}_BR5913MOTOPAY"
         ),
+<<<<<<< HEAD
+=======
+    )
+
+
+def _access_token(db: Session | None, op: Operacao) -> str:
+    if db is None:
+        from motopay.domain.exceptions import MotoPayError
+
+        raise MotoPayError(MP_NOT_CONNECTED_MSG)
+    return require_operacao_mp_token(db, op)
+
+
+def _build_mp_enrichment(
+    *,
+    cliente: Cliente,
+    valor_total: Decimal,
+    contrato: Contrato | None,
+) -> dict[str, object]:
+    """Constrói payer_email/items para a Orders API v2.
+
+    A Orders API v2 rejeita campos fora do spec ("Properties not supported"):
+    payer aceita só email/identification/customer_id; statement_descriptor só
+    vale para cartão (enviado em card_payment_service); additional_info não
+    é aceito. Por isso o PIX envia apenas payer_email + items.
+    """
+    payer_email = payer_email_for_mercadopago(cliente)
+    items = build_items_for_contrato(
+        contrato,
+        moto=getattr(contrato, "moto", None) if contrato else None,
+        total_value=valor_total,
+    )
+    return {"payer_email": payer_email, "items": items}
+
+
+def create_pix_for_cobranca(
+    *,
+    op: Operacao,
+    cliente: Cliente,
+    cobranca_id: int,
+    valor_total: Decimal,
+    due_date: date,
+    db: Session | None = None,
+    contrato: Contrato | None = None,
+    device_id: str | None = None,
+) -> tuple[str, str, str | None, str]:
+    """Retorna (order_id, payment_id, pix_copia_cola, gateway)."""
+    del due_date
+    if not mp_operacao_ready_for_payments(op):
+        if get_settings().is_production:
+            raise MercadoPagoNotConnectedError(MP_NOT_CONNECTED_MSG)
+        pay = _synthetic_pix(cobranca_id=cobranca_id, valor_total=valor_total)
+        return pay.order_id, pay.payment_id, pay.pix_copia_cola, PaymentGateway.MERCADOPAGO.value
+
+    assert_payer_email_ready(cliente)
+    try:
+        extra = _build_mp_enrichment(
+            cliente=cliente, valor_total=valor_total, contrato=contrato
+        )
+    except MercadoPagoDataError as exc:
+        raise MotoPayError(str(exc)) from exc
+    order = MercadoPagoClient(access_token=_access_token(db, op)).create_online_order(
+        external_reference=f"cobranca-{cobranca_id}",
+        value=valor_total,
+        payer_email=extra["payer_email"],  # type: ignore[arg-type]
+        payer_cpf=cliente.cpf,
+        payment_method_id="pix",
+        payment_method_type="bank_transfer",
+        items=extra["items"],  # type: ignore[arg-type]
+        device_id=device_id,
+    )
+    return (
+        order.order_id,
+        order.payment_id,
+        order.pix_copia_cola,
+        PaymentGateway.MERCADOPAGO.value,
+>>>>>>> main
     )
 
 
@@ -44,6 +142,7 @@ def create_pix_for_cobranca(
     cobranca_id: int,
     valor_total: Decimal,
     due_date: date,
+<<<<<<< HEAD
 ) -> tuple[str, str, str | None, str]:
     """Retorna (order_id, payment_id, pix_copia_cola, gateway)."""
     external_ref = f"cobranca-{cobranca_id}"
@@ -75,11 +174,49 @@ def create_pix_for_cobranca(
         )
     pay = _synthetic_pix(cobranca_id=cobranca_id, valor_total=valor_total)
     return pay.order_id, pay.payment_id, pay.pix_copia_cola, PaymentGateway.MERCADOPAGO.value
+=======
+    db: Session | None = None,
+    contrato: Contrato | None = None,
+    device_id: str | None = None,
+) -> tuple[str, str, str | None, str]:
+    """Compat: Pix por contrato (usa cobranca-{contrato_id} como referência externa)."""
+    del due_date
+    if not mp_operacao_ready_for_payments(op):
+        if get_settings().is_production:
+            raise MercadoPagoNotConnectedError(MP_NOT_CONNECTED_MSG)
+        pay = _synthetic_pix(cobranca_id=contrato_id, valor_total=valor_total)
+        return pay.order_id, pay.payment_id, pay.pix_copia_cola, PaymentGateway.MERCADOPAGO.value
+
+    assert_payer_email_ready(cliente)
+    try:
+        extra = _build_mp_enrichment(
+            cliente=cliente, valor_total=valor_total, contrato=contrato
+        )
+    except MercadoPagoDataError as exc:
+        raise MotoPayError(str(exc)) from exc
+    order = MercadoPagoClient(access_token=_access_token(db, op)).create_online_order(
+        external_reference=f"contrato-{contrato_id}",
+        value=valor_total,
+        payer_email=extra["payer_email"],  # type: ignore[arg-type]
+        payer_cpf=cliente.cpf,
+        payment_method_id="pix",
+        payment_method_type="bank_transfer",
+        items=extra["items"],  # type: ignore[arg-type]
+        device_id=device_id,
+    )
+    return (
+        order.order_id,
+        order.payment_id,
+        order.pix_copia_cola,
+        PaymentGateway.MERCADOPAGO.value,
+    )
+>>>>>>> main
 
 
 def cancel_external_payment(
     *,
     gateway: str,
+<<<<<<< HEAD
     order_id: str | None,
     op: Operacao | None,
 ) -> None:
@@ -94,3 +231,32 @@ def cancel_external_payment(
         MercadoPagoClient(access_token=mp_token_for_operacao(op)).cancel_order(order_id)
     except MercadoPagoApiError:
         pass
+=======
+    payment_id: str | None,
+    order_id: str | None,
+    op: Operacao | None,
+    db: Session | None = None,
+) -> None:
+    import logging
+
+    _log = logging.getLogger(__name__)
+    del gateway
+    if not op or not mp_operacao_ready_for_payments(op):
+        return
+    if not order_id:
+        if payment_id:
+            _log.warning(
+                "cancel_external_payment: order_id ausente para payment_id=%s — cancelamento ignorado",
+                payment_id,
+            )
+        return
+    try:
+        MercadoPagoClient(access_token=_access_token(db, op)).cancel_order(order_id)
+    except MercadoPagoApiError as exc:
+        # 400/404/422 indicam ordem já em estado terminal — seguro ignorar
+        if exc.status_code not in (400, 404, 422):
+            _log.warning(
+                "cancel_order falhou order_id=%s payment_id=%s status=%s",
+                order_id, payment_id, exc.status_code,
+            )
+>>>>>>> main

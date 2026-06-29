@@ -39,11 +39,14 @@ export type OperacaoOut = {
   telegram_templates: Record<string, string>;
 };
 
+export type VeiculoTipo = 'moto' | 'carro' | 'caminhonete' | 'van' | 'caminhao' | 'onibus' | 'outros';
+
 export type MotoOut = {
   id: number;
   operacao_id: number;
   placa: string;
   modelo: string;
+  tipo: VeiculoTipo;
   status: string;
   km: number;
   tem_imagem?: boolean;
@@ -54,16 +57,48 @@ export type ClienteOut = {
   id: number;
   operacao_id: number;
   nome: string;
+  sobrenome?: string | null;
   cpf: string;
   telefone: string;
+  email: string | null;
+  mercadopago_customer_id?: string | null;
   telegram_id: string | null;
   score: number;
   moto_placa?: string | null;
   moto_modelo?: string | null;
+  endereco_logradouro?: string | null;
+  endereco_numero?: string | null;
+  endereco_bairro?: string | null;
+  endereco_cidade?: string | null;
+  endereco_estado?: string | null;
+  endereco_cep?: string | null;
+};
+
+export type ClienteCreatePayload = {
+  nome: string;
+  sobrenome?: string | null;
+  cpf: string;
+  telefone: string;
+  email?: string | null;
+  telegram_id?: string | null;
+  endereco_logradouro?: string | null;
+  endereco_numero?: string | null;
+  endereco_bairro?: string | null;
+  endereco_cidade?: string | null;
+  endereco_estado?: string | null;
+  endereco_cep?: string | null;
+};
+
+export type MpSubscriptionOut = {
+  contrato_id: number;
+  mercadopago_subscription_id: string;
+  init_point: string | null;
+  status: string | null;
 };
 
 export type ContratoOut = {
   id: number;
+  numero: number | null;
   operacao_id: number;
   cliente_id: number;
   moto_id: number;
@@ -79,6 +114,7 @@ export type ContratoOut = {
   promessa_pagamento_em: string | null;
   promessa_notas: string | null;
   mercadopago_subscription_id: string | null;
+  mercadopago_subscription_status: string | null;
 };
 
 export type TelegramBotMenuButton = {
@@ -153,13 +189,39 @@ export type FinanceiroOut = {
   contrato_id: number | null;
 };
 
+<<<<<<< HEAD
 export type ThreeDsInfo = {
   external_resource_url: string | null;
   creq: string | null;
+=======
+export type PaymentsConfig = {
+  mercadopago_configured: boolean;
+  mercadopago_public_key: string | null;
+  webhook_configured: boolean;
+  credentials_mode: 'test' | 'production';
+  mercadopago_credentials_source: string;
+  mercadopago_credentials_complete: boolean;
+  mercadopago_has_operacao_token: boolean;
+  mercadopago_oauth_available?: boolean;
+  mercadopago_oauth_connected?: boolean;
+  mercadopago_connection_status?: 'connected' | 'disconnected' | 'expired' | string;
+  mercadopago_account_email?: string | null;
+  mercadopago_webhook_ready?: boolean;
+  webhook_url: string | null;
+  mercadopago_oauth_user_id?: string | null;
+  mercadopago_public_key_saved?: string | null;
+  mercadopago_access_token_preview?: string | null;
+  mercadopago_webhook_secret_preview?: string | null;
+>>>>>>> main
 };
 
 export type ClienteMpCardOut = {
   id: number;
+<<<<<<< HEAD
+=======
+  cliente_id: number;
+  operacao_id: number;
+>>>>>>> main
   mp_card_id: string;
   payment_method_id: string;
   last_four_digits: string;
@@ -169,6 +231,7 @@ export type ClienteMpCardOut = {
   is_default: boolean;
 };
 
+<<<<<<< HEAD
 export type CardPaymentOut = {
   payment_id: string;
   status: string;
@@ -180,6 +243,22 @@ export type CardPaymentOut = {
 };
 
 export type PaymentMethodType = 'pix' | 'credit_card' | 'debit_card';
+=======
+export type ThreeDsInfoOut = {
+  external_resource_url: string | null;
+  creq: string | null;
+};
+
+export type CardPaymentOut = {
+  cobranca: CobrancaOut;
+  order_id: string;
+  payment_id: string;
+  status: string;
+  status_detail: string | null;
+  requires_3ds: boolean;
+  three_ds_info: ThreeDsInfoOut | null;
+};
+>>>>>>> main
 
 export type CobrancaOut = {
   id: number;
@@ -189,14 +268,38 @@ export type CobrancaOut = {
   vencimento: string;
   mercadopago_order_id: string | null;
   mercadopago_payment_id: string | null;
+  mercadopago_order_id: string | null;
   payment_gateway: 'mercadopago';
+<<<<<<< HEAD
   payment_method_type: PaymentMethodType | null;
+=======
+  payment_method_type: string | null;
+>>>>>>> main
   pix_copia_cola: string | null;
   status: string;
   dias_atraso: number;
   multa: number;
   juros: number;
   valor_total: number;
+  valor_estornado?: number;
+  mercadopago_dispute_status?: string | null;
+  mercadopago_payment_status?: string | null;
+};
+
+export type PortalLinkOut = {
+  token: string;
+  url: string;
+};
+
+export type PayerPortalOut = {
+  cobranca: CobrancaOut;
+  cliente_nome: string;
+  cliente_id: number;
+  cliente_email: string | null;
+  cliente_cpf: string;
+  mercadopago_public_key: string | null;
+  credentials_mode: string;
+  payable: boolean;
 };
 
 export type AnalyticsSummary = {
@@ -208,6 +311,14 @@ export type AnalyticsSummary = {
   total_cobrancas: number;
   cobrancas_pendentes: number;
   cobrancas_atrasadas: number;
+};
+
+export type DashboardInadimplenciaItem = {
+  contrato_id: number;
+  cliente_nome: string;
+  dias_atraso: number;
+  proximo_vencimento: string;
+  pix_copia_cola: string | null;
 };
 
 export type RecentActivityItem = {

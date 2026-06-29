@@ -8,7 +8,7 @@ import {
 
 describe('pwa.config', () => {
   it('lists all standard icon sizes for manifest', () => {
-    expect(PWA_ICON_SIZES).toEqual([72, 96, 128, 144, 152, 192, 384, 512]);
+    expect(PWA_ICON_SIZES).toEqual([72, 96, 120, 128, 144, 152, 167, 192, 384, 512]);
     for (const size of PWA_ICON_SIZES) {
       expect(PWA_MANIFEST_ICONS).toContainEqual({
         src: `icons/pwa-${size}.png`,
@@ -45,7 +45,8 @@ describe('pwa.config', () => {
     expect(IOS_SPLASH_LINKS.length).toBeGreaterThanOrEqual(6);
     for (const link of IOS_SPLASH_LINKS) {
       expect(link.href).toMatch(/^\/splash\/apple-splash-/);
-      expect(link.media).toContain('orientation: portrait');
+      // Setup iOS completo inclui portrait (iPhone/iPad) e landscape (iPad).
+      expect(link.media).toMatch(/orientation: (portrait|landscape)/);
     }
   });
 });

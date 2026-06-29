@@ -10,15 +10,31 @@ from motopay.interfaces.api.schemas import (
     CardPaymentRequest,
     CobrancaOut,
     CreateChargeRequest,
+<<<<<<< HEAD
     Paginated,
+=======
+    MpSubscriptionOut,
+    Paginated,
+    PortalLinkOut,
+    RefundRequest,
+>>>>>>> main
 )
 from motopay.services.billing_service import (
     create_mercadopago_subscription_for_contract,
     create_pix_charge_for_contract,
     ensure_pix_for_cobranca,
+<<<<<<< HEAD
+=======
+    get_cobranca,
+>>>>>>> main
     list_cobrancas,
+    refund_cobranca_mercadopago,
 )
 from motopay.services.card_payment_service import pay_cobranca_with_card
+<<<<<<< HEAD
+=======
+from motopay.services.payer_portal_service import issue_portal_link, revoke_portal_link
+>>>>>>> main
 
 router = APIRouter(prefix="/cobrancas", tags=["cobrancas"])
 
@@ -38,6 +54,16 @@ def list_all(
     return Paginated(items=rows, total=total, limit=lim, offset=off)
 
 
+@router.get("/{cobranca_id}", response_model=CobrancaOut)
+def get_one(
+    cobranca_id: int,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_operacional),
+    operacao_id: int | None = Depends(resolve_operacao_id),
+) -> CobrancaOut:
+    return get_cobranca(db, user, operacao_id, cobranca_id)
+
+
 @router.post("/pix", response_model=CobrancaOut)
 def create_pix(
     body: CreateChargeRequest,
@@ -45,20 +71,35 @@ def create_pix(
     user: CurrentUser = Depends(require_operacional),
     operacao_id: int | None = Depends(resolve_operacao_id),
 ) -> CobrancaOut:
-    return create_pix_charge_for_contract(db, user, operacao_id, body.contrato_id)
+    return create_pix_charge_for_contract(
+        db, user, operacao_id, body.contrato_id, device_id=body.device_id
+    )
 
 
 @router.post("/{cobranca_id}/pix", response_model=CobrancaOut)
+<<<<<<< HEAD
 def ensure_pix(
     cobranca_id: int,
+=======
+def generate_pix_for_cobranca(
+    cobranca_id: int,
+    device_id: str | None = Query(default=None, description="MP_DEVICE_SESSION_ID do frontend"),
+>>>>>>> main
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_operacional),
     operacao_id: int | None = Depends(resolve_operacao_id),
 ) -> CobrancaOut:
+<<<<<<< HEAD
     return ensure_pix_for_cobranca(db, user, operacao_id, cobranca_id)
 
 
 @router.post("/{cobranca_id}/card-payment", response_model=CardPaymentOut)
+=======
+    return ensure_pix_for_cobranca(db, user, operacao_id, cobranca_id, device_id=device_id)
+
+
+@router.post("/{cobranca_id}/card", response_model=CardPaymentOut)
+>>>>>>> main
 def pay_with_card(
     cobranca_id: int,
     body: CardPaymentRequest,
@@ -66,6 +107,7 @@ def pay_with_card(
     user: CurrentUser = Depends(require_operacional),
     operacao_id: int | None = Depends(resolve_operacao_id),
 ) -> CardPaymentOut:
+<<<<<<< HEAD
     from motopay.infrastructure.messaging.tasks import handle_domain_event
 
     out = pay_cobranca_with_card(
@@ -85,11 +127,65 @@ def pay_with_card(
 
 
 @router.post("/assinatura-mercadopago", response_model=dict)
+=======
+    kind = body.payment_method_kind if body.payment_method_kind in ("credit_card", "debit_card") else "credit_card"
+    return pay_cobranca_with_card(
+        db,
+        user,
+        operacao_id,
+        cobranca_id=cobranca_id,
+        token=body.token,
+        payment_method_id=body.payment_method_id,
+        payment_method_kind=kind,  # type: ignore[arg-type]
+        saved_card_id=body.saved_card_id,
+        installments=body.installments,
+        device_id=body.device_id,
+    )
+
+
+@router.post("/{cobranca_id}/portal-link", response_model=PortalLinkOut)
+def create_portal_link(
+    cobranca_id: int,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_operacional),
+    operacao_id: int | None = Depends(resolve_operacao_id),
+) -> PortalLinkOut:
+    data = issue_portal_link(db, user, operacao_id, cobranca_id)
+    return PortalLinkOut.model_validate(data)
+
+
+@router.delete("/{cobranca_id}/portal-link")
+def delete_portal_link(
+    cobranca_id: int,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_operacional),
+    operacao_id: int | None = Depends(resolve_operacao_id),
+) -> dict[str, bool]:
+    revoke_portal_link(db, user, operacao_id, cobranca_id)
+    return {"ok": True}
+
+
+@router.post("/{cobranca_id}/refund", response_model=CobrancaOut)
+def refund_cobranca(
+    cobranca_id: int,
+    body: RefundRequest | None = None,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_operacional),
+    operacao_id: int | None = Depends(resolve_operacao_id),
+) -> CobrancaOut:
+    amount = body.amount if body else None
+    return refund_cobranca_mercadopago(
+        db, user, operacao_id, cobranca_id, amount=amount
+    )
+
+
+@router.post("/assinatura-mercadopago", response_model=MpSubscriptionOut)
+>>>>>>> main
 def create_subscription(
     body: CreateChargeRequest,
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_operacional),
     operacao_id: int | None = Depends(resolve_operacao_id),
-) -> dict:
-    ct = create_mercadopago_subscription_for_contract(db, user, operacao_id, body.contrato_id)
-    return {"contrato_id": ct.id, "mercadopago_subscription_id": ct.mercadopago_subscription_id}
+) -> MpSubscriptionOut:
+    data = create_mercadopago_subscription_for_contract(db, user, operacao_id, body.contrato_id)
+    return MpSubscriptionOut.model_validate(data)

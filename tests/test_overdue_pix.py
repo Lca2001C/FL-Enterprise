@@ -20,10 +20,14 @@ from motopay.infrastructure.db.models import (
     Operacao,
 )
 from motopay.infrastructure.messaging import tasks as messaging_tasks
+from motopay.infrastructure.payments.order_utils import MercadoPagoOrderResult
 from motopay.infrastructure.telegram.templates import build_overdue_html
 from motopay.services.billing_service import refresh_overdue_pix
 from motopay.services.late_fee import calculate_late_amounts
+<<<<<<< HEAD
 from motopay.services.payment_gateway import PixOrderResult
+=======
+>>>>>>> main
 from sqlalchemy import select
 
 
@@ -46,6 +50,7 @@ def cliente_com_telegram(db_session, operacao_multas):
         nome="João",
         cpf="12345678901",
         telefone="11999999999",
+        email="joao@test.local",
         telegram_id="123456789",
     )
     db_session.add(c)
@@ -152,6 +157,7 @@ def test_refresh_cancels_and_creates_new_pix(
     db_session, operacao_multas, contrato_atrasado, cobranca_pendente, cliente_com_telegram
 ):
     today = date.today()
+<<<<<<< HEAD
     new_order = PixOrderResult(
         order_id="ORD_new_456",
         payment_id="pay_new_456",
@@ -163,9 +169,26 @@ def test_refresh_cancels_and_creates_new_pix(
         payment_id=new_order.payment_id,
         pix_copia_cola=new_order.pix_copia_cola,
     )
+=======
+    order = MercadoPagoOrderResult(
+        order_id="ORD_NEW",
+        payment_id="pay_new_456",
+        order_status="action_required",
+        payment_status="action_required",
+        status_detail="waiting_transfer",
+        pix_copia_cola="PIX-NEW-CODE",
+        three_ds_info=None,
+        requires_3ds=False,
+    )
+    mock_client = MagicMock()
+    mock_client.create_online_order.return_value = order
+>>>>>>> main
 
     with patch(
-        "motopay.services.payment_gateway.mp_configured_for_operacao", return_value=True
+        "motopay.services.payment_gateway.mp_operacao_ready_for_payments", return_value=True
+    ), patch(
+        "motopay.services.payment_gateway.require_operacao_mp_token",
+        return_value="TEST-1234567890123456-seed",
     ), patch(
         "motopay.services.payment_gateway.MercadoPagoClient", return_value=mock_client
     ):

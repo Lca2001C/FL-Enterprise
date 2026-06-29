@@ -2,10 +2,12 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from motopay.domain.enums import CicloCobranca, CobrancaStatus, ContratoStatus
 from motopay.infrastructure.db.models import Cliente, Cobranca, Contrato, Moto, Operacao
+
+from tests.conftest import mp_webhook_headers
 
 
 def test_mercadopago_webhook_confirms_order(client, db_session):
@@ -49,6 +51,7 @@ def test_mercadopago_webhook_confirms_order(client, db_session):
     db_session.commit()
 
     with (
+<<<<<<< HEAD
         patch(
             "motopay.interfaces.api.routers.webhooks._order_confirmed_in_mercadopago",
             return_value=(True, Decimal("100")),
@@ -59,6 +62,20 @@ def test_mercadopago_webhook_confirms_order(client, db_session):
         r = client.post(
             "/webhooks/mercadopago",
             json={"type": "order", "data": {"id": "ORD999888"}},
+=======
+        patch("motopay.interfaces.api.routers.webhooks.MercadoPagoClient") as mock_cls,
+        patch("motopay.interfaces.api.routers.webhooks.enqueue_domain_event"),
+    ):
+        mock_cls.return_value.get_payment.return_value = {
+            "id": "999888",
+            "status": "approved",
+            "transaction_amount": 100.0,
+        }
+        r = client.post(
+            "/webhooks/mercadopago",
+            headers=mp_webhook_headers("999888"),
+            json={"type": "payment", "data": {"id": "999888"}},
+>>>>>>> main
         )
         assert r.status_code == 200
         db_session.refresh(cob)

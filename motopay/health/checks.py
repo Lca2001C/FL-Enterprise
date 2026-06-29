@@ -4,12 +4,12 @@ from __future__ import annotations
 from datetime import datetime
 from enum import Enum
 
-import redis
 from pydantic import BaseModel
 from sqlalchemy import text
 
 from motopay.config.settings import get_settings
 from motopay.infrastructure.db.session import SessionLocal
+from motopay.infrastructure.redis_client import InMemoryRedis, get_redis_connection
 
 
 class HealthStatus(str, Enum):
@@ -71,11 +71,27 @@ async def check_database() -> HealthCheckResult:
 async def check_redis() -> HealthCheckResult:
     """Check Redis connectivity."""
     import time
-    
+
+    settings = get_settings()
+    if not settings.redis_url.strip():
+        return HealthCheckResult(
+            name="redis",
+            status=HealthStatus.DEGRADED,
+            duration_ms=0,
+            error="Redis não configurado (modo degradado)",
+        )
+
     start = time.time()
     try:
-        settings = get_settings()
-        r = redis.from_url(settings.redis_url)
+        r = get_redis_connection()
+        if isinstance(r, InMemoryRedis):
+            duration_ms = (time.time() - start) * 1000
+            return HealthCheckResult(
+                name="redis",
+                status=HealthStatus.DEGRADED,
+                duration_ms=duration_ms,
+                error="REDIS_URL definido mas indisponível (usando memória local)",
+            )
         r.ping()
         duration_ms = (time.time() - start) * 1000
         return HealthCheckResult(

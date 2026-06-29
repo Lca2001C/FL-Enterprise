@@ -12,6 +12,7 @@ from motopay.domain.enums import (
     FinanceiroTipo,
     MotoStatus,
     UserRole,
+    VeiculoTipo,
 )
 
 T = TypeVar("T")
@@ -35,8 +36,10 @@ class RefreshRequest(BaseModel):
 
 
 class LoginRequest(BaseModel):
-    email: str
-    password: str
+    # str (não EmailStr) para aceitar domínios locais/de teste como .local
+    # max_length evita chaves Redis gigantes no rate-limit
+    email: str = Field(max_length=320)
+    password: str = Field(min_length=1, max_length=256)
 
 
 class UserOut(BaseModel):
@@ -148,9 +151,18 @@ class UsuarioCreate(BaseModel):
     operacao_id: int | None = None
 
 
+class OperacaoUsuarioCreate(BaseModel):
+    """Criação de usuário da própria operação (DONO/ADMIN). tipo e operacao_id
+    são forçados no servidor — o solicitante não pode escolher."""
+
+    email: EmailStr
+    password: str = Field(min_length=8, max_length=128)
+
+
 class MotoCreate(BaseModel):
     placa: str
     modelo: str
+    tipo: VeiculoTipo = VeiculoTipo.MOTO
     status: MotoStatus
     km: int = 0
 
@@ -158,6 +170,7 @@ class MotoCreate(BaseModel):
 class MotoUpdate(BaseModel):
     placa: str | None = None
     modelo: str | None = None
+    tipo: VeiculoTipo | None = None
     status: MotoStatus | None = None
     km: int | None = None
 
@@ -169,6 +182,7 @@ class MotoOut(BaseModel):
     operacao_id: int
     placa: str
     modelo: str
+    tipo: str = "moto"
     status: str
     km: int
     tem_imagem: bool = False
@@ -177,15 +191,31 @@ class MotoOut(BaseModel):
 
 class ClienteCreate(BaseModel):
     nome: str
+    sobrenome: str | None = None
     cpf: str
     telefone: str
+    email: str | None = None
     telegram_id: str | None = None
+    endereco_logradouro: str | None = None
+    endereco_numero: str | None = None
+    endereco_bairro: str | None = None
+    endereco_cidade: str | None = None
+    endereco_estado: str | None = None
+    endereco_cep: str | None = None
 
 
 class ClienteUpdate(BaseModel):
     nome: str | None = None
+    sobrenome: str | None = None
     telefone: str | None = None
+    email: str | None = None
     telegram_id: str | None = None
+    endereco_logradouro: str | None = None
+    endereco_numero: str | None = None
+    endereco_bairro: str | None = None
+    endereco_cidade: str | None = None
+    endereco_estado: str | None = None
+    endereco_cep: str | None = None
 
 
 class ClienteOut(BaseModel):
@@ -194,12 +224,21 @@ class ClienteOut(BaseModel):
     id: int
     operacao_id: int
     nome: str
+    sobrenome: str | None = None
     cpf: str
     telefone: str
+    email: str | None = None
+    mercadopago_customer_id: str | None = None
     telegram_id: str | None
     score: int
     moto_placa: str | None = None
     moto_modelo: str | None = None
+    endereco_logradouro: str | None = None
+    endereco_numero: str | None = None
+    endereco_bairro: str | None = None
+    endereco_cidade: str | None = None
+    endereco_estado: str | None = None
+    endereco_cep: str | None = None
 
 
 class ContratoCreate(BaseModel):
@@ -224,6 +263,7 @@ class ContratoCreate(BaseModel):
 class ContratoUpdate(BaseModel):
     status: ContratoStatus | None = None
     valor_recorrente: Decimal | None = None
+    ciclo: CicloCobranca | None = None
     data_fim_vigencia: date | None = None
     proximo_vencimento: date | None = None
 
@@ -232,6 +272,7 @@ class ContratoOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    numero: int | None = None
     operacao_id: int
     cliente_id: int
     moto_id: int
@@ -247,6 +288,7 @@ class ContratoOut(BaseModel):
     promessa_pagamento_em: date | None
     promessa_notas: str | None
     mercadopago_subscription_id: str | None = None
+    mercadopago_subscription_status: str | None = None
 
 
 class FinanceiroCreate(BaseModel):
@@ -290,7 +332,9 @@ class CobrancaOut(BaseModel):
     vencimento: date
     mercadopago_order_id: str | None = None
     mercadopago_payment_id: str | None = None
+    mercadopago_order_id: str | None = None
     payment_gateway: str = "mercadopago"
+    payment_method_type: str | None = None
     pix_copia_cola: str | None
     payment_method_type: str | None = None
     status: str
@@ -298,11 +342,16 @@ class CobrancaOut(BaseModel):
     multa: Decimal = Decimal(0)
     juros: Decimal = Decimal(0)
     valor_total: Decimal = Decimal(0)
+    valor_estornado: Decimal = Decimal(0)
+    mercadopago_dispute_status: str | None = None
+    mercadopago_payment_status: str | None = None
 
 
 class CreateChargeRequest(BaseModel):
     contrato_id: int
     """Cria cobrança Pix via Mercado Pago quando configurado."""
+    device_id: str | None = None
+    """Device ID do Mercado Pago (MP_DEVICE_SESSION_ID) para anti-fraude."""
 
 
 class SaveClienteCardRequest(BaseModel):
@@ -366,9 +415,123 @@ class AnalyticsSummary(BaseModel):
     cobrancas_atrasadas: int = 0
 
 
+class DashboardInadimplenciaItem(BaseModel):
+    contrato_id: int
+    cliente_nome: str
+    dias_atraso: int
+    proximo_vencimento: date
+    pix_copia_cola: str | None = None
+
+
 class RecentActivityRow(BaseModel):
     id: int
     tipo: str
     descricao: str
     data: date
     valor: Decimal
+
+
+class PaymentsConfigOut(BaseModel):
+    mercadopago_configured: bool
+    mercadopago_public_key: str | None = None
+    webhook_configured: bool
+    credentials_mode: str = "production"
+    mercadopago_credentials_source: str = "none"
+    mercadopago_credentials_complete: bool = False
+    mercadopago_has_operacao_token: bool = False
+    mercadopago_oauth_available: bool = False
+    mercadopago_oauth_connected: bool = False
+    mercadopago_connection_status: str = "disconnected"
+    mercadopago_account_email: str | None = None
+    mercadopago_webhook_ready: bool = False
+    webhook_url: str | None = None
+    mercadopago_oauth_user_id: str | None = None
+    # Reflete o que está salvo NA OPERAÇÃO (não o fallback global), para a tela de Ajustes
+    # confirmar persistência. Public Key não é segredo (vai ao browser); token/secret vêm mascarados.
+    mercadopago_public_key_saved: str | None = None
+    mercadopago_access_token_preview: str | None = None
+    mercadopago_webhook_secret_preview: str | None = None
+
+
+class ClienteMpCardOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    cliente_id: int
+    operacao_id: int
+    mp_card_id: str
+    payment_method_id: str
+    last_four_digits: str
+    cardholder_name: str | None = None
+    expiration_month: int | None = None
+    expiration_year: int | None = None
+    is_default: bool = False
+
+
+class SaveMpCardRequest(BaseModel):
+    token: str = Field(min_length=1)
+
+
+class CardPaymentRequest(BaseModel):
+    token: str = Field(min_length=1)
+    payment_method_id: str = Field(min_length=1)
+    payment_method_kind: str = "credit_card"
+    saved_card_id: int | None = None
+    installments: int = 1
+    device_id: str | None = None
+
+
+class ThreeDsInfoOut(BaseModel):
+    external_resource_url: str | None = None
+    creq: str | None = None
+
+
+class CardPaymentOut(BaseModel):
+    cobranca: CobrancaOut
+    order_id: str
+    payment_id: str
+    status: str
+    status_detail: str | None = None
+    requires_3ds: bool = False
+    three_ds_info: ThreeDsInfoOut | None = None
+
+
+class MpSubscriptionOut(BaseModel):
+    contrato_id: int
+    mercadopago_subscription_id: str
+    init_point: str | None = None
+    status: str | None = None
+
+
+class PortalLinkOut(BaseModel):
+    token: str
+    url: str
+
+
+class PayerPortalOut(BaseModel):
+    cobranca: CobrancaOut
+    cliente_nome: str
+    cliente_id: int
+    cliente_email: str | None = None
+    cliente_cpf: str
+    mercadopago_public_key: str | None = None
+    credentials_mode: str = "production"
+    payable: bool = True
+
+
+class PortalCardPaymentRequest(BaseModel):
+    token: str = Field(min_length=1)
+    payment_method_id: str = Field(min_length=1)
+    payment_method_kind: str = "credit_card"
+    saved_card_id: int | None = None
+    installments: int = 1
+    device_id: str | None = None
+
+
+class RefundRequest(BaseModel):
+    amount: Decimal | None = Field(default=None, gt=0)
+
+
+class MpOAuthStartOut(BaseModel):
+    authorization_url: str
+    redirect_uri: str

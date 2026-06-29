@@ -14,6 +14,10 @@ from motopay.infrastructure.payments.mercadopago_client import (
     mp_has_operacao_token,
     mp_public_key_for_operacao,
     mp_webhook_secret_for_operacao,
+<<<<<<< HEAD
+=======
+    operacao_mp_oauth_connected,
+>>>>>>> main
 )
 from motopay.interfaces.api.deps import CurrentUser, require_operacional, resolve_operacao_id
 from motopay.interfaces.api.schemas import PaymentsConfigOut
@@ -21,6 +25,19 @@ from motopay.interfaces.api.schemas import PaymentsConfigOut
 router = APIRouter(prefix="/config", tags=["config"])
 
 
+<<<<<<< HEAD
+=======
+def _mask_secret(value: str | None) -> str | None:
+    """Mascara um segredo para exibição (confirma persistência sem expor o valor)."""
+    v = (value or "").strip()
+    if not v:
+        return None
+    if len(v) <= 8:
+        return "••••"
+    return f"{v[:8]}…{v[-4:]}"
+
+
+>>>>>>> main
 @router.get("/payments", response_model=PaymentsConfigOut)
 def payments_config(
     db: Session = Depends(get_db),
@@ -37,6 +54,14 @@ def payments_config(
     public_key = mp_public_key_for_operacao(op)
     webhook_secret = mp_webhook_secret_for_operacao(op)
     base = get_settings().api_public_base_url.rstrip("/")
+<<<<<<< HEAD
+=======
+    settings = get_settings()
+    oauth_available = bool(settings.mercadopago_oauth_client_id.strip())
+    oauth_connected = bool(op and operacao_mp_oauth_connected(op))
+    webhook_ready = bool(webhook_secret)
+    connection_status = op.mercadopago_connection_status if op else "disconnected"
+>>>>>>> main
     return PaymentsConfigOut(
         mercadopago_configured=mp_configured_for_operacao(op),
         mercadopago_public_key=public_key or None,
@@ -45,5 +70,25 @@ def payments_config(
         mercadopago_credentials_source=mp_credentials_source(op),
         mercadopago_credentials_complete=mp_credentials_complete(op),
         mercadopago_has_operacao_token=mp_has_operacao_token(op),
+<<<<<<< HEAD
         webhook_url=f"{base}/webhooks/mercadopago",
+=======
+        mercadopago_oauth_available=oauth_available,
+        mercadopago_oauth_connected=oauth_connected,
+        mercadopago_connection_status=connection_status,
+        mercadopago_account_email=op.mercadopago_account_email if op else None,
+        mercadopago_webhook_ready=webhook_ready,
+        webhook_url=f"{base}/webhooks/mercadopago",
+        mercadopago_oauth_user_id=(
+            op.mercadopago_oauth_user_id if op else None
+        ),
+        # Valores salvos NA OPERAÇÃO (não fallback global) para a tela de Ajustes confirmar persistência
+        mercadopago_public_key_saved=(op.mercadopago_public_key if op else None),
+        mercadopago_access_token_preview=_mask_secret(
+            op.mercadopago_access_token if op else None
+        ),
+        mercadopago_webhook_secret_preview=_mask_secret(
+            op.mercadopago_webhook_secret if op else None
+        ),
+>>>>>>> main
     )

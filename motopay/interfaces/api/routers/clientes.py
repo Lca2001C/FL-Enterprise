@@ -10,12 +10,22 @@ from motopay.interfaces.api.schemas import (
     ClienteOut,
     ClienteUpdate,
     Paginated,
+<<<<<<< HEAD
     SaveClienteCardRequest,
 )
 from motopay.services.card_payment_service import (
     delete_cliente_card,
     list_cliente_cards,
     save_cliente_card,
+=======
+    SaveMpCardRequest,
+)
+from motopay.services.card_payment_service import (
+    delete_cliente_mp_card,
+    list_cliente_mp_cards,
+    save_cliente_mp_card,
+    set_default_cliente_mp_card,
+>>>>>>> main
 )
 from motopay.services.fleet_service import (
     create_cliente,
@@ -76,13 +86,18 @@ def patch(
     return update_cliente(db, user, operacao_id, cliente_id, body)
 
 
+<<<<<<< HEAD
 @router.get("/{cliente_id}/mercadopago/cards", response_model=list[ClienteMpCardOut])
+=======
+@router.get("/{cliente_id}/mp-cards", response_model=list[ClienteMpCardOut])
+>>>>>>> main
 def list_mp_cards(
     cliente_id: int,
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_operacional),
     operacao_id: int | None = Depends(resolve_operacao_id),
 ) -> list[ClienteMpCardOut]:
+<<<<<<< HEAD
     return list_cliente_cards(db, user, operacao_id, cliente_id)
 
 
@@ -90,22 +105,62 @@ def list_mp_cards(
 def save_mp_card(
     cliente_id: int,
     body: SaveClienteCardRequest,
+=======
+    from motopay.services.billing_service import _effective_operacao
+
+    op_id = _effective_operacao(user, operacao_id)
+    return list_cliente_mp_cards(db, cliente_id, op_id)
+
+
+@router.post("/{cliente_id}/mp-cards", response_model=ClienteMpCardOut)
+def save_mp_card(
+    cliente_id: int,
+    body: SaveMpCardRequest,
+>>>>>>> main
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_operacional),
     operacao_id: int | None = Depends(resolve_operacao_id),
 ) -> ClienteMpCardOut:
+<<<<<<< HEAD
     return save_cliente_card(db, user, operacao_id, cliente_id, card_token=body.card_token)
 
 
 @router.delete("/{cliente_id}/mercadopago/cards/{card_id}")
 def delete_mp_card(
+=======
+    return save_cliente_mp_card(
+        db, user, operacao_id, cliente_id=cliente_id, token=body.token
+    )
+
+
+@router.post("/{cliente_id}/mp-cards/{card_id}/default", response_model=ClienteMpCardOut)
+def default_mp_card(
+>>>>>>> main
     cliente_id: int,
     card_id: int,
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_operacional),
     operacao_id: int | None = Depends(resolve_operacao_id),
+<<<<<<< HEAD
 ) -> dict[str, str]:
     delete_cliente_card(db, user, operacao_id, cliente_id, card_id)
+=======
+) -> ClienteMpCardOut:
+    return set_default_cliente_mp_card(
+        db, user, operacao_id, cliente_id=cliente_id, card_id=card_id
+    )
+
+
+@router.delete("/{cliente_id}/mp-cards/{card_id}")
+def remove_mp_card(
+    cliente_id: int,
+    card_id: int,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_operacional),
+    operacao_id: int | None = Depends(resolve_operacao_id),
+):
+    delete_cliente_mp_card(db, user, operacao_id, cliente_id=cliente_id, card_id=card_id)
+>>>>>>> main
     return {"status": "success"}
 
 
