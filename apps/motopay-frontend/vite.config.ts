@@ -20,7 +20,7 @@ export default defineConfig(({ mode }) => {
       VitePWA({
         disable: disablePwa,
         registerType: 'autoUpdate',
-        injectRegister: false,
+        injectRegister: 'auto',
         strategies: 'generateSW',
         includeAssets: [
           'favicon.ico',
@@ -56,6 +56,9 @@ export default defineConfig(({ mode }) => {
           globPatterns: ['**/*.{js,css,html,ico,png,svg,webmanifest}'],
           navigateFallback: 'index.html',
           navigateFallbackDenylist: [/^\/api\/?/],
+          skipWaiting: true,
+          clientsClaim: true,
+          cleanupOutdatedCaches: true,
           runtimeCaching: [
             {
               urlPattern: /^\/api\/motos\/[^/]+\/imagem$/i,

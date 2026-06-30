@@ -32,5 +32,9 @@ ENV PYTHONPATH=/app
 
 USER appuser
 
-# Railway injeta PORT; desenvolvimento local sem PORT mantém 8000.
-CMD ["sh", "-c", "exec uvicorn motopay.interfaces.api.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+# Roda as migrações pendentes antes de subir a API — garante que o schema esteja
+# sempre atualizado em qualquer ambiente (Render, Railway, etc.) sem depender de
+# preDeployCommand externo.  Workers/beat/bot sobrescrevem este CMD via
+# dockerCommand no render.yaml ou command: no docker-compose.yml, por isso só o
+# serviço API executa esta sequência.
+CMD ["sh", "-c", "alembic -c /app/alembic.ini upgrade head && exec uvicorn motopay.interfaces.api.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
