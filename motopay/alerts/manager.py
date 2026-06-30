@@ -122,7 +122,7 @@ class AlertManager:
                 tenant_id=alert.tenant_id,
             )
         except Exception:
-            pass
+            logger.debug("Falha ao publicar alerta em tempo real", exc_info=True)
     
     async def _call_handlers(self, alert: Alert) -> None:
         """Call all registered handlers."""

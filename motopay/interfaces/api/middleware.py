@@ -44,7 +44,7 @@ class ObservabilityMiddleware(BaseHTTPMiddleware):
                 ctx.email = request.state.user.email
                 ctx.tenant_id = request.state.user.operacao_id
         except Exception:
-            pass
+            logger.debug("Falha ao extrair contexto de autenticação do request", exc_info=True)
         
         set_context(ctx)
         

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import uuid
 from pathlib import PurePosixPath
 
@@ -12,6 +13,8 @@ from motopay.domain.exceptions import ForbiddenError, MotoPayError, NotFoundErro
 from motopay.infrastructure.db.models import Anexo
 from motopay.infrastructure.storage import get_storage
 from motopay.interfaces.api.deps import CurrentUser
+
+logger = logging.getLogger(__name__)
 
 ALLOWED_CONTENT_TYPES: dict[str, str] = {
     "image/jpeg": ".jpg",
@@ -157,8 +160,12 @@ def delete_anexos_for_entity(
     for anexo in anexos:
         try:
             storage.delete(anexo.storage_key)
-        except Exception:  # noqa: BLE001 - limpeza best-effort do storage
-            pass
+        except Exception:
+            logger.warning(
+                "Falha ao remover anexo do storage (key=%s)",
+                anexo.storage_key,
+                exc_info=True,
+            )
     for anexo in anexos:
         db.delete(anexo)
     if commit:

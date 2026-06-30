@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from motopay.domain.exceptions import MercadoPagoNotConnectedError
@@ -146,7 +146,7 @@ def refresh_expiring_mp_oauth_tokens(
     ops = db.scalars(
         select(Operacao).where(
             Operacao.mercadopago_refresh_token.isnot(None),
-            Operacao.mercadopago_refresh_token != "",
+            func.length(Operacao.mercadopago_refresh_token) > 0,
             Operacao.mercadopago_oauth_expires_at.isnot(None),
             Operacao.mercadopago_oauth_expires_at < cutoff,
             Operacao.mercadopago_connection_status == "connected",

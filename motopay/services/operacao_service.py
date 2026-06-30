@@ -199,7 +199,8 @@ def preview_telegram_template(
         ctx = context or sample_context_for_key(trigger)
         body = template or ""
         return render_custom_body(body, **ctx)
-    assert key is not None
+    if key is None:
+        raise MotoPayError("Informe key ou trigger para pré-visualização do template")
     overrides = {key: template} if template else None
     ctx = context or sample_context_for_key(key)
     return render_template(key, overrides=overrides, **ctx)

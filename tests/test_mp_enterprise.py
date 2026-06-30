@@ -81,6 +81,7 @@ def _seed_received_cobranca(db_session, operacao: Operacao | None = None):
         payment_gateway="mercadopago",
         status=CobrancaStatus.PENDENTE.value,
         payment_portal_token="portal-token-test",
+        payment_portal_expires_at=datetime.now(UTC) + timedelta(days=30),
     )
     db_session.add(cob)
     db_session.commit()

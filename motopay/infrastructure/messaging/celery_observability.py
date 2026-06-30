@@ -450,7 +450,7 @@ def monitor_queues(self) -> None:
 
             publish_event("celery.queue_stats", summary)
         except Exception:
-            pass
+            logger.debug("Falha ao publicar stats da fila Celery", exc_info=True)
 
         logger.info(
             "Queue monitoring: %s workers, %s active tasks",
