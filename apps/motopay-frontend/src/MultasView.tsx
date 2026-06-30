@@ -1,7 +1,7 @@
 import { useState, useEffect, type FormEvent } from 'react';
 import { Plus, Pencil, Trash2, Filter, X, AlertTriangle, Paperclip, Check } from 'lucide-react';
 import { useAuth } from './AuthContext';
-import type { ContratoOut, MotoOut, MultaOut, Paginated } from './apiTypes';
+import type { ClienteOut, ContratoOut, MotoOut, MultaOut, Paginated } from './apiTypes';
 import { PAGE_SIZE } from './apiTypes';
 import { formatBrl, formatDate, todayIso } from './utils/format';
 import { parseApiError } from './utils/apiError';
@@ -48,6 +48,7 @@ const MultasView = () => {
   const [multas, setMultas] = useState<MultaOut[]>([]);
   const [motos, setMotos] = useState<MotoOut[]>([]);
   const [contratos, setContratos] = useState<ContratoOut[]>([]);
+  const [clientes, setClientes] = useState<ClienteOut[]>([]);
   const [total, setTotal] = useState(0);
   const [offset, setOffset] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -57,6 +58,7 @@ const MultasView = () => {
   const [filters, setFilters] = useState<Filters>(emptyFilters());
   const [editingId, setEditingId] = useState<number | null>(null);
   const [createdHint, setCreatedHint] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [form, setForm] = useState<MultaForm>(emptyForm());
 
   const filterParams = (f: Filters) => ({
@@ -71,18 +73,20 @@ const MultasView = () => {
     setLoading(true);
     setError('');
     try {
-      const [res, motoItems, contratoItems] = await Promise.all([
+      const [res, motoItems, contratoItems, clienteItems] = await Promise.all([
         api.get<Paginated<MultaOut>>('/api/v1/multas', {
           params: { limit: PAGE_SIZE, offset: pageOffset, ...filterParams(f) },
         }),
         fetchAllPaginated<MotoOut>(api, '/api/v1/motos'),
         fetchAllPaginated<ContratoOut>(api, '/api/v1/contratos'),
+        fetchAllPaginated<ClienteOut>(api, '/api/v1/clientes'),
       ]);
       setMultas(res.data.items);
       setTotal(res.data.total);
       setOffset(pageOffset);
       setMotos(motoItems);
       setContratos(contratoItems);
+      setClientes(clienteItems);
     } catch (e) {
       setError(parseApiError(e, 'Erro ao carregar multas'));
     } finally {
@@ -113,6 +117,16 @@ const MultasView = () => {
   const contratosDaMoto = form.moto_id
     ? contratos.filter((c) => c.moto_id === parseInt(form.moto_id, 10))
     : contratos;
+
+  // Nome do locatário (cliente) do contrato; cai para "Contrato #N" se não encontrado.
+  const contratoLocatarioLabel = (c: ContratoOut): string => {
+    const cli = clientes.find((x) => x.id === c.cliente_id);
+    if (cli) {
+      const nome = [cli.nome, cli.sobrenome].filter(Boolean).join(' ').trim();
+      if (nome) return nome;
+    }
+    return `Contrato #${c.numero ?? c.id}`;
+  };
 
   const openCreate = () => {
     setEditingId(null);
@@ -145,11 +159,13 @@ const MultasView = () => {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
+    if (submitting) return;
     setError('');
     if (!form.moto_id) {
       setError('Selecione a moto da multa');
       return;
     }
+    setSubmitting(true);
     const payload = {
       moto_id: parseInt(form.moto_id, 10),
       contrato_id: form.contrato_id ? parseInt(form.contrato_id, 10) : null,
@@ -173,6 +189,8 @@ const MultasView = () => {
       }
     } catch (err) {
       setError(parseApiError(err, 'Erro ao salvar multa'));
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -430,7 +448,7 @@ const MultasView = () => {
                   <option value="">Sem contrato vinculado</option>
                   {contratosDaMoto.map((c) => (
                     <option key={c.id} value={c.id}>
-                      Contrato #{c.numero ?? c.id} ({c.status})
+                      {contratoLocatarioLabel(c)} ({c.status})
                     </option>
                   ))}
                 </select>
@@ -519,8 +537,8 @@ const MultasView = () => {
                 <button type="button" className="btn-secondary" onClick={closeModal}>
                   {editingId != null && createdHint ? 'Concluir' : 'Cancelar'}
                 </button>
-                <button type="submit" className="btn-primary">
-                  {editingId != null ? 'Salvar alterações' : 'Salvar'}
+                <button type="submit" className="btn-primary" disabled={submitting}>
+                  {submitting ? 'Salvando…' : editingId != null ? 'Salvar alterações' : 'Salvar'}
                 </button>
               </div>
             </form>

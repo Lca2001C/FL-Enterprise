@@ -9,6 +9,7 @@ import { offsetAfterDelete } from './utils/fetchPaginated';
 import EmptyState from './components/EmptyState';
 import ErrorBanner from './components/ErrorBanner';
 import AdminScopeBanner from './components/AdminScopeBanner';
+import AnexoUploader from './components/AnexoUploader';
 
 const ClientsView = () => {
   const { api, navigateToContracts } = useAuth();
@@ -21,6 +22,7 @@ const ClientsView = () => {
   const [showModal, setShowModal] = useState(false);
   const [editCliente, setEditCliente] = useState<ClienteOut | null>(null);
   const [cardsCliente, setCardsCliente] = useState<ClienteOut | null>(null);
+  const [submitting, setSubmitting] = useState(false);
   const [formData, setFormData] = useState({
     nome: '',
     sobrenome: '',
@@ -116,7 +118,9 @@ const ClientsView = () => {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
+    if (submitting) return;
     setError('');
+    setSubmitting(true);
     try {
       if (editCliente) {
         await api.patch(`/api/v1/clientes/${editCliente.id}`, {
@@ -140,6 +144,8 @@ const ClientsView = () => {
       await fetchClientes(offset);
     } catch (err) {
       setError(parseApiError(err, 'Erro ao salvar cliente'));
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -453,12 +459,21 @@ const ClientsView = () => {
                   }
                 />
               </div>
+              {editCliente && (
+                <div className="input-group">
+                  <AnexoUploader
+                    entityBase={`/api/v1/clientes/${editCliente.id}`}
+                    anexoBase="/api/v1/clientes"
+                  />
+                </div>
+              )}
+
               <div className="modal-actions">
                 <button type="button" className="btn-secondary" onClick={() => setShowModal(false)}>
                   Cancelar
                 </button>
-                <button type="submit" className="btn-primary">
-                  Salvar
+                <button type="submit" className="btn-primary" disabled={submitting}>
+                  {submitting ? 'Salvando…' : 'Salvar'}
                 </button>
               </div>
             </form>

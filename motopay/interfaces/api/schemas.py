@@ -444,6 +444,7 @@ class AnalyticsSummary(BaseModel):
     cobrancas_pendentes: int = 0
     cobrancas_atrasadas: int = 0
     caucao_total: Decimal = Decimal(0)
+    multas_a_pagar: Decimal = Decimal(0)
 
 
 class DashboardInadimplenciaItem(BaseModel):

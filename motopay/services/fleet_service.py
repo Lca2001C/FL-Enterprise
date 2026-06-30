@@ -190,6 +190,11 @@ def delete_moto(
 
     db.execute(update(Financeiro).where(Financeiro.moto_id == m.id).values(moto_id=None))
 
+    from motopay.domain.enums import AnexoEntidade
+    from motopay.services.anexo_service import delete_anexos_for_entity
+
+    delete_anexos_for_entity(db, AnexoEntidade.MOTO.value, m.id, m.operacao_id, commit=False)
+
     old_image = m.imagem_path
     db.delete(m)
     db.commit()
@@ -334,6 +339,10 @@ def delete_cliente(db: Session, user: CurrentUser, operacao_scope: int | None, c
             "Não é possível excluir um cliente com contratos vinculados. "
             "Cancele ou encerre os contratos do cliente antes de excluí-lo."
         )
+    from motopay.domain.enums import AnexoEntidade
+    from motopay.services.anexo_service import delete_anexos_for_entity
+
+    delete_anexos_for_entity(db, AnexoEntidade.CLIENTE.value, c.id, c.operacao_id, commit=False)
     db.delete(c)
     db.commit()
 

@@ -3,11 +3,36 @@ export function formatBrl(value: number | string | null | undefined): string {
   return `R$ ${n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+/**
+ * Converte uma string de data em um Date no fuso LOCAL.
+ *
+ * `new Date("2026-06-19")` é interpretado como meia-noite UTC e, em fusos
+ * negativos (ex.: America/Sao_Paulo, UTC-3), renderiza como o dia anterior
+ * (18/06). Para datas no formato YYYY-MM-DD construímos a data com os
+ * componentes locais, evitando esse deslocamento de um dia.
+ */
+export function parseLocalDate(value: string | Date): Date {
+  if (value instanceof Date) return value;
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim());
+  if (m) {
+    return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  }
+  return new Date(value);
+}
+
 export function formatDate(value: string | Date | null | undefined): string {
   if (!value) return '—';
-  const d = typeof value === 'string' ? new Date(value) : value;
+  const d = parseLocalDate(value);
   if (Number.isNaN(d.getTime())) return '—';
   return d.toLocaleDateString('pt-BR');
+}
+
+/** Formata um Date como YYYY-MM-DD usando os componentes LOCAIS (sem UTC). */
+export function toLocalIso(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
 
 export function roleLabel(tipo: string | null | undefined): string {
@@ -22,13 +47,14 @@ export function roleLabel(tipo: string | null | undefined): string {
 }
 
 export function todayIso(): string {
-  return new Date().toISOString().split('T')[0];
+  // Data de HOJE no fuso local (não UTC) — evita "pular" para amanhã à noite.
+  return toLocalIso(new Date());
 }
 
 export function addDaysIso(iso: string, days: number): string {
-  const d = new Date(iso + 'T12:00:00');
+  const d = parseLocalDate(iso);
   d.setDate(d.getDate() + days);
-  return d.toISOString().split('T')[0];
+  return toLocalIso(d);
 }
 
 export type VigenciaPreset = 'indeterminado' | '1m' | '3m' | '6m' | '1a' | 'custom';

@@ -32,6 +32,7 @@ const ChargesView = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [showModal, setShowModal] = useState(false);
+  const [creatingCharge, setCreatingCharge] = useState(false);
   const [contratoId, setContratoId] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('todos');
   const [copiedId, setCopiedId] = useState<number | null>(null);
@@ -92,11 +93,13 @@ const ChargesView = () => {
 
   const handleCreateCharge = async (e: FormEvent) => {
     e.preventDefault();
+    if (creatingCharge) return;
     setError('');
     if (!mpReady) {
       setError('Conta Mercado Pago não conectada para esta operação.');
       return;
     }
+    setCreatingCharge(true);
     try {
       const device_id = getMercadoPagoDeviceId();
       await api.post('/api/v1/cobrancas/pix', { contrato_id: parseInt(contratoId, 10), device_id });
@@ -105,11 +108,30 @@ const ChargesView = () => {
       await fetchData(offset);
     } catch (err) {
       setError(parseApiError(err, 'Erro ao gerar cobrança'));
+    } finally {
+      setCreatingCharge(false);
     }
   };
 
   const copyPix = async (id: number, text: string) => {
-    await navigator.clipboard.writeText(text);
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      // Fallback para contextos sem Clipboard API (HTTP) ou permissão negada
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+      } catch {
+        setError('Não foi possível copiar o PIX. Selecione e copie manualmente.');
+        return;
+      }
+    }
     setCopiedId(id);
     setTimeout(() => setCopiedId(null), 2000);
   };
@@ -200,7 +222,11 @@ const ChargesView = () => {
           <h2>Gestão de Cobranças</h2>
           <p className="text-muted">Acompanhamento de pagamentos e faturamento</p>
         </div>
-        <button className="btn-primary" onClick={openChargeModal} disabled={mpPayments !== null && !mpReady}>
+        <button
+          className="btn-primary"
+          onClick={openChargeModal}
+          disabled={(mpPayments !== null && !mpReady) || showModal}
+        >
           <Plus size={20} /> Gerar Cobrança
         </button>
       </div>
@@ -494,8 +520,8 @@ const ChargesView = () => {
                 <button type="button" className="btn-secondary" onClick={() => setShowModal(false)}>
                   Cancelar
                 </button>
-                <button type="submit" className="btn-primary">
-                  Gerar Pix
+                <button type="submit" className="btn-primary" disabled={creatingCharge}>
+                  {creatingCharge ? 'Gerando…' : 'Gerar Pix'}
                 </button>
               </div>
             </form>

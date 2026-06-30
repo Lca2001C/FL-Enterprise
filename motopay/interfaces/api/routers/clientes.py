@@ -1,16 +1,25 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, File, Query, UploadFile
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
+from motopay.domain.enums import AnexoEntidade
 from motopay.infrastructure.db.session import get_db
 from motopay.interfaces.api.deps import CurrentUser, require_operacional, resolve_operacao_id
 from motopay.interfaces.api.pagination import clamp_limit, clamp_offset
 from motopay.interfaces.api.schemas import (
+    AnexoOut,
     ClienteCreate,
     ClienteMpCardOut,
     ClienteOut,
     ClienteUpdate,
     Paginated,
     SaveMpCardRequest,
+)
+from motopay.services.anexo_service import (
+    delete_anexo,
+    get_anexo_bytes,
+    list_anexos,
+    upload_anexo,
 )
 from motopay.services.card_payment_service import (
     delete_cliente_mp_card,
@@ -29,6 +38,8 @@ from motopay.services.fleet_service import (
 )
 
 router = APIRouter(prefix="/clientes", tags=["clientes"])
+
+_ENTIDADE = AnexoEntidade.CLIENTE.value
 
 
 @router.get("", response_model=Paginated[ClienteOut])
@@ -125,6 +136,64 @@ def remove_mp_card(
     operacao_id: int | None = Depends(resolve_operacao_id),
 ):
     delete_cliente_mp_card(db, user, operacao_id, cliente_id=cliente_id, card_id=card_id)
+    return {"status": "success"}
+
+
+@router.get("/{cliente_id}/anexos", response_model=list[AnexoOut])
+def list_cliente_anexos(
+    cliente_id: int,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_operacional),
+    operacao_id: int | None = Depends(resolve_operacao_id),
+) -> list[AnexoOut]:
+    c = get_cliente(db, user, operacao_id, cliente_id)
+    return list_anexos(db, c.operacao_id, _ENTIDADE, c.id)
+
+
+@router.post("/{cliente_id}/anexos", response_model=AnexoOut)
+async def upload_cliente_anexo(
+    cliente_id: int,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_operacional),
+    operacao_id: int | None = Depends(resolve_operacao_id),
+    file: UploadFile = File(...),
+) -> AnexoOut:
+    c = get_cliente(db, user, operacao_id, cliente_id)
+    return await upload_anexo(
+        db,
+        operacao_id=c.operacao_id,
+        entidade_tipo=_ENTIDADE,
+        entidade_id=c.id,
+        upload=file,
+    )
+
+
+@router.get("/anexos/{anexo_id}")
+def download_cliente_anexo(
+    anexo_id: int,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_operacional),
+    operacao_id: int | None = Depends(resolve_operacao_id),
+) -> Response:
+    data, content_type, filename = get_anexo_bytes(db, user, operacao_id, anexo_id)
+    return Response(
+        content=data,
+        media_type=content_type,
+        headers={
+            "Content-Disposition": f'inline; filename="{filename}"',
+            "Cache-Control": "private, max-age=300",
+        },
+    )
+
+
+@router.delete("/anexos/{anexo_id}")
+def delete_cliente_anexo(
+    anexo_id: int,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_operacional),
+    operacao_id: int | None = Depends(resolve_operacao_id),
+) -> dict[str, str]:
+    delete_anexo(db, user, operacao_id, anexo_id)
     return {"status": "success"}
 
 

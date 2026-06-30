@@ -202,6 +202,7 @@ export default function PublicPayView() {
     payment_method_id: string;
     installments: number;
   }) => {
+    if (payLoading) return; // evita duplo submit enquanto processa
     setPayLoading(true);
     setError('');
     try {
@@ -230,6 +231,22 @@ export default function PublicPayView() {
       setError(parseApiError(e, 'Erro ao processar cartão'));
     } finally {
       setPayLoading(false);
+    }
+  };
+
+  const on3dsComplete = async () => {
+    // Valida o status real no backend antes de exibir "Pagamento confirmado"
+    // (a autenticação 3DS pode ter falhado/cancelado).
+    try {
+      const r = await api.get<PayerPortalOut>(`/api/v1/public/pay/${token}`);
+      if (!r.data.payable || r.data.cobranca.status === 'recebido') {
+        setPaid(true);
+        setCheckout(r.data);
+      } else {
+        setError('Autenticação em processamento. Atualize em instantes.');
+      }
+    } catch {
+      setError('Erro ao validar o pagamento. Atualize a página em instantes.');
     }
   };
 
@@ -366,6 +383,11 @@ export default function PublicPayView() {
             mode={method}
             savedMpCardId={selectedCard?.mp_card_id}
             onSubmit={payWithCard}
+            onError={() =>
+              setError(
+                'Não foi possível processar o formulário de pagamento. Verifique os dados do cartão e tente novamente.'
+              )
+            }
           />
         )}
 
@@ -379,9 +401,8 @@ export default function PublicPayView() {
             <StatusScreenCheckout
               paymentId={cardResult.payment_id}
               externalResourceUrl={cardResult.three_ds_info?.external_resource_url}
-              onComplete={() => {
-                setPaid(true);
-              }}
+              onComplete={() => void on3dsComplete()}
+              paid={paid}
             />
           </div>
         )}

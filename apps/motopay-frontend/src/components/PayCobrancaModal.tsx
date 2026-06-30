@@ -56,6 +56,7 @@ export default function PayCobrancaModal({
   const defaultCard = savedCards.find((c) => c.is_default) ?? savedCards[0];
   const [selectedSavedId, setSelectedSavedId] = useState<number | null>(null);
   const [polling, setPolling] = useState(false);
+  const [threeDsConfirmed, setThreeDsConfirmed] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const payLoadingRef = useRef(payLoading);
   payLoadingRef.current = payLoading;
@@ -129,7 +130,10 @@ export default function PayCobrancaModal({
     setPixLoading(true);
     onError('');
     try {
-      const r = await api.post<CobrancaOut>(`/api/v1/cobrancas/${cob.id}/pix`);
+      const deviceId = await ensureMercadoPagoDeviceId();
+      const r = await api.post<CobrancaOut>(
+        `/api/v1/cobrancas/${cob.id}/pix?device_id=${encodeURIComponent(deviceId)}`
+      );
       setPixCode(r.data.pix_copia_cola ?? '');
       startPixPolling();
     } catch (e) {
@@ -211,7 +215,10 @@ export default function PayCobrancaModal({
   const on3dsComplete = async () => {
     try {
       const r = await api.get<CobrancaOut>(`/api/v1/cobrancas/${cob.id}`);
-      if (r.data.status === 'recebido') onPaid();
+      if (r.data.status === 'recebido') {
+        setThreeDsConfirmed(true); // interrompe o polling de 5s do StatusScreen
+        onPaid();
+      }
     } catch {
       onError('Pagamento em processamento — atualize a lista em instantes.');
     }
@@ -332,6 +339,11 @@ export default function PayCobrancaModal({
             mode={method}
             savedMpCardId={selectedCard?.mp_card_id}
             onSubmit={payWithCard}
+            onError={() =>
+              onError(
+                'Não foi possível processar o formulário de pagamento. Verifique os dados do cartão e tente novamente.'
+              )
+            }
           />
         )}
 
@@ -346,6 +358,7 @@ export default function PayCobrancaModal({
               paymentId={cardResult.payment_id}
               externalResourceUrl={cardResult.three_ds_info?.external_resource_url}
               onComplete={() => void on3dsComplete()}
+              paid={threeDsConfirmed}
             />
           </div>
         )}

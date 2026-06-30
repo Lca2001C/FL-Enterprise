@@ -1,6 +1,6 @@
 import { Printer, X } from 'lucide-react';
 import type { FinanceiroOut, MotoOut } from '../apiTypes';
-import { formatBrl, formatDate } from '../utils/format';
+import { formatBrl, formatDate, todayIso } from '../utils/format';
 
 type Props = {
   entries: FinanceiroOut[];
@@ -45,7 +45,7 @@ const FinanceStatementModal = ({ entries, motos, onClose }: Props) => {
         <div className="statement-body" id="finance-statement-print">
           <div className="statement-print-header">
             <h2>MotoPay — Extrato financeiro</h2>
-            <p>Gerado em {formatDate(new Date().toISOString().slice(0, 10))}</p>
+            <p>Gerado em {formatDate(todayIso())}</p>
           </div>
 
           <div className="summary-grid">

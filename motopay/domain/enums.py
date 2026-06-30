@@ -48,6 +48,8 @@ class MultaStatus(str, Enum):
 class AnexoEntidade(str, Enum):
     MULTA = "multa"
     FINANCEIRO = "financeiro"
+    MOTO = "moto"
+    CLIENTE = "cliente"
 
 
 class CobrancaStatus(str, Enum):

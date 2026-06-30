@@ -2,11 +2,17 @@ from fastapi import APIRouter, Depends, File, Query, UploadFile
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
-from motopay.domain.enums import MotoStatus
+from motopay.domain.enums import AnexoEntidade, MotoStatus
 from motopay.infrastructure.db.session import get_db
 from motopay.interfaces.api.deps import CurrentUser, require_operacional, resolve_operacao_id
 from motopay.interfaces.api.pagination import clamp_limit, clamp_offset
-from motopay.interfaces.api.schemas import MotoCreate, MotoOut, MotoUpdate, Paginated
+from motopay.interfaces.api.schemas import AnexoOut, MotoCreate, MotoOut, MotoUpdate, Paginated
+from motopay.services.anexo_service import (
+    delete_anexo,
+    get_anexo_bytes,
+    list_anexos,
+    upload_anexo,
+)
 from motopay.services.fleet_service import (
     create_moto,
     delete_moto,
@@ -23,6 +29,8 @@ from motopay.services.moto_media_service import (
 )
 
 router = APIRouter(prefix="/motos", tags=["motos"])
+
+_ENTIDADE = AnexoEntidade.MOTO.value
 
 
 @router.get("", response_model=Paginated[MotoOut])
@@ -121,3 +129,61 @@ def remove_imagem(
     operacao_id: int | None = Depends(resolve_operacao_id),
 ) -> MotoOut:
     return delete_moto_imagem(db, user, operacao_id, moto_id)
+
+
+@router.get("/{moto_id}/anexos", response_model=list[AnexoOut])
+def list_moto_anexos(
+    moto_id: int,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_operacional),
+    operacao_id: int | None = Depends(resolve_operacao_id),
+) -> list[AnexoOut]:
+    m = get_moto(db, user, operacao_id, moto_id)
+    return list_anexos(db, m.operacao_id, _ENTIDADE, m.id)
+
+
+@router.post("/{moto_id}/anexos", response_model=AnexoOut)
+async def upload_moto_anexo(
+    moto_id: int,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_operacional),
+    operacao_id: int | None = Depends(resolve_operacao_id),
+    file: UploadFile = File(...),
+) -> AnexoOut:
+    m = get_moto(db, user, operacao_id, moto_id)
+    return await upload_anexo(
+        db,
+        operacao_id=m.operacao_id,
+        entidade_tipo=_ENTIDADE,
+        entidade_id=m.id,
+        upload=file,
+    )
+
+
+@router.get("/anexos/{anexo_id}")
+def download_moto_anexo(
+    anexo_id: int,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_operacional),
+    operacao_id: int | None = Depends(resolve_operacao_id),
+) -> Response:
+    data, content_type, filename = get_anexo_bytes(db, user, operacao_id, anexo_id)
+    return Response(
+        content=data,
+        media_type=content_type,
+        headers={
+            "Content-Disposition": f'inline; filename="{filename}"',
+            "Cache-Control": "private, max-age=300",
+        },
+    )
+
+
+@router.delete("/anexos/{anexo_id}")
+def delete_moto_anexo(
+    anexo_id: int,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_operacional),
+    operacao_id: int | None = Depends(resolve_operacao_id),
+) -> dict[str, str]:
+    delete_anexo(db, user, operacao_id, anexo_id)
+    return {"status": "success"}

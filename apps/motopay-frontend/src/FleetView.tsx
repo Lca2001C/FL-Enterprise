@@ -9,6 +9,7 @@ import EmptyState from './components/EmptyState';
 import ErrorBanner from './components/ErrorBanner';
 import AdminScopeBanner from './components/AdminScopeBanner';
 import MotoThumbnail from './components/MotoThumbnail';
+import AnexoUploader from './components/AnexoUploader';
 
 const STATUS_OPTIONS = ['disponivel', 'alugada', 'manutencao', 'inativa'] as const;
 const ACCEPTED_IMAGE_TYPES = 'image/jpeg,image/png,image/webp';
@@ -48,6 +49,7 @@ const FleetView = () => {
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [removeImage, setRemoveImage] = useState(false);
   const [imageRefreshKey, setImageRefreshKey] = useState(0);
+  const [submitting, setSubmitting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -155,7 +157,9 @@ const FleetView = () => {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
+    if (submitting) return;
     setError('');
+    setSubmitting(true);
     try {
       const payload = {
         placa: formData.placa,
@@ -188,6 +192,8 @@ const FleetView = () => {
       await fetchMotos(offset);
     } catch (err) {
       setError(parseApiError(err, 'Erro ao salvar veículo'));
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -496,12 +502,22 @@ const FleetView = () => {
                   </small>
                 )}
               </div>
+
+              {editMoto && (
+                <div className="input-group">
+                  <AnexoUploader
+                    entityBase={`/api/v1/motos/${editMoto.id}`}
+                    anexoBase="/api/v1/motos"
+                  />
+                </div>
+              )}
+
               <div className="modal-actions">
                 <button type="button" className="btn-secondary" onClick={() => setShowModal(false)}>
                   Cancelar
                 </button>
-                <button type="submit" className="btn-primary">
-                  Salvar
+                <button type="submit" className="btn-primary" disabled={submitting}>
+                  {submitting ? 'Salvando…' : 'Salvar'}
                 </button>
               </div>
             </form>

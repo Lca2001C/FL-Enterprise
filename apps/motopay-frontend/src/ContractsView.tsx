@@ -78,6 +78,7 @@ const ContractsView = () => {
   const [error, setError] = useState('');
   const [filter, setFilter] = useState<FilterTab>(contractsFilter);
   const [showModal, setShowModal] = useState(false);
+  const [createLoading, setCreateLoading] = useState(false);
   const [copiedId, setCopiedId] = useState<number | null>(null);
   const [actionLoading, setActionLoading] = useState<number | null>(null);
   const [subscriptionLink, setSubscriptionLink] = useState<MpSubscriptionOut | null>(null);
@@ -250,7 +251,9 @@ const ContractsView = () => {
 
   const handleCreate = async (e: FormEvent) => {
     e.preventDefault();
+    if (createLoading) return;
     setError('');
+    setCreateLoading(true);
     try {
       const body: Record<string, unknown> = {
         cliente_id: parseInt(form.cliente_id, 10),
@@ -278,6 +281,8 @@ const ContractsView = () => {
       await fetchMeta();
     } catch (err) {
       setError(parseApiError(err, 'Erro ao criar contrato'));
+    } finally {
+      setCreateLoading(false);
     }
   };
 
@@ -407,7 +412,23 @@ const ContractsView = () => {
   };
 
   const copyPix = async (contratoId: number, pix: string) => {
-    await navigator.clipboard.writeText(pix);
+    try {
+      await navigator.clipboard.writeText(pix);
+    } catch {
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = pix;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+      } catch {
+        setError('Não foi possível copiar o PIX. Selecione e copie manualmente.');
+        return;
+      }
+    }
     setCopiedId(contratoId);
     setTimeout(() => setCopiedId(null), 2000);
   };
@@ -1010,8 +1031,8 @@ const ContractsView = () => {
                 <button type="button" className="btn-secondary" onClick={() => setShowModal(false)}>
                   Cancelar
                 </button>
-                <button type="submit" className="btn-primary">
-                  Criar locação
+                <button type="submit" className="btn-primary" disabled={createLoading}>
+                  {createLoading ? 'Criando…' : 'Criar locação'}
                 </button>
               </div>
             </form>

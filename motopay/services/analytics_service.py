@@ -12,6 +12,7 @@ from motopay.domain.enums import (
     ContratoStatus,
     FinanceiroTipo,
     MotoStatus,
+    MultaStatus,
     UserRole,
 )
 from motopay.domain.exceptions import ForbiddenError
@@ -70,6 +71,14 @@ def _scope_where_contrato(user: CurrentUser, op: int | None):
     return None
 
 
+def _scope_where_multa(user: CurrentUser, op: int | None):
+    if user.role == UserRole.DONO:
+        return Multa.operacao_id == op
+    if op is not None:
+        return Multa.operacao_id == op
+    return None
+
+
 def get_summary(
     db: Session,
     user: CurrentUser,
@@ -111,6 +120,14 @@ def get_summary(
         caucao_stmt = caucao_stmt.where(sc)
     caucao_total = Decimal(db.scalar(caucao_stmt) or 0).quantize(Decimal("0.01"))
 
+    multas_stmt = select(func.coalesce(func.sum(Multa.valor), 0)).where(
+        Multa.status == MultaStatus.PENDENTE.value
+    )
+    smu = _scope_where_multa(user, op)
+    if smu is not None:
+        multas_stmt = multas_stmt.where(smu)
+    multas_a_pagar = Decimal(db.scalar(multas_stmt) or 0).quantize(Decimal("0.01"))
+
     cob_base = select(func.count(Cobranca.id))
     sw = _scope_where_cobranca(user, op)
     if sw is not None:
@@ -145,6 +162,7 @@ def get_summary(
         cobrancas_pendentes=pendentes,
         cobrancas_atrasadas=atrasadas,
         caucao_total=caucao_total,
+        multas_a_pagar=multas_a_pagar,
     )
 
 

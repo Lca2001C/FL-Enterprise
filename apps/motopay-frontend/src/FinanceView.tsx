@@ -68,6 +68,7 @@ const FinanceView = () => {
   const [filters, setFilters] = useState<Filters>(emptyFilters());
   const [editingId, setEditingId] = useState<number | null>(null);
   const [createdHint, setCreatedHint] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [form, setForm] = useState<FinanceForm>(emptyForm());
 
   const allTotals = useMemo(() => computeTotals(allEntries), [allEntries]);
@@ -153,6 +154,7 @@ const FinanceView = () => {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
+    if (submitting) return;
     setError('');
     const payload = {
       tipo: form.tipo,
@@ -161,6 +163,7 @@ const FinanceView = () => {
       data: form.data,
       moto_id: form.moto_id ? parseInt(form.moto_id, 10) : null,
     };
+    setSubmitting(true);
     try {
       if (editingId != null) {
         await api.patch(`/api/v1/financeiro/${editingId}`, payload);
@@ -175,6 +178,8 @@ const FinanceView = () => {
       }
     } catch (err) {
       setError(parseApiError(err, 'Erro ao salvar lançamento'));
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -512,8 +517,8 @@ const FinanceView = () => {
                 <button type="button" className="btn-secondary" onClick={closeModal}>
                   {editingId != null && createdHint ? 'Concluir' : 'Cancelar'}
                 </button>
-                <button type="submit" className="btn-primary">
-                  {editingId != null ? 'Salvar alterações' : 'Salvar'}
+                <button type="submit" className="btn-primary" disabled={submitting}>
+                  {submitting ? 'Salvando…' : editingId != null ? 'Salvar alterações' : 'Salvar'}
                 </button>
               </div>
             </form>

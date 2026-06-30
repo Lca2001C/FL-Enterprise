@@ -306,6 +306,12 @@ const Dashboard = () => {
                 value={loading ? '...' : formatBrl(stats?.caucao_total ?? 0)}
                 trend="Total retido em contratos ativos"
               />
+              <StatCard
+                title="Multas a Pagar"
+                value={loading ? '...' : formatBrl(stats?.multas_a_pagar ?? 0)}
+                trend="Total de multas pendentes"
+                negative={(stats?.multas_a_pagar ?? 0) > 0}
+              />
             </div>
 
             <div className="main-grid">

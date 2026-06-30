@@ -307,6 +307,7 @@ export type AnalyticsSummary = {
   cobrancas_pendentes: number;
   cobrancas_atrasadas: number;
   caucao_total: number;
+  multas_a_pagar: number;
 };
 
 export type DashboardInadimplenciaItem = {

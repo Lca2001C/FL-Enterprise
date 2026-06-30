@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, type ReactNode } from 'react';
 import { Calendar, TrendingUp, AlertCircle } from 'lucide-react';
 import { useAuth } from './AuthContext';
 import type { MotoAnalyticsRow } from './apiTypes';
-import { formatBrl } from './utils/format';
+import { formatBrl, todayIso, toLocalIso } from './utils/format';
 import { parseApiError } from './utils/apiError';
 import ErrorBanner from './components/ErrorBanner';
 import AdminScopeBanner from './components/AdminScopeBanner';
@@ -315,8 +315,8 @@ const MetricsView = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [dates, setDates] = useState({
-    inicio: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0],
-    fim: new Date().toISOString().split('T')[0],
+    inicio: toLocalIso(new Date(new Date().getFullYear(), new Date().getMonth(), 1)),
+    fim: todayIso(),
   });
 
   const fetchRanking = useCallback(async () => {
