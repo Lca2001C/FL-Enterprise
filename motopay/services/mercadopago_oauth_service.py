@@ -68,10 +68,14 @@ def _decode_oauth_state(state: str) -> tuple[int, int, str]:
 def _assert_state_not_used(jti: str) -> None:
     try:
         r = get_redis_connection()
-        if not r.set(f"mp_oauth_state_used:{jti}", "1", nx=True, ex=_STATE_TTL_SECONDS):
-            raise ForbiddenError("State OAuth já utilizado")
+        used = not r.set(f"mp_oauth_state_used:{jti}", "1", nx=True, ex=_STATE_TTL_SECONDS)
     except redis.RedisError as e:
-        logger.error("mp_oauth_state_replay_check_failed (fail-open) jti=%s: %s", jti, e)
+        # Fail-closed: sem verificação de replay disponível, bloqueia o fluxo OAuth
+        # (preferível a aceitar um state potencialmente reutilizado e permitir replay).
+        logger.error("mp_oauth_state_replay_check_failed (fail-closed) jti=%s: %s", jti, e)
+        raise ForbiddenError("Validação de segurança indisponível. Tente conectar novamente.") from e
+    if used:
+        raise ForbiddenError("State OAuth já utilizado")
 
 
 def _resolve_public_key_after_oauth(*, access_token: str, from_exchange: str) -> str | None:

@@ -40,6 +40,16 @@ class FinanceiroTipo(str, Enum):
     DESPESA = "despesa"
 
 
+class MultaStatus(str, Enum):
+    PENDENTE = "pendente"
+    PAGO = "pago"
+
+
+class AnexoEntidade(str, Enum):
+    MULTA = "multa"
+    FINANCEIRO = "financeiro"
+
+
 class CobrancaStatus(str, Enum):
     PENDENTE = "pendente"
     RECEBIDO = "recebido"

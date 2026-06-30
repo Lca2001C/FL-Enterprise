@@ -165,6 +165,11 @@ def mercadopago_webhook(
             )
             return {"ok": True}
         amount = order_total_amount(order_data)
+        if amount is None:
+            logger.warning(
+                "webhook_order_sem_valor resource_id=%s — usando valor da cobrança como fallback",
+                resource_id,
+            )
         _found, ev_id = handle_mercadopago_order_confirmed(
             db,
             mercadopago_order_id=resource_id,

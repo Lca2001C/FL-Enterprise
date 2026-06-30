@@ -52,9 +52,11 @@ def _portal_ttl() -> timedelta:
 
 
 def _ensure_portal_token(cob: Cobranca, *, regenerate: bool = False) -> str:
+    # Token persistido sem expiração é tratado como inválido (fail-secure): regenera em vez
+    # de apenas anexar uma nova expiração a um token possivelmente vazado/legado.
+    if cob.payment_portal_token and cob.payment_portal_expires_at is None:
+        regenerate = True
     if cob.payment_portal_token and not regenerate:
-        if cob.payment_portal_expires_at is None:
-            cob.payment_portal_expires_at = datetime.now(UTC) + _portal_ttl()
         return cob.payment_portal_token
     token = secrets.token_urlsafe(32)
     cob.payment_portal_token = token
@@ -65,7 +67,8 @@ def _ensure_portal_token(cob: Cobranca, *, regenerate: bool = False) -> str:
 def _portal_expired(cob: Cobranca) -> bool:
     expires = cob.payment_portal_expires_at
     if expires is None:
-        return False
+        # Fail-secure: token sem expiração não pode ser considerado válido para sempre.
+        return True
     if expires.tzinfo is None:
         expires = expires.replace(tzinfo=UTC)
     return expires < datetime.now(UTC)

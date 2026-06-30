@@ -35,6 +35,8 @@ export type MotoOut = {
   operacao_id: number;
   placa: string;
   modelo: string;
+  ano?: number | null;
+  cor?: string | null;
   tipo: VeiculoTipo;
   status: string;
   km: number;
@@ -92,6 +94,9 @@ export type ContratoOut = {
   cliente_id: number;
   moto_id: number;
   valor_recorrente: number;
+  valor_caucao: number;
+  km_entrega: number | null;
+  km_devolucao: number | null;
   ciclo: string;
   status: string;
   data_inicio: string;
@@ -174,6 +179,37 @@ export type FinanceiroOut = {
   data: string;
   moto_id: number | null;
   contrato_id: number | null;
+  moto_descricao?: string | null;
+  locatario_nome?: string | null;
+};
+
+export type MultaStatus = 'pendente' | 'pago';
+
+export type MultaOut = {
+  id: number;
+  operacao_id: number;
+  moto_id: number;
+  contrato_id: number | null;
+  cliente_id: number | null;
+  descricao: string;
+  orgao: string | null;
+  valor: number;
+  data: string;
+  vencimento: string | null;
+  status: string;
+  moto_descricao?: string | null;
+  locatario_nome?: string | null;
+  total_anexos: number;
+};
+
+export type AnexoOut = {
+  id: number;
+  operacao_id: number;
+  entidade_tipo: string;
+  entidade_id: number;
+  filename: string;
+  content_type: string;
+  tamanho: number;
 };
 
 export type PaymentsConfig = {
@@ -270,6 +306,7 @@ export type AnalyticsSummary = {
   total_cobrancas: number;
   cobrancas_pendentes: number;
   cobrancas_atrasadas: number;
+  caucao_total: number;
 };
 
 export type DashboardInadimplenciaItem = {
@@ -294,6 +331,7 @@ export type MotoAnalyticsRow = {
   modelo: string;
   receita: number;
   despesa: number;
+  multas: number;
   lucro_liquido: number;
   roi: number | null;
   prejuizo: boolean;
@@ -305,6 +343,7 @@ export type AppTab =
   | 'clientes'
   | 'contratos'
   | 'financeiro'
+  | 'multas'
   | 'metricas'
   | 'cobrancas'
   | 'ajustes'

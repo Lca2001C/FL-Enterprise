@@ -51,13 +51,21 @@ def reconcile_pending_mercadopago_payments(db: Session, *, limit: int = 100) -> 
         client = MercadoPagoClient(access_token=token)
         try:
             order_data = client.get_order(cob.mercadopago_order_id)
-        except MercadoPagoApiError:
+        except MercadoPagoApiError as exc:
+            logger.warning(
+                "reconcile_get_order_failed cob_id=%s operacao_id=%s status=%s",
+                cob.id, cob.operacao_id, exc.status_code,
+            )
             continue
         if not is_order_paid(order_data):
             if cob.mercadopago_payment_id:
                 try:
                     pay = client.get_payment(cob.mercadopago_payment_id)
-                except MercadoPagoApiError:
+                except MercadoPagoApiError as exc:
+                    logger.warning(
+                        "reconcile_get_payment_failed cob_id=%s operacao_id=%s status=%s",
+                        cob.id, cob.operacao_id, exc.status_code,
+                    )
                     continue
                 if str(pay.get("status", "")).lower() not in _MP_CONFIRMED:
                     continue
@@ -103,7 +111,11 @@ def reconcile_mercadopago_refunds(db: Session, *, limit: int = 50) -> int:
         client = MercadoPagoClient(access_token=require_operacao_mp_token(db, op))
         try:
             pay = client.get_payment(cob.mercadopago_payment_id)
-        except MercadoPagoApiError:
+        except MercadoPagoApiError as exc:
+            logger.warning(
+                "reconcile_refund_get_payment_failed cob_id=%s operacao_id=%s status=%s",
+                cob.id, cob.operacao_id, exc.status_code,
+            )
             continue
         ok, _ = sync_refund_from_mercadopago_payment(db, pay_data=pay)
         if ok:
@@ -134,14 +146,22 @@ def reconcile_mercadopago_chargebacks(db: Session, *, limit: int = 50) -> int:
         client = MercadoPagoClient(access_token=require_operacao_mp_token(db, op))
         try:
             pay = client.get_payment(cob.mercadopago_payment_id)
-        except MercadoPagoApiError:
+        except MercadoPagoApiError as exc:
+            logger.warning(
+                "reconcile_chargeback_get_payment_failed cob_id=%s operacao_id=%s status=%s",
+                cob.id, cob.operacao_id, exc.status_code,
+            )
             continue
         cb_id = pay.get("chargeback_id") or pay.get("id")
         if not cb_id:
             continue
         try:
             cb_data = client.get_chargeback(str(cb_id))
-        except MercadoPagoApiError:
+        except MercadoPagoApiError as exc:
+            logger.warning(
+                "reconcile_get_chargeback_failed cob_id=%s operacao_id=%s cb_id=%s status=%s",
+                cob.id, cob.operacao_id, cb_id, exc.status_code,
+            )
             continue
         ok, _ = handle_mercadopago_chargeback(db, chargeback_data=cb_data)
         if ok:
@@ -170,7 +190,11 @@ def reconcile_expired_pix_orders(db: Session, *, limit: int = 50) -> int:
         client = MercadoPagoClient(access_token=require_operacao_mp_token(db, op))
         try:
             order_data = client.get_order(cob.mercadopago_order_id)
-        except MercadoPagoApiError:
+        except MercadoPagoApiError as exc:
+            logger.warning(
+                "reconcile_expired_get_order_failed cob_id=%s operacao_id=%s status=%s",
+                cob.id, cob.operacao_id, exc.status_code,
+            )
             continue
         if is_order_paid(order_data):
             continue

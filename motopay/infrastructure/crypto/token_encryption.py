@@ -40,7 +40,7 @@ def encrypt_token(plain: str | None) -> str | None:
     return f.encrypt(value.encode()).decode()
 
 
-def decrypt_token(cipher: str | None) -> str:
+def decrypt_token(cipher: str | None, *, operacao_id: int | None = None) -> str:
     if not cipher:
         return ""
     value = cipher.strip()
@@ -54,7 +54,10 @@ def decrypt_token(cipher: str | None) -> str:
     try:
         return f.decrypt(value.encode()).decode()
     except InvalidToken:
-        _logger.warning("Falha ao descriptografar token MP (chave incorreta ou dado corrompido)")
+        _logger.warning(
+            "mp_token_decrypt_failed operacao_id=%s — chave de encriptação incorreta ou dado corrompido",
+            operacao_id,
+        )
         return ""
 
 

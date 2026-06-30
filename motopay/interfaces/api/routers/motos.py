@@ -9,6 +9,7 @@ from motopay.interfaces.api.pagination import clamp_limit, clamp_offset
 from motopay.interfaces.api.schemas import MotoCreate, MotoOut, MotoUpdate, Paginated
 from motopay.services.fleet_service import (
     create_moto,
+    delete_moto,
     get_moto,
     update_moto,
 )
@@ -71,6 +72,17 @@ def patch(
     operacao_id: int | None = Depends(resolve_operacao_id),
 ) -> MotoOut:
     return update_moto(db, user, operacao_id, moto_id, body)
+
+
+@router.delete("/{moto_id}")
+def delete_one(
+    moto_id: int,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_operacional),
+    operacao_id: int | None = Depends(resolve_operacao_id),
+) -> dict[str, str]:
+    delete_moto(db, user, operacao_id, moto_id)
+    return {"status": "success"}
 
 
 @router.post("/{moto_id}/imagem", response_model=MotoOut)

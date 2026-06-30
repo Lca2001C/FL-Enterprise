@@ -7,9 +7,22 @@ from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.orm import Session, aliased
 
 from motopay.config import app_today
-from motopay.domain.enums import CobrancaStatus, FinanceiroTipo, MotoStatus, UserRole
+from motopay.domain.enums import (
+    CobrancaStatus,
+    ContratoStatus,
+    FinanceiroTipo,
+    MotoStatus,
+    UserRole,
+)
 from motopay.domain.exceptions import ForbiddenError
-from motopay.infrastructure.db.models import Cliente, Cobranca, Contrato, Financeiro, Moto
+from motopay.infrastructure.db.models import (
+    Cliente,
+    Cobranca,
+    Contrato,
+    Financeiro,
+    Moto,
+    Multa,
+)
 from motopay.interfaces.api.deps import CurrentUser
 from motopay.interfaces.api.schemas import (
     AnalyticsSummary,
@@ -76,8 +89,8 @@ def get_summary(
         receita_stmt = receita_stmt.where(sf)
         despesa_stmt = despesa_stmt.where(sf)
 
-    receita_total = Decimal(db.scalar(receita_stmt) or 0)
-    despesa_total = Decimal(db.scalar(despesa_stmt) or 0)
+    receita_total = Decimal(db.scalar(receita_stmt) or 0).quantize(Decimal("0.01"))
+    despesa_total = Decimal(db.scalar(despesa_stmt) or 0).quantize(Decimal("0.01"))
 
     motos_stmt = select(func.count(Moto.id)).where(Moto.status == MotoStatus.ALUGADA.value)
     sm = _scope_where_moto(user, op)
@@ -90,6 +103,13 @@ def get_summary(
     if sc is not None:
         inad_stmt = inad_stmt.where(sc)
     inadimplentes = int(db.scalar(inad_stmt) or 0)
+
+    caucao_stmt = select(func.coalesce(func.sum(Contrato.valor_caucao), 0)).where(
+        Contrato.status == ContratoStatus.ATIVO.value
+    )
+    if sc is not None:
+        caucao_stmt = caucao_stmt.where(sc)
+    caucao_total = Decimal(db.scalar(caucao_stmt) or 0).quantize(Decimal("0.01"))
 
     cob_base = select(func.count(Cobranca.id))
     sw = _scope_where_cobranca(user, op)
@@ -124,6 +144,7 @@ def get_summary(
         total_cobrancas=total_cob,
         cobrancas_pendentes=pendentes,
         cobrancas_atrasadas=atrasadas,
+        caucao_total=caucao_total,
     )
 
 
@@ -149,12 +170,27 @@ def moto_ranking(
         ),
         0,
     )
+    # Soma das multas da moto no período. Usa subquery correlacionada para evitar
+    # o produto cartesiano que ocorreria ao dar join direto em Financeiro e Multa.
+    multa_expr = func.coalesce(
+        select(func.sum(Multa.valor))
+        .where(
+            Multa.moto_id == Moto.id,
+            Multa.operacao_id == Moto.operacao_id,
+            Multa.data >= data_inicio,
+            Multa.data <= data_fim,
+        )
+        .correlate(Moto)
+        .scalar_subquery(),
+        0,
+    )
     stmt = (
-        select(Moto.id, Moto.placa, Moto.modelo, receita_expr, despesa_expr)
+        select(Moto.id, Moto.placa, Moto.modelo, receita_expr, despesa_expr, multa_expr)
         .select_from(Moto)
         .outerjoin(
             Financeiro,
             (Financeiro.moto_id == Moto.id)
+            & (Financeiro.operacao_id == Moto.operacao_id)
             & (Financeiro.data >= data_inicio)
             & (Financeiro.data <= data_fim),
         )
@@ -166,13 +202,16 @@ def moto_ranking(
         stmt = stmt.where(Moto.operacao_id == op)
     rows_raw = db.execute(stmt).all()
     out: list[MotoAnalyticsRow] = []
-    for mid, placa, modelo, rec, des in rows_raw:
+    for mid, placa, modelo, rec, des, mul in rows_raw:
         rec_d = Decimal(rec or 0)
         des_d = Decimal(des or 0)
-        lucro = rec_d - des_d
+        multas_d = Decimal(mul or 0)
+        # Multas são despesas: entram no total de gastos que define lucro e ROI.
+        despesa_total = des_d + multas_d
+        lucro = rec_d - despesa_total
         roi: Decimal | None
-        if des_d > 0:
-            roi = lucro / des_d
+        if despesa_total > 0:
+            roi = (lucro / despesa_total).quantize(Decimal("0.01"))
         else:
             roi = None
         out.append(
@@ -182,6 +221,7 @@ def moto_ranking(
                 modelo=str(modelo),
                 receita=rec_d,
                 despesa=des_d,
+                multas=multas_d,
                 lucro_liquido=lucro,
                 roi=roi,
                 prejuizo=lucro < 0,

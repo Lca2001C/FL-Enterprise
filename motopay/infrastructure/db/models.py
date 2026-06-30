@@ -87,6 +87,8 @@ class Moto(Base):
     )
     placa: Mapped[str] = mapped_column(String(16), nullable=False)
     modelo: Mapped[str] = mapped_column(String(128), nullable=False)
+    ano: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    cor: Mapped[str | None] = mapped_column(String(32), nullable=True)
     tipo: Mapped[str] = mapped_column(String(32), nullable=False, server_default="moto")
     status: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
     km: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0, server_default="0")
@@ -95,6 +97,7 @@ class Moto(Base):
     operacao: Mapped[Operacao] = relationship(back_populates="motos")
     contratos: Mapped[list[Contrato]] = relationship(back_populates="moto")
     lancamentos: Mapped[list[Financeiro]] = relationship(back_populates="moto")
+    multas: Mapped[list[Multa]] = relationship(back_populates="moto")
 
     __table_args__ = (UniqueConstraint("operacao_id", "placa", name="uq_motos_operacao_placa"),)
 
@@ -146,6 +149,11 @@ class Contrato(Base):
     cliente_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("clientes.id"), nullable=False)
     moto_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("motos.id"), nullable=False)
     valor_recorrente: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
+    valor_caucao: Mapped[Decimal] = mapped_column(
+        Numeric(14, 2), nullable=False, server_default="0"
+    )
+    km_entrega: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    km_devolucao: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     ciclo: Mapped[str] = mapped_column(String(16), nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
     data_inicio: Mapped[date] = mapped_column(Date, nullable=False)
@@ -174,6 +182,7 @@ class Contrato(Base):
     moto: Mapped[Moto] = relationship(back_populates="contratos")
     cobrancas: Mapped[list[Cobranca]] = relationship(back_populates="contrato")
     lancamentos: Mapped[list[Financeiro]] = relationship(back_populates="contrato")
+    multas: Mapped[list[Multa]] = relationship(back_populates="contrato")
 
 
 class Financeiro(Base):
@@ -260,6 +269,58 @@ class ClienteMpCard(Base):
 
     __table_args__ = (
         UniqueConstraint("cliente_id", "mp_card_id", name="uq_cliente_mp_cards_cliente_mp_card"),
+    )
+
+
+class Multa(Base):
+    __tablename__ = "multas"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    operacao_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("operacoes.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    moto_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("motos.id"), nullable=False)
+    contrato_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("contratos.id", ondelete="SET NULL"), nullable=True
+    )
+    cliente_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("clientes.id", ondelete="SET NULL"), nullable=True
+    )
+    descricao: Mapped[str] = mapped_column(String(512), nullable=False)
+    orgao: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    valor: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
+    data: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    vencimento: Mapped[date | None] = mapped_column(Date, nullable=True)
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, server_default="pendente", index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+    moto: Mapped[Moto] = relationship(back_populates="multas")
+    contrato: Mapped[Contrato | None] = relationship(back_populates="multas")
+    cliente: Mapped[Cliente | None] = relationship()
+
+
+class Anexo(Base):
+    __tablename__ = "anexos"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    operacao_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("operacoes.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    entidade_tipo: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    entidade_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    storage_key: Mapped[str] = mapped_column(String(512), nullable=False)
+    filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    content_type: Mapped[str] = mapped_column(String(128), nullable=False)
+    tamanho: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default="0")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
 

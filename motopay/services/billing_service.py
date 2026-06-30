@@ -134,6 +134,23 @@ def get_open_cobranca(db: Session, contrato_id: int) -> Cobranca | None:
     ).first()
 
 
+def get_open_cobranca_locked(db: Session, contrato_id: int) -> Cobranca | None:
+    """Igual a get_open_cobranca, porém com SELECT ... FOR UPDATE.
+
+    Serializa requests concorrentes que poderiam gerar cobranças duplicadas para o mesmo
+    contrato (geração de PIX simultânea / reentrega de webhook de assinatura).
+    """
+    return db.scalars(
+        select(Cobranca)
+        .where(
+            Cobranca.contrato_id == contrato_id,
+            Cobranca.status.in_(_OPEN_COBRANCA_STATUSES),
+        )
+        .order_by(Cobranca.id.desc())
+        .with_for_update()
+    ).first()
+
+
 def _cobranca_to_out(
     c: Cobranca,
     op: Operacao | None,
@@ -393,7 +410,7 @@ def create_pix_charge_for_contract(
     # Para cobranças em atraso, o total muda diariamente (juros). Considera
     # reutilizável se o total é igual OU se a cobrança foi atualizada hoje
     # (evita chamar o MP várias vezes no mesmo dia para o mesmo atraso).
-    existing = get_open_cobranca(db, ct.id)
+    existing = get_open_cobranca_locked(db, ct.id)
     if existing is not None and existing.pix_copia_cola and existing.mercadopago_order_id:
         # Mesma data de vencimento e mesmo total → reutiliza sem chamar MP
         if existing.valor == amounts.valor_total:
@@ -827,7 +844,15 @@ def _finalize_payment(
 
     cliente = db.get(Cliente, ct.cliente_id)
     if cliente:
-        recalculate_cliente_score(db, cliente, on_time_payment_delta=5)
+        try:
+            recalculate_cliente_score(db, cliente, on_time_payment_delta=5)
+        except Exception:
+            # Score é secundário: uma falha aqui não pode abortar a confirmação do pagamento
+            # (o webhook retornaria 500 e o MP reentregaria indefinidamente).
+            logger.exception(
+                "Falha ao recalcular score do cliente=%s — pagamento confirmado mesmo assim",
+                ct.cliente_id,
+            )
 
     payload: dict = {
         "contrato_id": ct.id,
@@ -862,7 +887,9 @@ def handle_mercadopago_refund_confirmed(
     if delta <= 0:
         return True, None
     cob.valor_estornado = target
-    if target >= cob.valor:
+    # Tolerância de 1 centavo: estornos parciais acumulados podem fechar em cob.valor - 0.01
+    # por arredondamento. Sem isso a cobrança ficaria "presa" sem virar CANCELADO.
+    if target >= cob.valor - Decimal("0.01"):
         cob.status = CobrancaStatus.CANCELADO.value
     db.add(cob)
     ct = db.get(Contrato, cob.contrato_id)
@@ -912,13 +939,32 @@ def sync_refund_from_mercadopago_payment(
     if not cob:
         return False, None
     prev = cob.valor_estornado or Decimal(0)
-    target = refunded if refunded > 0 else cob.valor
-    target = min(target, cob.valor)
+    if refunded > 0:
+        target = min(refunded, cob.valor)
+    elif status == "refunded":
+        # MP sinalizou estorno total mas não enviou o valor — assume total e registra.
+        logger.warning(
+            "webhook_refund_sem_valor payment_id=%s status=%s — assumindo estorno total",
+            payment_id,
+            status,
+        )
+        target = cob.valor
+    else:
+        # Sem valor de estorno e não é estorno total declarado → não inferir nada.
+        return True, None
     delta = target - prev
-    if delta <= 0:
+    if delta < 0:
+        logger.warning(
+            "webhook_refund_delta_negativo payment_id=%s prev=%s target=%s — possível over-refund",
+            payment_id,
+            prev,
+            target,
+        )
+        return True, None
+    if delta == 0:
         return True, None
     cob.valor_estornado = target
-    if target >= cob.valor or status == "refunded":
+    if target >= cob.valor - Decimal("0.01") or status == "refunded":
         cob.status = CobrancaStatus.CANCELADO.value
     db.add(cob)
     ct = db.get(Contrato, cob.contrato_id)
@@ -1064,7 +1110,9 @@ def handle_mercadopago_subscription_payment(
     value: Decimal | None = None,
 ) -> tuple[bool, int | None]:
     existing = db.scalars(
-        select(Cobranca).where(Cobranca.mercadopago_payment_id == mercadopago_payment_id)
+        select(Cobranca)
+        .where(Cobranca.mercadopago_payment_id == mercadopago_payment_id)
+        .with_for_update()
     ).first()
     if existing:
         return handle_mercadopago_payment_confirmed(
@@ -1102,7 +1150,7 @@ def handle_mercadopago_subscription_payment(
     op = db.get(Operacao, ct.operacao_id)
     today = _today()
     amounts = charge_amounts_for_contrato(ct, op, today) if op else None
-    cob = get_open_cobranca(db, ct.id)
+    cob = get_open_cobranca_locked(db, ct.id)
     if not cob:
         cob = Cobranca(
             operacao_id=ct.operacao_id,

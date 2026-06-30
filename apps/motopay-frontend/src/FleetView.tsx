@@ -34,7 +34,15 @@ const FleetView = () => {
   const [statusFilter, setStatusFilter] = useState<string>('todos');
   const [showModal, setShowModal] = useState(false);
   const [editMoto, setEditMoto] = useState<MotoOut | null>(null);
-  const [formData, setFormData] = useState<{ placa: string; modelo: string; tipo: VeiculoTipo; status: string; km: number }>({ placa: '', modelo: '', tipo: 'moto', status: 'disponivel', km: 0 });
+  const [formData, setFormData] = useState<{
+    placa: string;
+    modelo: string;
+    ano: string;
+    cor: string;
+    tipo: VeiculoTipo;
+    status: string;
+    km: number;
+  }>({ placa: '', modelo: '', ano: '', cor: '', tipo: 'moto', status: 'disponivel', km: 0 });
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
@@ -88,14 +96,22 @@ const FleetView = () => {
 
   const openCreate = () => {
     setEditMoto(null);
-    setFormData({ placa: '', modelo: '', tipo: 'moto', status: 'disponivel', km: 0 });
+    setFormData({ placa: '', modelo: '', ano: '', cor: '', tipo: 'moto', status: 'disponivel', km: 0 });
     resetImageState();
     setShowModal(true);
   };
 
   const openEdit = (moto: MotoOut) => {
     setEditMoto(moto);
-    setFormData({ placa: moto.placa, modelo: moto.modelo, tipo: (moto.tipo ?? 'moto') as VeiculoTipo, status: moto.status, km: moto.km });
+    setFormData({
+      placa: moto.placa,
+      modelo: moto.modelo,
+      ano: moto.ano != null ? String(moto.ano) : '',
+      cor: moto.cor ?? '',
+      tipo: (moto.tipo ?? 'moto') as VeiculoTipo,
+      status: moto.status,
+      km: moto.km,
+    });
     resetImageState();
     setShowModal(true);
   };
@@ -141,21 +157,24 @@ const FleetView = () => {
     e.preventDefault();
     setError('');
     try {
+      const payload = {
+        placa: formData.placa,
+        modelo: formData.modelo,
+        ano: formData.ano ? parseInt(formData.ano, 10) : null,
+        cor: formData.cor.trim() || null,
+        tipo: formData.tipo,
+        status: formData.status,
+        km: formData.km,
+      };
       let motoId: number;
       if (editMoto) {
-        const r = await api.patch(`/api/v1/motos/${editMoto.id}`, {
-          placa: formData.placa,
-          modelo: formData.modelo,
-          tipo: formData.tipo,
-          status: formData.status,
-          km: formData.km,
-        });
+        const r = await api.patch(`/api/v1/motos/${editMoto.id}`, payload);
         motoId = r.data.id;
         if (removeImage && editMoto.tem_imagem) {
           await api.delete(`/api/v1/motos/${motoId}/imagem`);
         }
       } else {
-        const r = await api.post('/api/v1/motos', formData);
+        const r = await api.post('/api/v1/motos', payload);
         motoId = r.data.id;
       }
 
@@ -265,7 +284,14 @@ const FleetView = () => {
                     />
                   </td>
                   <td className="font-mono">{moto.placa}</td>
-                  <td>{moto.modelo}</td>
+                  <td>
+                    <div>{moto.modelo}</div>
+                    {(moto.ano || moto.cor) && (
+                      <div className="text-muted" style={{ fontSize: '0.78rem' }}>
+                        {[moto.ano, moto.cor].filter(Boolean).join(' • ')}
+                      </div>
+                    )}
+                  </td>
                   <td>{VEICULO_TIPO_OPTIONS.find((o) => o.value === moto.tipo)?.label ?? moto.tipo}</td>
                   <td>{moto.km.toLocaleString('pt-BR')} km</td>
                   <td>
@@ -277,16 +303,28 @@ const FleetView = () => {
                     {moto.cliente_nome || '—'}
                   </td>
                   <td style={{ textAlign: 'right' }}>
-                    <button type="button" className="icon-btn" onClick={() => openEdit(moto)}>
-                      <Edit2 size={16} />
-                    </button>
-                    <button
-                      type="button"
-                      className="icon-btn danger"
-                      onClick={() => void handleDelete(moto.id)}
-                    >
-                      <Trash2 size={16} />
-                    </button>
+                    <div className="row-actions">
+                      <button
+                        type="button"
+                        className="icon-btn"
+                        title="Editar veículo"
+                        aria-label="Editar veículo"
+                        onClick={() => openEdit(moto)}
+                      >
+                        <Edit2 size={16} />
+                        <span className="icon-btn__label">Editar</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="icon-btn danger"
+                        title="Excluir veículo"
+                        aria-label="Excluir veículo"
+                        onClick={() => void handleDelete(moto.id)}
+                      >
+                        <Trash2 size={16} />
+                        <span className="icon-btn__label">Excluir</span>
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -388,6 +426,28 @@ const FleetView = () => {
                   onChange={(e) => setFormData({ ...formData, modelo: e.target.value })}
                   placeholder="Honda CG 160"
                   required
+                />
+              </div>
+              <div className="input-group">
+                <label className="input-label">Ano</label>
+                <input
+                  className="input-field"
+                  type="number"
+                  min={1900}
+                  max={2100}
+                  step={1}
+                  value={formData.ano}
+                  onChange={(e) => setFormData({ ...formData, ano: e.target.value })}
+                  placeholder="2026"
+                />
+              </div>
+              <div className="input-group">
+                <label className="input-label">Cor</label>
+                <input
+                  className="input-field"
+                  value={formData.cor}
+                  onChange={(e) => setFormData({ ...formData, cor: e.target.value })}
+                  placeholder="Azul"
                 />
               </div>
               <div className="input-group">
@@ -547,19 +607,6 @@ const FleetView = () => {
         }
         .status-badge.inativa {
           background: rgba(239, 68, 68, 0.1);
-          color: var(--danger);
-        }
-        .icon-btn {
-          background: none;
-          border: none;
-          color: var(--text-muted);
-          cursor: pointer;
-          padding: 5px;
-        }
-        .icon-btn:hover {
-          color: var(--primary);
-        }
-        .icon-btn.danger:hover {
           color: var(--danger);
         }
         .btn-secondary {

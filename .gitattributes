@@ -1,0 +1,3 @@
+# Scripts usados dentro de containers Linux precisam de LF (CRLF quebra o shebang).
+*.sh text eol=lf
+apps/motopay-frontend/docker-entrypoint.sh text eol=lf

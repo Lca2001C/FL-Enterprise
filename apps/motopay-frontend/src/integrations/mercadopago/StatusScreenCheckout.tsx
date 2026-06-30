@@ -5,18 +5,21 @@ type Props = {
   paymentId: string;
   externalResourceUrl?: string | null;
   onComplete?: () => void;
+  /** Quando true, interrompe o polling de 5s (pagamento já confirmado). */
+  paid?: boolean;
 };
 
 export default function StatusScreenCheckout({
   paymentId,
   externalResourceUrl,
   onComplete,
+  paid,
 }: Props) {
   useEffect(() => {
-    if (!onComplete) return;
+    if (!onComplete || paid) return;
     const timer = window.setInterval(() => onComplete(), 5000);
     return () => window.clearInterval(timer);
-  }, [onComplete]);
+  }, [onComplete, paid]);
 
   if (externalResourceUrl) {
     return (

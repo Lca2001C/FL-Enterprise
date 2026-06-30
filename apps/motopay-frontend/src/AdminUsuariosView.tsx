@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, type FormEvent } from 'react';
-import { Filter, UserPlus, Users } from 'lucide-react';
+import { Filter, UserPlus, Users, Trash2 } from 'lucide-react';
 import { useAuth } from './AuthContext';
 import type { Paginated, UserAdminOut } from './apiTypes';
 import { PAGE_SIZE } from './apiTypes';
@@ -65,6 +65,18 @@ const AdminUsuariosView = () => {
   useEffect(() => {
     void fetchUsuarios(0);
   }, [fetchUsuarios]);
+
+  const handleDelete = async (id: number, email: string) => {
+    if (!window.confirm(`Excluir o usuário "${email}"? Esta ação não pode ser desfeita.`)) return;
+    setError('');
+    try {
+      await api.delete(`/api/v1/usuarios/${id}`);
+      showToast('Usuário excluído.');
+      await fetchUsuarios(offset);
+    } catch (err) {
+      setError(parseApiError(err, 'Erro ao excluir usuário'));
+    }
+  };
 
   const handleCreate = async (e: FormEvent) => {
     e.preventDefault();
@@ -156,6 +168,7 @@ const AdminUsuariosView = () => {
                 <th>Tipo</th>
                 <th>Operação</th>
                 <th>Criado em</th>
+                <th style={{ textAlign: 'right' }}>Ações</th>
               </tr>
             </thead>
             <tbody>
@@ -168,6 +181,18 @@ const AdminUsuariosView = () => {
                   </td>
                   <td className="text-muted">{operacaoLabel(u)}</td>
                   <td className="text-muted">{formatDate(u.created_at)}</td>
+                  <td style={{ textAlign: 'right' }}>
+                    <button
+                      type="button"
+                      className="icon-btn danger"
+                      title="Excluir usuário"
+                      aria-label="Excluir usuário"
+                      onClick={() => void handleDelete(u.id, u.email)}
+                    >
+                      <Trash2 size={16} />
+                      <span className="icon-btn__label">Excluir</span>
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>

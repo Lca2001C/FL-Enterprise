@@ -1,21 +1,23 @@
 import axios from 'axios';
 
+const GENERIC_ERROR = 'Ocorreu um erro inesperado. Tente novamente em instantes.';
+
 function detailToString(detail: unknown): string {
   if (typeof detail === 'string') return detail;
   if (Array.isArray(detail)) {
-    return detail
+    const parts = detail
       .map((item) => {
         if (typeof item === 'object' && item !== null && 'msg' in item) {
           return String((item as { msg: unknown }).msg);
         }
-        return String(item);
+        if (typeof item === 'string') return item;
+        return '';
       })
-      .join('; ');
+      .filter(Boolean);
+    return parts.length ? parts.join('; ') : GENERIC_ERROR;
   }
-  if (typeof detail === 'object' && detail !== null) {
-    return JSON.stringify(detail);
-  }
-  return 'Erro desconhecido';
+  // Nunca expõe objetos crus/JSON técnico ao usuário final.
+  return GENERIC_ERROR;
 }
 
 export function parseApiError(err: unknown, fallback = 'Ocorreu um erro'): string {

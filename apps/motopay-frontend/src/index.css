@@ -264,16 +264,41 @@ h3, h4, h5, h6 {
   transition: var(--transition);
   white-space: nowrap;
 }
-.icon-btn {
-  padding: 7px;
-  color: var(--text-muted);
-  background: rgba(255,255,255,0.04);
-  border-color: rgba(255,255,255,0.08);
-}
 .action-btn-pix:hover { background: rgba(212,165,116,0.15); border-color: rgba(212,165,116,0.4); }
-.icon-btn:hover { color: var(--text-main); background: rgba(255,255,255,0.08); }
+
+/* Botões de ação das linhas de tabela: rótulo + ícone, alto contraste. */
+.icon-btn {
+  gap: 6px;
+  padding: 7px 12px;
+  color: var(--text-main);
+  background: rgba(255,255,255,0.06);
+  border-color: rgba(255,255,255,0.16);
+}
+.icon-btn svg { flex-shrink: 0; }
+.icon-btn:hover {
+  color: #fff;
+  background: rgba(255,255,255,0.12);
+  border-color: rgba(255,255,255,0.28);
+}
+.icon-btn.danger {
+  color: #ff8a8a;
+  background: rgba(239,68,68,0.10);
+  border-color: rgba(239,68,68,0.32);
+}
+.icon-btn.danger:hover {
+  color: #fff;
+  background: rgba(239,68,68,0.9);
+  border-color: rgba(239,68,68,0.95);
+}
 .icon-btn:disabled, .action-btn-pix:disabled { opacity: 0.4; cursor: not-allowed; }
 
+/* Em telas estreitas o rótulo some e o botão vira só-ícone com toque maior. */
+@media (max-width: 560px) {
+  .icon-btn .icon-btn__label { display: none; }
+  .icon-btn { padding: 9px; }
+}
+
+.row-actions { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
 .actions { display: flex; align-items: center; gap: 6px; justify-content: flex-end; }
 
 /* Sidebar mobile */

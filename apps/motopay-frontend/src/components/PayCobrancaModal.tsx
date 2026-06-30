@@ -169,6 +169,9 @@ export default function PayCobrancaModal({
       payment_method_id: string;
       installments: number;
     }) => {
+      // Guarda de reentrância: evita disparar um segundo pagamento enquanto o
+      // primeiro ainda está em andamento (duplo submit do brick).
+      if (payLoadingRef.current) return;
       setPayLoading(true);
       onError('');
       try {

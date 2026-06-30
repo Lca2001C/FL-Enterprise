@@ -230,6 +230,29 @@ def _format_amount(value: Decimal) -> str:
     return str(value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
 
 
+def _amount_number(value: Decimal) -> float:
+    """Valor numérico arredondado a 2 casas.
+
+    As APIs clássicas (Payments refunds, Preapproval) esperam ``transaction_amount``/
+    ``amount`` como NÚMERO (a Orders API v2 usa string — ver _format_amount). Arredondar
+    antes de converter para float evita artefatos de ponto flutuante (ex.: 100.00000000001).
+    """
+    return float(value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+
+
+def _refund_idempotency_key(*, scope: str, ref: str, amount: Decimal | None) -> str:
+    """Chave de idempotência determinística para estornos.
+
+    Garante que um retry (timeout/rede) do MESMO estorno reaproveite o resultado no MP em
+    vez de processar um segundo estorno. Inclui o valor para que estornos distintos tenham
+    chaves distintas. (Atenção: dois estornos parciais de valor idêntico compartilham chave;
+    no fluxo do app o estorno reduz o saldo restante, então isso não ocorre na prática.)
+    """
+    amt = _format_amount(amount) if amount is not None else "full"
+    raw = f"refund:{scope}:{ref}:{amt}"
+    return hashlib.sha256(raw.encode()).hexdigest()[:40]
+
+
 def build_webhook_manifest(*, data_id: str, request_id: str, ts: str) -> str:
     return f"id:{data_id};request-id:{request_id};ts:{ts};"
 
@@ -274,11 +297,11 @@ def _allow_global_mp_token() -> bool:
 def operacao_access_token_plain(op: Operacao | None) -> str:
     if not op:
         return ""
-    return decrypt_token(op.mercadopago_access_token)
+    return decrypt_token(op.mercadopago_access_token, operacao_id=op.id)
 
 
 def operacao_refresh_token_plain(op: Operacao) -> str:
-    return decrypt_token(op.mercadopago_refresh_token)
+    return decrypt_token(op.mercadopago_refresh_token, operacao_id=op.id)
 
 
 def operacao_mp_oauth_connected(op: Operacao) -> bool:
@@ -642,7 +665,7 @@ class MercadoPagoClient:
             "auto_recurring": {
                 "frequency": freq,
                 "frequency_type": freq_type,
-                "transaction_amount": float(value),
+                "transaction_amount": _amount_number(value),
                 "currency_id": "BRL",
             },
             "payer_email": payer_email,
@@ -675,7 +698,7 @@ class MercadoPagoClient:
                 "auto_recurring": {
                     "frequency": freq,
                     "frequency_type": freq_type,
-                    "transaction_amount": float(value),
+                    "transaction_amount": _amount_number(value),
                     "currency_id": "BRL",
                 }
             },
@@ -707,7 +730,9 @@ class MercadoPagoClient:
             "POST",
             f"/v1/orders/{order_id}/refund",
             json=payload,
-            idempotency_key=str(uuid.uuid4()),
+            idempotency_key=_refund_idempotency_key(
+                scope="order", ref=order_id, amount=amount if payment_id else None
+            ),
             timeout=60.0,
         )
 
@@ -728,12 +753,14 @@ class MercadoPagoClient:
             )
         payload: dict[str, Any] = {}
         if amount is not None:
-            payload["amount"] = float(amount)
+            payload["amount"] = _amount_number(amount)
         return self._request(
             "POST",
             f"/v1/payments/{payment_id}/refunds",
             json=payload if payload else {},
-            idempotency_key=str(uuid.uuid4()),
+            idempotency_key=_refund_idempotency_key(
+                scope="payment", ref=str(payment_id), amount=amount
+            ),
             timeout=60.0,
         )
 

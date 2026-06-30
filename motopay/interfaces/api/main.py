@@ -30,6 +30,7 @@ from motopay.interfaces.api.routers import (
     contratos,
     financeiro,
     motos,
+    multas,
     operacoes,
     ops,
     public_pay,
@@ -264,6 +265,22 @@ async def generic_motopay_handler(_: Request, exc: MotoPayError) -> JSONResponse
     return JSONResponse(status_code=400, content={"detail": str(exc)})
 
 
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    """Rede de segurança: erros inesperados nunca expõem stack trace ao usuário.
+
+    O traceback completo vai apenas para os logs/Sentry; o cliente recebe uma
+    mensagem genérica em português.
+    """
+    logger.exception(
+        "Erro não tratado em %s %s", request.method, request.url.path, exc_info=exc
+    )
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Ocorreu um erro inesperado. Tente novamente em instantes."},
+    )
+
+
 api_prefix = "/api/v1"
 app.include_router(webhooks.router)
 app.include_router(auth.router, prefix=api_prefix)
@@ -273,6 +290,7 @@ app.include_router(motos.router, prefix=api_prefix)
 app.include_router(clientes.router, prefix=api_prefix)
 app.include_router(contratos.router, prefix=api_prefix)
 app.include_router(financeiro.router, prefix=api_prefix)
+app.include_router(multas.router, prefix=api_prefix)
 app.include_router(cobrancas.router, prefix=api_prefix)
 app.include_router(public_pay.router, prefix=api_prefix)
 app.include_router(config.router, prefix=api_prefix)

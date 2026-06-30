@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, type FormEvent } from 'react';
-import { Plus, Search, Star, Phone, Trash2, Bike, FileText, CreditCard } from 'lucide-react';
+import { Plus, Search, Star, Phone, Trash2, Bike, FileText, CreditCard, Pencil } from 'lucide-react';
 import ClientMpCardsModal from './components/ClientMpCardsModal';
 import { useAuth } from './AuthContext';
 import type { ClienteOut, Paginated } from './apiTypes';
@@ -252,32 +252,48 @@ const ClientsView = () => {
                     </div>
                   </td>
                   <td style={{ textAlign: 'right' }}>
-                    <button
-                      type="button"
-                      className="icon-btn"
-                      title="Cartões Mercado Pago"
-                      onClick={() => setCardsCliente(c)}
-                    >
-                      <CreditCard size={16} />
-                    </button>
-                    <button
-                      type="button"
-                      className="icon-btn"
-                      title="Ver contratos"
-                      onClick={() => navigateToContracts('todos', c.id)}
-                    >
-                      <FileText size={16} />
-                    </button>
-                    <button type="button" className="icon-btn" onClick={() => openEdit(c)}>
-                      Editar
-                    </button>
-                    <button
-                      type="button"
-                      className="icon-btn danger"
-                      onClick={() => void handleDelete(c.id)}
-                    >
-                      <Trash2 size={16} />
-                    </button>
+                    <div className="row-actions">
+                      <button
+                        type="button"
+                        className="icon-btn"
+                        title="Cartões Mercado Pago"
+                        aria-label="Cartões Mercado Pago"
+                        onClick={() => setCardsCliente(c)}
+                      >
+                        <CreditCard size={16} />
+                        <span className="icon-btn__label">Cartões</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="icon-btn"
+                        title="Ver contratos"
+                        aria-label="Ver contratos"
+                        onClick={() => navigateToContracts('todos', c.id)}
+                      >
+                        <FileText size={16} />
+                        <span className="icon-btn__label">Contratos</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="icon-btn"
+                        title="Editar cliente"
+                        aria-label="Editar cliente"
+                        onClick={() => openEdit(c)}
+                      >
+                        <Pencil size={16} />
+                        <span className="icon-btn__label">Editar</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="icon-btn danger"
+                        title="Excluir cliente"
+                        aria-label="Excluir cliente"
+                        onClick={() => void handleDelete(c.id)}
+                      >
+                        <Trash2 size={16} />
+                        <span className="icon-btn__label">Excluir</span>
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}

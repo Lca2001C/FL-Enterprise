@@ -6,6 +6,7 @@ import FleetView from './FleetView';
 import ClientsView from './ClientsView';
 import ContractsView from './ContractsView';
 import FinanceView from './FinanceView';
+import MultasView from './MultasView';
 import MetricsView from './MetricsView';
 import ChargesView from './ChargesView';
 import SettingsView from './SettingsView';
@@ -66,6 +67,7 @@ const TAB_LABELS: Partial<Record<AppTab, string>> = {
   clientes: 'Clientes',
   contratos: 'Contratos',
   financeiro: 'Financeiro',
+  multas: 'Multas',
   metricas: 'Métricas',
   cobrancas: 'Cobranças',
   ajustes: 'Ajustes',
@@ -299,6 +301,11 @@ const Dashboard = () => {
                 trend="Contratos em atraso"
                 negative={(stats?.clientes_inadimplentes ?? 0) > 0}
               />
+              <StatCard
+                title="Saldo em Caução"
+                value={loading ? '...' : formatBrl(stats?.caucao_total ?? 0)}
+                trend="Total retido em contratos ativos"
+              />
             </div>
 
             <div className="main-grid">
@@ -406,6 +413,8 @@ const Dashboard = () => {
         return <ContractsView />;
       case 'financeiro':
         return <FinanceView />;
+      case 'multas':
+        return <MultasView />;
       case 'metricas':
         return <MetricsView />;
       case 'cobrancas':
@@ -486,6 +495,13 @@ const Dashboard = () => {
             active={activeTab === 'contratos'}
             onClick={() => goToTab('contratos')}
             tourId="nav-contratos"
+          />
+          <NavItem
+            icon={<AlertTriangle size={18} />}
+            label="Multas"
+            active={activeTab === 'multas'}
+            onClick={() => goToTab('multas')}
+            tourId="nav-multas"
           />
           <p className="nav-section-label">Financeiro</p>
           <NavItem

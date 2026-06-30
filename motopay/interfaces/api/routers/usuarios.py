@@ -21,6 +21,7 @@ from motopay.interfaces.api.schemas import (
 from motopay.services.operacao_service import (
     create_operacao_usuario,
     create_usuario_admin,
+    delete_usuario,
     list_usuarios_admin,
 )
 
@@ -78,6 +79,16 @@ def list_equipe(
     off = clamp_offset(offset)
     rows, total = list_usuarios_admin(db, operacao_id=operacao_id, limit=lim, offset=off)
     return Paginated(items=rows, total=total, limit=lim, offset=off)
+
+
+@router.delete("/{usuario_id}")
+def delete_user(
+    usuario_id: int,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(require_admin),
+) -> dict[str, str]:
+    delete_usuario(db, current_user, usuario_id)
+    return {"status": "success"}
 
 
 @router.post("/equipe", response_model=UserOut)

@@ -11,6 +11,7 @@ from motopay.domain.enums import (
     ContratoStatus,
     FinanceiroTipo,
     MotoStatus,
+    MultaStatus,
     UserRole,
     VeiculoTipo,
 )
@@ -162,6 +163,8 @@ class OperacaoUsuarioCreate(BaseModel):
 class MotoCreate(BaseModel):
     placa: str
     modelo: str
+    ano: int | None = Field(default=None, ge=1900, le=2100)
+    cor: str | None = Field(default=None, max_length=32)
     tipo: VeiculoTipo = VeiculoTipo.MOTO
     status: MotoStatus
     km: int = 0
@@ -170,6 +173,8 @@ class MotoCreate(BaseModel):
 class MotoUpdate(BaseModel):
     placa: str | None = None
     modelo: str | None = None
+    ano: int | None = Field(default=None, ge=1900, le=2100)
+    cor: str | None = Field(default=None, max_length=32)
     tipo: VeiculoTipo | None = None
     status: MotoStatus | None = None
     km: int | None = None
@@ -182,6 +187,8 @@ class MotoOut(BaseModel):
     operacao_id: int
     placa: str
     modelo: str
+    ano: int | None = None
+    cor: str | None = None
     tipo: str = "moto"
     status: str
     km: int
@@ -245,6 +252,8 @@ class ContratoCreate(BaseModel):
     cliente_id: int
     moto_id: int
     valor_recorrente: Decimal
+    valor_caucao: Decimal = Decimal(0)
+    km_entrega: int | None = Field(default=None, ge=0)
     ciclo: CicloCobranca
     status: ContratoStatus = ContratoStatus.ATIVO
     data_inicio: date
@@ -263,6 +272,9 @@ class ContratoCreate(BaseModel):
 class ContratoUpdate(BaseModel):
     status: ContratoStatus | None = None
     valor_recorrente: Decimal | None = None
+    valor_caucao: Decimal | None = None
+    km_entrega: int | None = Field(default=None, ge=0)
+    km_devolucao: int | None = Field(default=None, ge=0)
     ciclo: CicloCobranca | None = None
     data_fim_vigencia: date | None = None
     proximo_vencimento: date | None = None
@@ -277,6 +289,9 @@ class ContratoOut(BaseModel):
     cliente_id: int
     moto_id: int
     valor_recorrente: Decimal
+    valor_caucao: Decimal = Decimal(0)
+    km_entrega: int | None = None
+    km_devolucao: int | None = None
     ciclo: str
     status: str
     data_inicio: date
@@ -300,6 +315,15 @@ class FinanceiroCreate(BaseModel):
     contrato_id: int | None = None
 
 
+class FinanceiroUpdate(BaseModel):
+    tipo: FinanceiroTipo | None = None
+    valor: Decimal | None = None
+    descricao: str | None = None
+    data: date | None = None
+    moto_id: int | None = None
+    contrato_id: int | None = None
+
+
 class FinanceiroOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -311,6 +335,63 @@ class FinanceiroOut(BaseModel):
     data: date
     moto_id: int | None
     contrato_id: int | None
+    moto_descricao: str | None = None
+    locatario_nome: str | None = None
+
+
+class AnexoOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    operacao_id: int
+    entidade_tipo: str
+    entidade_id: int
+    filename: str
+    content_type: str
+    tamanho: int
+
+
+class MultaCreate(BaseModel):
+    moto_id: int
+    contrato_id: int | None = None
+    cliente_id: int | None = None
+    descricao: str = Field(min_length=1, max_length=512)
+    orgao: str | None = Field(default=None, max_length=128)
+    valor: Decimal
+    data: date
+    vencimento: date | None = None
+    status: MultaStatus = MultaStatus.PENDENTE
+
+
+class MultaUpdate(BaseModel):
+    moto_id: int | None = None
+    contrato_id: int | None = None
+    cliente_id: int | None = None
+    descricao: str | None = Field(default=None, min_length=1, max_length=512)
+    orgao: str | None = Field(default=None, max_length=128)
+    valor: Decimal | None = None
+    data: date | None = None
+    vencimento: date | None = None
+    status: MultaStatus | None = None
+
+
+class MultaOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    operacao_id: int
+    moto_id: int
+    contrato_id: int | None
+    cliente_id: int | None
+    descricao: str
+    orgao: str | None
+    valor: Decimal
+    data: date
+    vencimento: date | None
+    status: str
+    moto_descricao: str | None = None
+    locatario_nome: str | None = None
+    total_anexos: int = 0
 
 
 class CobrancaOut(BaseModel):
@@ -347,6 +428,7 @@ class MotoAnalyticsRow(BaseModel):
     modelo: str
     receita: Decimal
     despesa: Decimal
+    multas: Decimal = Decimal(0)
     lucro_liquido: Decimal
     roi: Decimal | None
     prejuizo: bool
@@ -361,6 +443,7 @@ class AnalyticsSummary(BaseModel):
     total_cobrancas: int = 0
     cobrancas_pendentes: int = 0
     cobrancas_atrasadas: int = 0
+    caucao_total: Decimal = Decimal(0)
 
 
 class DashboardInadimplenciaItem(BaseModel):

@@ -87,6 +87,24 @@ def ensure_valid_mp_token(
             return token
         raise MercadoPagoNotConnectedError(MP_NOT_CONNECTED_MSG)
 
+    # Token expira em breve: trava a linha da operação para serializar refresh concorrente
+    # (dois webhooks/requests simultâneos não devem ambos chamar refresh_oauth_token com o
+    # mesmo refresh_token de uso único). Double-checked locking: outro request pode já ter
+    # renovado enquanto esperávamos o lock.
+    locked = db.scalars(
+        select(Operacao).where(Operacao.id == op.id).with_for_update()
+    ).first()
+    if locked is not None:
+        op = locked
+        access = operacao_access_token_plain(op)
+        refresh = operacao_refresh_token_plain(op) or refresh
+        exp2 = op.mercadopago_oauth_expires_at
+        if exp2 is not None:
+            if exp2.tzinfo is None:
+                exp2 = exp2.replace(tzinfo=UTC)
+            if exp2 > now + margin and is_valid_mp_access_token(access):
+                return access
+
     try:
         data = refresh_oauth_token(refresh_token=refresh)
     except MercadoPagoApiError:

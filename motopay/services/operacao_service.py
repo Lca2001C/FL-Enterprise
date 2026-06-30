@@ -155,6 +155,20 @@ def list_usuarios_admin(
     return items, total
 
 
+def delete_usuario(db: Session, requester: CurrentUser, usuario_id: int) -> None:
+    """Exclui um usuário. Regras:
+    - Apenas ADMIN pode chamar esta função.
+    - Não é possível excluir o próprio usuário (evita auto-lockout).
+    """
+    u = db.get(Usuario, usuario_id)
+    if not u:
+        raise NotFoundError("Usuário não encontrado")
+    if u.id == requester.id:
+        raise ConflictError("Você não pode excluir seu próprio usuário")
+    db.delete(u)
+    db.commit()
+
+
 def get_operacao_or_404(db: Session, operacao_id: int) -> Operacao | None:
     return db.get(Operacao, operacao_id)
 

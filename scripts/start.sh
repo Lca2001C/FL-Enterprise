@@ -139,6 +139,26 @@ ensure_port_free() {
   exit 1
 }
 
+check_frontend_running() {
+  local attempt state
+  for attempt in 1 2 3 4 5 6 7 8; do
+    state="$("${COMPOSE[@]}" ps frontend --format '{{.State}}' 2>/dev/null | tr -d '\r' | head -1 || true)"
+    if [[ "$state" == "restarting" ]]; then
+      break
+    fi
+    if [[ "$state" == "running" ]]; then
+      return 0
+    fi
+    sleep 2
+  done
+  if [[ "$state" != "running" ]]; then
+    echo "Frontend não está em execução (estado: ${state:-desconhecido})." >&2
+    echo "Últimos logs do container frontend:" >&2
+    "${COMPOSE[@]}" logs frontend --tail 30 >&2 || true
+    exit 1
+  fi
+}
+
 COMPOSE=(docker compose -f docker-compose.yml)
 if [[ "$USE_DEV" -eq 1 ]]; then
   COMPOSE+=(-f docker-compose.dev.yml)
@@ -219,6 +239,10 @@ if printf '%s\n' "${SERVICES[@]}" | grep -qx api && printf '%s\n' "${SERVICES[@]
   "${COMPOSE[@]}" up -d --force-recreate frontend 2>/dev/null || true
 fi
 
+if printf '%s\n' "${SERVICES[@]}" | grep -qx frontend; then
+  check_frontend_running
+fi
+
 echo "Aguardando API em http://localhost:8000/health ..."
 deadline=$((SECONDS + 120))
 until curl -sf http://localhost:8000/health >/dev/null 2>&1; do
@@ -239,6 +263,19 @@ if [[ "$RUN_SEED" -eq 1 ]]; then
   "${COMPOSE[@]}" exec -T api python scripts/seed_admin.py
 else
   echo "Seed omitido (--no-seed)."
+fi
+
+if printf '%s\n' "${SERVICES[@]}" | grep -qx frontend; then
+  check_frontend_running
+  http_code="$(curl -s -o /dev/null --write-out '%{http_code}' http://localhost:5173/ 2>/dev/null || true)"
+  http_code="${http_code//[^0-9]/}"   # remove qualquer lixo não-numérico
+  http_code="${http_code:0:3}"        # garante no máximo 3 dígitos
+  [[ -z "$http_code" ]] && http_code="000"
+  if [[ "$http_code" != "200" ]]; then
+    echo "Frontend respondeu HTTP ${http_code} em http://localhost:5173 (esperado 200)." >&2
+    "${COMPOSE[@]}" logs frontend --tail 30 >&2 || true
+    exit 1
+  fi
 fi
 
 if [[ -z "$LAN_IP" ]] && [[ "$IS_PRODUCTION" -eq 0 ]]; then

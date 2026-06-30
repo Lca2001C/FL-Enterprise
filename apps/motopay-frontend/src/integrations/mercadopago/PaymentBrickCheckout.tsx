@@ -24,6 +24,7 @@ type Props = {
   mode: 'credit_card' | 'debit_card';
   savedMpCardId?: string;
   onSubmit: (data: SubmitPayload) => void | Promise<void>;
+  onError?: (error: unknown) => void;
 };
 
 function PaymentBrickCheckoutInner({
@@ -32,6 +33,7 @@ function PaymentBrickCheckoutInner({
   mode,
   savedMpCardId,
   onSubmit,
+  onError,
 }: Props) {
   const [sdkReady, setSdkReady] = useState(getMercadoPagoSdkPublicKey);
   const onSubmitRef = useRef(onSubmit);
@@ -102,6 +104,7 @@ function PaymentBrickCheckoutInner({
         initialization={initialization}
         customization={customization}
         onSubmit={handleSubmit}
+        onError={onError ? (e) => onError(e) : undefined}
       />
     </div>
   );

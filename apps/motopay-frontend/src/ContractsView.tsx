@@ -89,12 +89,15 @@ const ContractsView = () => {
     cliente_id: '',
     moto_id: '',
     valor_recorrente: '',
+    valor_caucao: '',
+    km_entrega: '',
     ciclo: 'mensal' as 'semanal' | 'mensal',
     data_inicio: todayIso(),
     data_fim_vigencia: '',
     proximo_vencimento: defaultVencimento('mensal', todayIso()),
     gerar_pix: true,
   });
+  const [editCaucao, setEditCaucao] = useState('');
   const [vigenciaModo, setVigenciaModo] = useState<VigenciaPreset>('indeterminado');
   const [vencimentoModo, setVencimentoModo] = useState<VencimentoPreset>('ciclo');
 
@@ -235,6 +238,8 @@ const ContractsView = () => {
       cliente_id: '',
       moto_id: '',
       valor_recorrente: '',
+      valor_caucao: '',
+      km_entrega: '',
       ciclo: 'mensal',
       data_inicio: inicio,
       data_fim_vigencia: '',
@@ -251,11 +256,15 @@ const ContractsView = () => {
         cliente_id: parseInt(form.cliente_id, 10),
         moto_id: parseInt(form.moto_id, 10),
         valor_recorrente: parseFloat(form.valor_recorrente),
+        valor_caucao: form.valor_caucao ? parseFloat(form.valor_caucao) : 0,
         ciclo: form.ciclo,
         status: 'ativo',
         data_inicio: form.data_inicio,
         proximo_vencimento: form.proximo_vencimento,
       };
+      if (form.km_entrega) {
+        body.km_entrega = parseInt(form.km_entrega, 10);
+      }
       if (form.data_fim_vigencia) {
         body.data_fim_vigencia = form.data_fim_vigencia;
       }
@@ -275,6 +284,7 @@ const ContractsView = () => {
   const openEditContrato = (ct: ContratoOut) => {
     setEditCt(ct);
     setEditValor(String(ct.valor_recorrente));
+    setEditCaucao(ct.valor_caucao != null ? String(ct.valor_caucao) : '');
     setEditCiclo(ct.ciclo as 'semanal' | 'mensal');
   };
 
@@ -285,6 +295,7 @@ const ContractsView = () => {
     try {
       await api.patch(`/api/v1/contratos/${editCt.id}`, {
         valor_recorrente: parseFloat(editValor),
+        valor_caucao: editCaucao ? parseFloat(editCaucao) : 0,
         ciclo: editCiclo,
       });
       setEditCt(null);
@@ -297,12 +308,27 @@ const ContractsView = () => {
   };
 
   const handleEncerrar = async (id: number) => {
-    if (!confirm('Encerrar este contrato? A moto não será liberada automaticamente.')) return;
+    if (!confirm('Encerrar este contrato? A moto será liberada (status: disponível).')) return;
+    const kmStr = window.prompt(
+      'Km atual da moto na devolução (opcional — deixe em branco para não registrar):',
+      ''
+    );
+    if (kmStr === null) return; // cancelado
+    const body: Record<string, unknown> = { status: 'finalizado' };
+    const kmTrim = kmStr.trim();
+    if (kmTrim !== '') {
+      const km = parseInt(kmTrim, 10);
+      if (Number.isNaN(km) || km < 0) {
+        setError('Km de devolução inválido');
+        return;
+      }
+      body.km_devolucao = km;
+    }
     setActionLoading(id);
     setError('');
     const wasLast = contratos.length === 1;
     try {
-      await api.patch(`/api/v1/contratos/${id}`, { status: 'finalizado' });
+      await api.patch(`/api/v1/contratos/${id}`, body);
       await fetchContratos(offsetAfterDelete(offset, PAGE_SIZE, wasLast));
       await fetchMeta();
     } catch (err) {
@@ -514,10 +540,23 @@ const ContractsView = () => {
                     <td>
                       <div>{mo?.placa ?? `#${ct.moto_id}`}</div>
                       <div className="text-muted" style={{ fontSize: '0.8rem' }}>
-                        {mo?.modelo ?? '—'}
+                        {mo ? [mo.modelo, mo.ano, mo.cor].filter(Boolean).join(' ') : '—'}
                       </div>
+                      {(ct.km_entrega != null || ct.km_devolucao != null) && (
+                        <div className="text-muted" style={{ fontSize: '0.72rem' }}>
+                          km: {ct.km_entrega ?? '—'}
+                          {ct.km_devolucao != null ? ` → ${ct.km_devolucao}` : ''}
+                        </div>
+                      )}
                     </td>
-                    <td>{formatBrl(ct.valor_recorrente)}</td>
+                    <td>
+                      {formatBrl(ct.valor_recorrente)}
+                      {ct.valor_caucao > 0 && (
+                        <div className="text-muted" style={{ fontSize: '0.72rem' }}>
+                          caução {formatBrl(ct.valor_caucao)}
+                        </div>
+                      )}
+                    </td>
                     <td>{ct.ciclo}</td>
                     <td>{formatDate(ct.proximo_vencimento)}</td>
                     <td>
@@ -569,10 +608,12 @@ const ContractsView = () => {
                           type="button"
                           className="icon-btn"
                           title="Baixar contrato (PDF)"
+                          aria-label="Baixar contrato em PDF"
                           disabled={busy}
                           onClick={() => void handleDownloadContrato(ct.id, mo?.placa ?? 'moto')}
                         >
                           <Download size={16} />
+                          <span className="icon-btn__label">PDF</span>
                         </button>
                         {cob?.pix_copia_cola && (
                           <button
@@ -590,38 +631,46 @@ const ContractsView = () => {
                             <button
                               type="button"
                               className="icon-btn"
-                              title="Editar valor e ciclo"
+                              title="Editar valor, caução e ciclo"
+                              aria-label="Editar contrato"
                               disabled={busy}
                               onClick={() => openEditContrato(ct)}
                             >
                               <Pencil size={16} />
+                              <span className="icon-btn__label">Editar</span>
                             </button>
                             <button
                               type="button"
                               className="icon-btn"
                               title="Gerar cobrança Pix para este contrato"
+                              aria-label="Gerar cobrança Pix"
                               disabled={busy}
                               onClick={() => void handleGerarPix(ct.id)}
                             >
                               <QrCode size={16} />
+                              <span className="icon-btn__label">Pix</span>
                             </button>
                             <button
                               type="button"
                               className="icon-btn"
                               title="Criar assinatura recorrente no Mercado Pago"
+                              aria-label="Criar assinatura no Mercado Pago"
                               disabled={busy}
                               onClick={() => void handleAssinaturaMp(ct.id)}
                             >
                               <Wallet size={16} />
+                              <span className="icon-btn__label">Assinar</span>
                             </button>
                             <button
                               type="button"
                               className="icon-btn danger"
                               title="Encerrar contrato de locação"
+                              aria-label="Encerrar contrato"
                               disabled={busy}
                               onClick={() => void handleEncerrar(ct.id)}
                             >
                               <XCircle size={16} />
+                              <span className="icon-btn__label">Encerrar</span>
                             </button>
                           </>
                         )}
@@ -629,10 +678,12 @@ const ContractsView = () => {
                           type="button"
                           className="icon-btn danger"
                           title="Excluir contrato (apaga cobranças e libera a moto)"
+                          aria-label="Excluir contrato"
                           disabled={busy}
                           onClick={() => void handleExcluir(ct.id)}
                         >
                           <Trash2 size={16} />
+                          <span className="icon-btn__label">Excluir</span>
                         </button>
                       </div>
                     </td>
@@ -680,6 +731,18 @@ const ContractsView = () => {
                 className="input-field"
                 value={editValor}
                 onChange={(e) => setEditValor(e.target.value)}
+              />
+            </div>
+            <div className="input-group">
+              <label className="input-label">Valor da caução</label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                className="input-field"
+                value={editCaucao}
+                placeholder="0,00"
+                onChange={(e) => setEditCaucao(e.target.value)}
               />
             </div>
             <div className="input-group">
@@ -806,6 +869,29 @@ const ContractsView = () => {
                   value={form.valor_recorrente}
                   onChange={(e) => setForm({ ...form, valor_recorrente: e.target.value })}
                   required
+                />
+              </div>
+              <div className="input-group">
+                <label className="input-label">Valor da caução (R$)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  className="input-field"
+                  value={form.valor_caucao}
+                  placeholder="0,00"
+                  onChange={(e) => setForm({ ...form, valor_caucao: e.target.value })}
+                />
+              </div>
+              <div className="input-group">
+                <label className="input-label">Km na entrega da moto</label>
+                <input
+                  type="number"
+                  min="0"
+                  className="input-field"
+                  value={form.km_entrega}
+                  placeholder="Ex.: 12500"
+                  onChange={(e) => setForm({ ...form, km_entrega: e.target.value })}
                 />
               </div>
               <div className="input-group">
@@ -1051,18 +1137,9 @@ const ContractsView = () => {
           align-items: center;
           gap: 5px;
         }
-        .icon-btn {
-          background: none;
-          border: none;
-          color: var(--text-muted);
-          cursor: pointer;
-          padding: 5px;
-        }
-        .icon-btn:hover {
-          color: var(--primary);
-        }
-        .icon-btn.danger:hover {
-          color: var(--danger);
+        .icon-btn:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
         }
         .form-cards-row {
           display: flex;

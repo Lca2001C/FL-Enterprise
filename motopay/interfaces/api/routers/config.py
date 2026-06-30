@@ -14,6 +14,7 @@ from motopay.infrastructure.payments.mercadopago_client import (
     mp_has_operacao_token,
     mp_public_key_for_operacao,
     mp_webhook_secret_for_operacao,
+    operacao_access_token_plain,
     operacao_mp_oauth_connected,
 )
 from motopay.interfaces.api.deps import CurrentUser, require_operacional, resolve_operacao_id
@@ -72,9 +73,9 @@ def payments_config(
         ),
         # Valores salvos NA OPERAÇÃO (não fallback global) para a tela de Ajustes confirmar persistência
         mercadopago_public_key_saved=(op.mercadopago_public_key if op else None),
-        mercadopago_access_token_preview=_mask_secret(
-            op.mercadopago_access_token if op else None
-        ),
+        # Mascara o token EM TEXTO PLANO (descriptografado) — nunca o ciphertext Fernet,
+        # cujos bytes não significam nada para o usuário e vazariam estrutura do cifrado.
+        mercadopago_access_token_preview=_mask_secret(operacao_access_token_plain(op)),
         mercadopago_webhook_secret_preview=_mask_secret(
             op.mercadopago_webhook_secret if op else None
         ),

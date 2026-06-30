@@ -14,6 +14,7 @@ from motopay.infrastructure.db.models import (
     EventoDominio,
     Financeiro,
     Moto,
+    Multa,
 )
 from motopay.interfaces.api.deps import CurrentUser
 from motopay.interfaces.api.schemas import (
@@ -98,6 +99,8 @@ def create_moto(
         operacao_id=operacao_id,
         placa=body.placa.upper().strip(),
         modelo=body.modelo.strip(),
+        ano=body.ano,
+        cor=body.cor.strip() if body.cor else None,
         tipo=body.tipo.value,
         status=body.status.value,
         km=body.km,
@@ -125,6 +128,10 @@ def update_moto(
         m.placa = placa
     if body.modelo is not None:
         m.modelo = body.modelo.strip()
+    if body.ano is not None:
+        m.ano = body.ano
+    if body.cor is not None:
+        m.cor = body.cor.strip() or None
     if body.tipo is not None:
         m.tipo = body.tipo.value
     if body.status is not None:
@@ -150,6 +157,50 @@ def update_moto(
         db.refresh(ev)
         enqueue_domain_event(ev.id)
     return m
+
+
+def delete_moto(
+    db: Session, user: CurrentUser, operacao_scope: int | None, moto_id: int
+) -> None:
+    """Exclui um veículo e suas dependências.
+
+    Regras de segurança por causa das FKs:
+    - bloqueia (409) se houver contratos vinculados (Contrato.moto_id é não-nulo);
+    - bloqueia (409) se houver multas vinculadas (Multa.moto_id é não-nulo);
+    - desvincula lançamentos financeiros (preserva o histórico: moto_id = NULL);
+    - remove a imagem do storage, se houver;
+    - apaga o veículo.
+    """
+    m = get_moto(db, user, operacao_scope, moto_id)
+
+    contratos = (
+        db.scalar(select(func.count()).select_from(Contrato).where(Contrato.moto_id == m.id)) or 0
+    )
+    if contratos:
+        raise ConflictError(
+            "Não é possível excluir um veículo com contratos vinculados. "
+            "Cancele ou encerre os contratos do veículo antes de excluí-lo."
+        )
+    multas = db.scalar(select(func.count()).select_from(Multa).where(Multa.moto_id == m.id)) or 0
+    if multas:
+        raise ConflictError(
+            "Não é possível excluir um veículo com multas vinculadas. "
+            "Exclua as multas do veículo antes de excluí-lo."
+        )
+
+    db.execute(update(Financeiro).where(Financeiro.moto_id == m.id).values(moto_id=None))
+
+    old_image = m.imagem_path
+    db.delete(m)
+    db.commit()
+
+    if old_image:
+        from motopay.infrastructure.storage import get_storage
+
+        try:
+            get_storage().delete(old_image)
+        except Exception:  # nunca deixa a limpeza de arquivo derrubar a exclusão
+            logger.warning("Falha ao remover imagem do veículo %s na exclusão", moto_id, exc_info=True)
 
 
 def _cliente_query(user: CurrentUser, operacao_scope: int | None) -> Select:
@@ -397,6 +448,8 @@ def create_contrato(
         cliente_id=body.cliente_id,
         moto_id=body.moto_id,
         valor_recorrente=body.valor_recorrente,
+        valor_caucao=body.valor_caucao,
+        km_entrega=body.km_entrega,
         ciclo=body.ciclo.value,
         status=body.status.value,
         data_inicio=body.data_inicio,
@@ -405,6 +458,9 @@ def create_contrato(
     )
     db.add(ct)
     moto.status = MotoStatus.ALUGADA.value
+    # Mantém o odômetro do veículo coerente com o km informado na entrega.
+    if body.km_entrega is not None and body.km_entrega > moto.km:
+        moto.km = body.km_entrega
     db.add(moto)
     db.commit()
     db.refresh(ct)
@@ -437,6 +493,12 @@ def update_contrato(
     if body.valor_recorrente is not None:
         valor_changed = body.valor_recorrente != ct.valor_recorrente
         ct.valor_recorrente = body.valor_recorrente
+    if body.valor_caucao is not None:
+        ct.valor_caucao = body.valor_caucao
+    if body.km_entrega is not None:
+        ct.km_entrega = body.km_entrega
+    if body.km_devolucao is not None:
+        ct.km_devolucao = body.km_devolucao
     if body.ciclo is not None:
         ciclo_changed = body.ciclo.value != ct.ciclo
         ct.ciclo = body.ciclo.value
@@ -453,6 +515,9 @@ def update_contrato(
         moto = db.get(Moto, ct.moto_id)
         if moto:
             moto.status = MotoStatus.DISPONIVEL.value
+            # Atualiza o odômetro do veículo com o km informado na devolução.
+            if ct.km_devolucao is not None and ct.km_devolucao > moto.km:
+                moto.km = ct.km_devolucao
             db.add(moto)
     db.add(ct)
     db.commit()
