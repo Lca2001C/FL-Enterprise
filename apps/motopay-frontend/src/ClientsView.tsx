@@ -206,9 +206,9 @@ const ClientsView = () => {
             <thead>
               <tr>
                 <th>Nome</th>
-                <th>CPF</th>
+                <th className="col-cpf">CPF</th>
                 <th>Telefone</th>
-                <th>Telegram</th>
+                <th className="col-telegram">Telegram</th>
                 <th>Score</th>
                 <th style={{ textAlign: 'right' }}>Ações</th>
               </tr>
@@ -232,13 +232,13 @@ const ClientsView = () => {
                       </div>
                     )}
                   </td>
-                  <td className="text-muted">{c.cpf}</td>
+                  <td className="col-cpf text-muted">{c.cpf}</td>
                   <td>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                       <Phone size={14} color="#94a3b8" /> {c.telefone}
                     </div>
                   </td>
-                  <td className={c.telegram_id ? '' : 'text-muted'}>
+                  <td className={`col-telegram ${c.telegram_id ? '' : 'text-muted'}`}>
                     {c.telegram_id || '—'}
                   </td>
                   <td>
@@ -467,14 +467,6 @@ const ClientsView = () => {
       )}
 
       <style jsx>{`
-        .view-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: 20px;
-          flex-wrap: wrap;
-          gap: 16px;
-        }
         .table-actions {
           padding: 15px;
           display: flex;
@@ -500,25 +492,16 @@ const ClientsView = () => {
           padding: 10px 0;
           outline: none;
         }
-        .table-container {
-          overflow-x: auto;
-        }
+        /* Scroll horizontal na tabela em mobile */
         .custom-table {
-          width: 100%;
-          border-collapse: collapse;
-          min-width: 700px;
+          min-width: 620px;
         }
-        .custom-table th {
-          text-align: left;
-          padding: 15px 20px;
-          color: var(--text-muted);
-          font-size: 0.85rem;
-          border-bottom: 1px solid var(--glass-border);
-        }
-        .custom-table td {
-          padding: 15px 20px;
-          border-bottom: 1px solid var(--glass-border);
-          font-size: 0.9rem;
+        /* Em telas muito estreitas esconde colunas menos críticas */
+        @media (max-width: 480px) {
+          .col-cpf,
+          .col-telegram {
+            display: none;
+          }
         }
         .score-badge {
           display: flex;
@@ -530,28 +513,6 @@ const ClientsView = () => {
           width: fit-content;
           font-size: 0.8rem;
           font-weight: 600;
-        }
-        .icon-btn {
-          background: none;
-          border: none;
-          color: var(--text-muted);
-          cursor: pointer;
-          padding: 5px;
-          font-size: 0.8rem;
-        }
-        .icon-btn:hover {
-          color: var(--primary);
-        }
-        .icon-btn.danger:hover {
-          color: var(--danger);
-        }
-        .btn-secondary {
-          background: var(--secondary);
-          color: white;
-          border: none;
-          padding: 10px 20px;
-          border-radius: 8px;
-          cursor: pointer;
         }
         .pagination {
           display: flex;
