@@ -163,8 +163,9 @@ class OperacaoUsuarioCreate(BaseModel):
 
 
 class MotoCreate(BaseModel):
-    placa: str
-    modelo: str
+    model_config = ConfigDict(str_strip_whitespace=True)
+    placa: str = Field(min_length=1, max_length=16)
+    modelo: str = Field(min_length=1, max_length=128)
     ano: int | None = Field(default=None, ge=1900, le=2100)
     cor: str | None = Field(default=None, max_length=32)
     tipo: VeiculoTipo = VeiculoTipo.MOTO
@@ -173,8 +174,9 @@ class MotoCreate(BaseModel):
 
 
 class MotoUpdate(BaseModel):
-    placa: str | None = None
-    modelo: str | None = None
+    model_config = ConfigDict(str_strip_whitespace=True)
+    placa: str | None = Field(default=None, min_length=1, max_length=16)
+    modelo: str | None = Field(default=None, min_length=1, max_length=128)
     ano: int | None = Field(default=None, ge=1900, le=2100)
     cor: str | None = Field(default=None, max_length=32)
     tipo: VeiculoTipo | None = None

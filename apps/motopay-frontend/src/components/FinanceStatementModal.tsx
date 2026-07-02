@@ -11,19 +11,26 @@ type Props = {
 };
 
 function computeTotals(entries: FinanceiroOut[]) {
-  let receitas = 0;
-  let despesas = 0;
-  let manutencao = 0;
+  // Acumula em centavos (inteiros) para evitar erro de ponto flutuante do IEEE-754
+  // (ex.: 0.1 + 0.2). Só converte para reais no final.
+  let receitasCents = 0;
+  let despesasCents = 0;
+  let manutencaoCents = 0;
   for (const e of entries) {
-    const v = Number(e.valor);
+    const cents = Math.round(Number(e.valor) * 100);
     if (e.tipo === 'receita') {
-      receitas += v;
+      receitasCents += cents;
     } else {
-      despesas += v;
-      if (e.categoria === 'manutencao') manutencao += v;
+      despesasCents += cents;
+      if (e.categoria === 'manutencao') manutencaoCents += cents;
     }
   }
-  return { receitas, despesas, saldo: receitas - despesas, manutencao };
+  return {
+    receitas: receitasCents / 100,
+    despesas: despesasCents / 100,
+    saldo: (receitasCents - despesasCents) / 100,
+    manutencao: manutencaoCents / 100,
+  };
 }
 
 const FinanceStatementModal = ({ entries, motos, onClose }: Props) => {

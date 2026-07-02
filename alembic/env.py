@@ -1,11 +1,10 @@
 from logging.config import fileConfig
 
+from alembic import context
 from motopay.infrastructure.db import models  # noqa: F401
 from motopay.infrastructure.db.base import Base
 from motopay.infrastructure.db.migration_url import get_migration_database_url
 from sqlalchemy import engine_from_config, pool
-
-from alembic import context
 
 config = context.config
 if config.config_file_name is not None:

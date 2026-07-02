@@ -130,13 +130,20 @@ def get_summary(
         caucao_stmt = caucao_stmt.where(sc)
     caucao_total = Decimal(db.scalar(caucao_stmt) or 0).quantize(Decimal("0.01"))
 
+    smu = _scope_where_multa(user, op)
     multas_stmt = select(func.coalesce(func.sum(Multa.valor), 0)).where(
         Multa.status == MultaStatus.PENDENTE.value
     )
-    smu = _scope_where_multa(user, op)
     if smu is not None:
         multas_stmt = multas_stmt.where(smu)
     multas_a_pagar = Decimal(db.scalar(multas_stmt) or 0).quantize(Decimal("0.01"))
+
+    # Total de multas (todos os status) — multas não têm espelho no Financeiro, então
+    # entram no lucro aqui, do MESMO modo que moto_ranking as soma nas despesas.
+    multas_total_stmt = select(func.coalesce(func.sum(Multa.valor), 0))
+    if smu is not None:
+        multas_total_stmt = multas_total_stmt.where(smu)
+    multas_total = Decimal(db.scalar(multas_total_stmt) or 0).quantize(Decimal("0.01"))
 
     cob_base = select(func.count(Cobranca.id))
     sw = _scope_where_cobranca(user, op)
@@ -166,7 +173,7 @@ def get_summary(
         receita_total=receita_total,
         despesa_total=despesa_total,
         manutencao_total=manutencao_total,
-        lucro_liquido=receita_total - despesa_total,
+        lucro_liquido=receita_total - despesa_total - multas_total,
         motos_ativas=motos_ativas,
         clientes_inadimplentes=inadimplentes,
         total_cobrancas=total_cob,

@@ -318,9 +318,12 @@ const MetricsView = () => {
   const [ranking, setRanking] = useState<MotoAnalyticsRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [dates, setDates] = useState({
-    inicio: toLocalIso(new Date(new Date().getFullYear(), new Date().getMonth(), 1)),
-    fim: todayIso(),
+  const [dates, setDates] = useState(() => {
+    const now = new Date();
+    return {
+      inicio: toLocalIso(new Date(now.getFullYear(), now.getMonth(), 1)),
+      fim: todayIso(),
+    };
   });
 
   const fetchRanking = useCallback(async () => {

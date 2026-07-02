@@ -272,13 +272,28 @@ const ContractsView = () => {
         body.data_fim_vigencia = form.data_fim_vigencia;
       }
       const res = await api.post<ContratoOut>('/api/v1/contratos', body);
+      // O contrato já foi criado: uma falha ao gerar o PIX (opcional) NÃO deve manter o
+      // modal aberto — isso levaria o usuário a recriar o contrato (duplicata). Falha do
+      // PIX vira apenas um aviso; o PIX pode ser gerado depois pela aba Cobranças.
+      let pixWarning = '';
       if (form.gerar_pix) {
-        await api.post('/api/v1/cobrancas/pix', { contrato_id: res.data.id, device_id: getMercadoPagoDeviceId() });
+        try {
+          await api.post('/api/v1/cobrancas/pix', {
+            contrato_id: res.data.id,
+            device_id: getMercadoPagoDeviceId(),
+          });
+        } catch (pixErr) {
+          pixWarning = parseApiError(
+            pixErr,
+            'Contrato criado, mas não foi possível gerar o PIX. Gere-o na aba Cobranças.'
+          );
+        }
       }
       setShowModal(false);
       resetForm();
       await fetchContratos(offset);
       await fetchMeta();
+      if (pixWarning) setError(pixWarning);
     } catch (err) {
       setError(parseApiError(err, 'Erro ao criar contrato'));
     } finally {

@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from sqlalchemy import select
-
 from motopay.infrastructure.db.models import Financeiro, Manutencao, Moto, Usuario
 
 from tests.conftest import auth_header, login

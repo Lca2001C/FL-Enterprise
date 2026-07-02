@@ -232,6 +232,9 @@ def delete_manutencao(
 ) -> None:
     row = get_manutencao(db, user, operacao_scope, manutencao_id)
     despesa = db.get(Financeiro, row.financeiro_id) if row.financeiro_id is not None else None
+    # Defesa em profundidade: só apaga a despesa espelho se ela for da MESMA operação.
+    if despesa is not None and despesa.operacao_id != row.operacao_id:
+        raise ForbiddenError("Despesa vinculada fora do escopo da operação")
     # Desfaz o vínculo antes de apagar a despesa (FK manutencoes.financeiro_id).
     row.financeiro_id = None
     db.flush()

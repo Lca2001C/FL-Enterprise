@@ -308,7 +308,12 @@ def update_operacao(
             )
         op.mercadopago_public_key = raw_pk
     if body.mercadopago_webhook_secret is not None:
-        op.mercadopago_webhook_secret = body.mercadopago_webhook_secret.strip() or None
+        raw_secret = body.mercadopago_webhook_secret.strip() or None
+        if raw_secret is not None and len(raw_secret) < 8:
+            raise MotoPayError(
+                "Webhook secret muito curto — cole o valor completo gerado no Mercado Pago."
+            )
+        op.mercadopago_webhook_secret = raw_secret
     db.add(op)
     db.commit()
     db.refresh(op)
