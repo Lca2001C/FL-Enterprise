@@ -21,6 +21,7 @@ from motopay.infrastructure.db.models import (
     Cobranca,
     Contrato,
     Financeiro,
+    Manutencao,
     Moto,
     Multa,
 )
@@ -101,6 +102,15 @@ def get_summary(
     receita_total = Decimal(db.scalar(receita_stmt) or 0).quantize(Decimal("0.01"))
     despesa_total = Decimal(db.scalar(despesa_stmt) or 0).quantize(Decimal("0.01"))
 
+    # Total gasto em manutenção. A despesa espelho já entra em despesa_total;
+    # este indicador é um recorte, não uma soma adicional (sem dupla contagem).
+    manutencao_stmt = select(func.coalesce(func.sum(Manutencao.valor), 0))
+    if user.role == UserRole.DONO:
+        manutencao_stmt = manutencao_stmt.where(Manutencao.operacao_id == op)
+    elif op is not None:
+        manutencao_stmt = manutencao_stmt.where(Manutencao.operacao_id == op)
+    manutencao_total = Decimal(db.scalar(manutencao_stmt) or 0).quantize(Decimal("0.01"))
+
     motos_stmt = select(func.count(Moto.id)).where(Moto.status == MotoStatus.ALUGADA.value)
     sm = _scope_where_moto(user, op)
     if sm is not None:
@@ -155,6 +165,7 @@ def get_summary(
     return AnalyticsSummary(
         receita_total=receita_total,
         despesa_total=despesa_total,
+        manutencao_total=manutencao_total,
         lucro_liquido=receita_total - despesa_total,
         motos_ativas=motos_ativas,
         clientes_inadimplentes=inadimplentes,
@@ -202,8 +213,30 @@ def moto_ranking(
         .scalar_subquery(),
         0,
     )
+    # Gasto de manutenção da moto no período (recorte informativo: a despesa
+    # espelho já está em despesa_expr, então NÃO soma de novo no lucro).
+    manutencao_expr = func.coalesce(
+        select(func.sum(Manutencao.valor))
+        .where(
+            Manutencao.moto_id == Moto.id,
+            Manutencao.operacao_id == Moto.operacao_id,
+            Manutencao.data >= data_inicio,
+            Manutencao.data <= data_fim,
+        )
+        .correlate(Moto)
+        .scalar_subquery(),
+        0,
+    )
     stmt = (
-        select(Moto.id, Moto.placa, Moto.modelo, receita_expr, despesa_expr, multa_expr)
+        select(
+            Moto.id,
+            Moto.placa,
+            Moto.modelo,
+            receita_expr,
+            despesa_expr,
+            multa_expr,
+            manutencao_expr,
+        )
         .select_from(Moto)
         .outerjoin(
             Financeiro,
@@ -220,11 +253,13 @@ def moto_ranking(
         stmt = stmt.where(Moto.operacao_id == op)
     rows_raw = db.execute(stmt).all()
     out: list[MotoAnalyticsRow] = []
-    for mid, placa, modelo, rec, des, mul in rows_raw:
+    for mid, placa, modelo, rec, des, mul, man in rows_raw:
         rec_d = Decimal(rec or 0)
         des_d = Decimal(des or 0)
         multas_d = Decimal(mul or 0)
+        manutencao_d = Decimal(man or 0)
         # Multas são despesas: entram no total de gastos que define lucro e ROI.
+        # Manutenção NÃO soma aqui — a despesa espelho já está em des_d.
         despesa_total = des_d + multas_d
         lucro = rec_d - despesa_total
         roi: Decimal | None
@@ -240,6 +275,7 @@ def moto_ranking(
                 receita=rec_d,
                 despesa=des_d,
                 multas=multas_d,
+                manutencao=manutencao_d,
                 lucro_liquido=lucro,
                 roi=roi,
                 prejuizo=lucro < 0,

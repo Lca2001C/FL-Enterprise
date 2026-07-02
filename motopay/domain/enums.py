@@ -40,6 +40,22 @@ class FinanceiroTipo(str, Enum):
     DESPESA = "despesa"
 
 
+class FinanceiroCategoria(str, Enum):
+    MANUTENCAO = "manutencao"
+
+
+class ManutencaoTipo(str, Enum):
+    PREVENTIVA = "preventiva"
+    CORRETIVA = "corretiva"
+
+
+class ManutencaoCausa(str, Enum):
+    PREVENCAO = "prevencao"
+    DESGASTE = "desgaste"
+    MAU_USO = "mau_uso"
+    OUTRO = "outro"
+
+
 class MultaStatus(str, Enum):
     PENDENTE = "pendente"
     PAGO = "pago"

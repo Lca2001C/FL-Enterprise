@@ -56,6 +56,10 @@ const MetricMotoCard = ({ item }: { item: MotoAnalyticsRow }) => (
         <span className="metric-stat-value text-danger">{formatBrl(item.multas)}</span>
       </div>
       <div className="metric-stat">
+        <span className="metric-stat-label">Manutenção</span>
+        <span className="metric-stat-value text-danger">{formatBrl(item.manutencao)}</span>
+      </div>
+      <div className="metric-stat">
         <span className="metric-stat-label">ROI</span>
         <span className="metric-stat-value">{renderRoi(item)}</span>
       </div>
@@ -383,6 +387,7 @@ const MetricsView = () => {
                 <th>Receita</th>
                 <th>Despesa</th>
                 <th>Multas</th>
+                <th>Manutenção</th>
                 <th>Lucro Líquido</th>
                 <th>ROI</th>
                 <th>Status</th>
@@ -391,7 +396,7 @@ const MetricsView = () => {
             <tbody>
               {loading || ranking.length === 0 ? (
                 <tr>
-                  <td colSpan={7} style={{ textAlign: 'center', padding: '40px' }}>
+                  <td colSpan={8} style={{ textAlign: 'center', padding: '40px' }}>
                     {emptyMessage}
                   </td>
                 </tr>
@@ -407,6 +412,7 @@ const MetricsView = () => {
                     <td className="text-accent">{formatBrl(item.receita)}</td>
                     <td className="text-danger">{formatBrl(item.despesa)}</td>
                     <td className="text-danger">{formatBrl(item.multas)}</td>
+                    <td className="text-danger">{formatBrl(item.manutencao)}</td>
                     <td
                       style={{
                         fontWeight: 700,

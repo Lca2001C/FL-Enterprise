@@ -174,6 +174,7 @@ export type FinanceiroOut = {
   id: number;
   operacao_id: number;
   tipo: string;
+  categoria?: string | null;
   valor: number;
   descricao: string;
   data: string;
@@ -181,6 +182,40 @@ export type FinanceiroOut = {
   contrato_id: number | null;
   moto_descricao?: string | null;
   locatario_nome?: string | null;
+};
+
+export type ManutencaoTipo = 'preventiva' | 'corretiva';
+export type ManutencaoCausa = 'prevencao' | 'desgaste' | 'mau_uso' | 'outro';
+
+export type ManutencaoOut = {
+  id: number;
+  operacao_id: number;
+  moto_id: number;
+  tipo: ManutencaoTipo;
+  descricao: string;
+  causa: ManutencaoCausa;
+  valor: number;
+  data: string;
+  km: number | null;
+  financeiro_id: number | null;
+  moto_descricao?: string | null;
+};
+
+export type ManutencaoMotoResumo = {
+  moto_id: number;
+  placa: string;
+  modelo: string;
+  total: number;
+  quantidade: number;
+};
+
+export type ManutencaoResumoOut = {
+  total_geral: number;
+  quantidade: number;
+  total_preventiva: number;
+  total_corretiva: number;
+  por_moto: ManutencaoMotoResumo[];
+  por_causa: Record<string, number>;
 };
 
 export type MultaStatus = 'pendente' | 'pago';
@@ -300,6 +335,7 @@ export type PayerPortalOut = {
 export type AnalyticsSummary = {
   receita_total: number;
   despesa_total: number;
+  manutencao_total: number;
   lucro_liquido: number;
   motos_ativas: number;
   clientes_inadimplentes: number;
@@ -333,6 +369,7 @@ export type MotoAnalyticsRow = {
   receita: number;
   despesa: number;
   multas: number;
+  manutencao: number;
   lucro_liquido: number;
   roi: number | null;
   prejuizo: boolean;
@@ -345,6 +382,7 @@ export type AppTab =
   | 'contratos'
   | 'financeiro'
   | 'multas'
+  | 'manutencoes'
   | 'metricas'
   | 'cobrancas'
   | 'ajustes'

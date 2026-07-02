@@ -10,6 +10,8 @@ from motopay.domain.enums import (
     CicloCobranca,
     ContratoStatus,
     FinanceiroTipo,
+    ManutencaoCausa,
+    ManutencaoTipo,
     MotoStatus,
     MultaStatus,
     UserRole,
@@ -308,8 +310,8 @@ class ContratoOut(BaseModel):
 
 class FinanceiroCreate(BaseModel):
     tipo: FinanceiroTipo
-    valor: Decimal
-    descricao: str
+    valor: Decimal = Field(gt=0)
+    descricao: str = Field(min_length=1, max_length=512)
     data: date
     moto_id: int | None = None
     contrato_id: int | None = None
@@ -317,8 +319,8 @@ class FinanceiroCreate(BaseModel):
 
 class FinanceiroUpdate(BaseModel):
     tipo: FinanceiroTipo | None = None
-    valor: Decimal | None = None
-    descricao: str | None = None
+    valor: Decimal | None = Field(default=None, gt=0)
+    descricao: str | None = Field(default=None, min_length=1, max_length=512)
     data: date | None = None
     moto_id: int | None = None
     contrato_id: int | None = None
@@ -330,6 +332,7 @@ class FinanceiroOut(BaseModel):
     id: int
     operacao_id: int
     tipo: str
+    categoria: str | None = None
     valor: Decimal
     descricao: str
     data: date
@@ -337,6 +340,59 @@ class FinanceiroOut(BaseModel):
     contrato_id: int | None
     moto_descricao: str | None = None
     locatario_nome: str | None = None
+
+
+class ManutencaoCreate(BaseModel):
+    moto_id: int
+    tipo: ManutencaoTipo
+    descricao: str = Field(min_length=1, max_length=512)
+    causa: ManutencaoCausa
+    valor: Decimal = Field(gt=0)
+    data: date
+    km: int | None = Field(default=None, ge=0)
+
+
+class ManutencaoUpdate(BaseModel):
+    moto_id: int | None = None
+    tipo: ManutencaoTipo | None = None
+    descricao: str | None = Field(default=None, min_length=1, max_length=512)
+    causa: ManutencaoCausa | None = None
+    valor: Decimal | None = Field(default=None, gt=0)
+    data: date | None = None
+    km: int | None = Field(default=None, ge=0)
+
+
+class ManutencaoOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    operacao_id: int
+    moto_id: int
+    tipo: str
+    descricao: str
+    causa: str
+    valor: Decimal
+    data: date
+    km: int | None
+    financeiro_id: int | None
+    moto_descricao: str | None = None
+
+
+class ManutencaoMotoResumo(BaseModel):
+    moto_id: int
+    placa: str
+    modelo: str
+    total: Decimal
+    quantidade: int
+
+
+class ManutencaoResumoOut(BaseModel):
+    total_geral: Decimal
+    quantidade: int
+    total_preventiva: Decimal
+    total_corretiva: Decimal
+    por_moto: list[ManutencaoMotoResumo]
+    por_causa: dict[str, Decimal]
 
 
 class AnexoOut(BaseModel):
@@ -429,6 +485,7 @@ class MotoAnalyticsRow(BaseModel):
     receita: Decimal
     despesa: Decimal
     multas: Decimal = Decimal(0)
+    manutencao: Decimal = Decimal(0)
     lucro_liquido: Decimal
     roi: Decimal | None
     prejuizo: bool
@@ -437,6 +494,7 @@ class MotoAnalyticsRow(BaseModel):
 class AnalyticsSummary(BaseModel):
     receita_total: Decimal
     despesa_total: Decimal
+    manutencao_total: Decimal = Decimal(0)
     lucro_liquido: Decimal
     motos_ativas: int
     clientes_inadimplentes: int

@@ -90,7 +90,9 @@ const FinanceView = () => {
           params: { limit: PAGE_SIZE, offset: pageOffset, ...filterParams(f) },
         }),
         fetchAllPaginated<MotoOut>(api, '/api/v1/motos'),
-        fetchAllPaginated<FinanceiroOut>(api, '/api/v1/financeiro'),
+        // Respeita os filtros ativos: o resumo e o extrato/PDF devem refletir
+        // o período/moto/tipo selecionados, não a base inteira.
+        fetchAllPaginated<FinanceiroOut>(api, '/api/v1/financeiro', filterParams(f)),
       ]);
       setEntries(finRes.data.items);
       setAllEntries(allItems);
@@ -311,6 +313,10 @@ const FinanceView = () => {
             <span>Saldo</span>
             <strong>{formatBrl(allTotals.saldo)}</strong>
           </div>
+          <div className="summary-card despesa">
+            <span>Manutenção</span>
+            <strong>{formatBrl(allTotals.manutencao)}</strong>
+          </div>
         </div>
       )}
 
@@ -348,7 +354,14 @@ const FinanceView = () => {
               {entries.map((e) => (
                 <tr key={e.id}>
                   <td>{formatDate(e.data)}</td>
-                  <td style={{ maxWidth: '280px' }}>{e.descricao}</td>
+                  <td style={{ maxWidth: '280px' }}>
+                    {e.descricao}
+                    {e.categoria === 'manutencao' && (
+                      <span className="origem-badge" title="Gerado pelo módulo de Manutenções">
+                        Manutenção
+                      </span>
+                    )}
+                  </td>
                   <td>
                     <div
                       style={{
@@ -372,28 +385,34 @@ const FinanceView = () => {
                     {e.locatario_nome || '—'}
                   </td>
                   <td>
-                    <div className="row-actions">
-                      <button
-                        type="button"
-                        className="icon-btn"
-                        title="Editar lançamento"
-                        aria-label="Editar lançamento"
-                        onClick={() => openEdit(e)}
-                      >
-                        <Pencil size={16} />
-                        <span className="icon-btn__label">Editar</span>
-                      </button>
-                      <button
-                        type="button"
-                        className="icon-btn danger"
-                        title="Excluir lançamento"
-                        aria-label="Excluir lançamento"
-                        onClick={() => void handleDelete(e)}
-                      >
-                        <Trash2 size={16} />
-                        <span className="icon-btn__label">Excluir</span>
-                      </button>
-                    </div>
+                    {e.categoria === 'manutencao' ? (
+                      <span className="text-muted" style={{ fontSize: '0.78rem' }}>
+                        Gerencie em Manutenções
+                      </span>
+                    ) : (
+                      <div className="row-actions">
+                        <button
+                          type="button"
+                          className="icon-btn"
+                          title="Editar lançamento"
+                          aria-label="Editar lançamento"
+                          onClick={() => openEdit(e)}
+                        >
+                          <Pencil size={16} />
+                          <span className="icon-btn__label">Editar</span>
+                        </button>
+                        <button
+                          type="button"
+                          className="icon-btn danger"
+                          title="Excluir lançamento"
+                          aria-label="Excluir lançamento"
+                          onClick={() => void handleDelete(e)}
+                        >
+                          <Trash2 size={16} />
+                          <span className="icon-btn__label">Excluir</span>
+                        </button>
+                      </div>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -622,6 +641,17 @@ const FinanceView = () => {
           color: var(--accent);
           font-size: 0.85rem;
           margin: 0 0 8px;
+        }
+        .origem-badge {
+          display: inline-block;
+          margin-left: 8px;
+          padding: 1px 8px;
+          border-radius: 999px;
+          font-size: 0.68rem;
+          font-weight: 700;
+          background: rgba(59, 130, 246, 0.15);
+          color: #60a5fa;
+          vertical-align: middle;
         }
         .btn-secondary {
           background: var(--secondary);

@@ -6,6 +6,7 @@ import FleetView from './FleetView';
 import ClientsView from './ClientsView';
 import ContractsView from './ContractsView';
 import FinanceView from './FinanceView';
+import ManutencoesView from './ManutencoesView';
 import MultasView from './MultasView';
 import MetricsView from './MetricsView';
 import ChargesView from './ChargesView';
@@ -41,6 +42,7 @@ import {
   UserCircle,
   HelpCircle,
   Activity,
+  Wrench,
 } from 'lucide-react';
 import type {
   AnalyticsSummary,
@@ -68,6 +70,7 @@ const TAB_LABELS: Partial<Record<AppTab, string>> = {
   contratos: 'Contratos',
   financeiro: 'Financeiro',
   multas: 'Multas',
+  manutencoes: 'Manutenções',
   metricas: 'Métricas',
   cobrancas: 'Cobranças',
   ajustes: 'Ajustes',
@@ -312,6 +315,11 @@ const Dashboard = () => {
                 trend="Total de multas pendentes"
                 negative={(stats?.multas_a_pagar ?? 0) > 0}
               />
+              <StatCard
+                title="Gastos em Manutenção"
+                value={loading ? '...' : formatBrl(stats?.manutencao_total ?? 0)}
+                trend="Total investido na frota"
+              />
             </div>
 
             <div className="main-grid">
@@ -421,6 +429,8 @@ const Dashboard = () => {
         return <FinanceView />;
       case 'multas':
         return <MultasView />;
+      case 'manutencoes':
+        return <ManutencoesView />;
       case 'metricas':
         return <MetricsView />;
       case 'cobrancas':
@@ -508,6 +518,13 @@ const Dashboard = () => {
             active={activeTab === 'multas'}
             onClick={() => goToTab('multas')}
             tourId="nav-multas"
+          />
+          <NavItem
+            icon={<Wrench size={18} />}
+            label="Manutenções"
+            active={activeTab === 'manutencoes'}
+            onClick={() => goToTab('manutencoes')}
+            tourId="nav-manutencoes"
           />
           <p className="nav-section-label">Financeiro</p>
           <NavItem

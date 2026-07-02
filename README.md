@@ -59,9 +59,13 @@ Mais do que um sistema de controle, ele evolui para uma **infraestrutura intelig
 
 ### 🛠️ Gestão de Manutenção
 
-* Registro de despesas por veículo
-* Classificação de custos
-* Impacto automático no lucro
+* Módulo dedicado de manutenções (menu **Manutenções**)
+* Campos: veículo, tipo (preventiva/corretiva), descrição, causa (prevenção, desgaste, mau uso, outro), valor, data do serviço e km
+* Cada manutenção gera automaticamente a despesa vinculada no financeiro (criar/editar/excluir sempre sincronizados — sem divergência)
+* Filtros por moto, tipo, causa e período
+* Totais por moto, por tipo e por causa (`GET /api/v1/manutencoes/resumo`)
+* Exportação em PDF: **Relatório de Manutenções** com totais e tabela paginada
+* Indicadores no dashboard e no ranking de métricas (gasto de manutenção por moto)
 * Histórico completo por moto
 
 ---

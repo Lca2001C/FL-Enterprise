@@ -98,6 +98,7 @@ class Moto(Base):
     contratos: Mapped[list[Contrato]] = relationship(back_populates="moto")
     lancamentos: Mapped[list[Financeiro]] = relationship(back_populates="moto")
     multas: Mapped[list[Multa]] = relationship(back_populates="moto")
+    manutencoes: Mapped[list[Manutencao]] = relationship(back_populates="moto")
 
     __table_args__ = (UniqueConstraint("operacao_id", "placa", name="uq_motos_operacao_placa"),)
 
@@ -193,6 +194,9 @@ class Financeiro(Base):
         BigInteger, ForeignKey("operacoes.id", ondelete="CASCADE"), nullable=False, index=True
     )
     tipo: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
+    # Origem do lançamento (ex.: "manutencao" para despesas geradas pelo módulo
+    # de manutenções). NULL = lançamento manual/comum.
+    categoria: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
     valor: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
     descricao: Mapped[str] = mapped_column(String(512), nullable=False)
     data: Mapped[date] = mapped_column(Date, nullable=False, index=True)
@@ -304,6 +308,38 @@ class Multa(Base):
     moto: Mapped[Moto] = relationship(back_populates="multas")
     contrato: Mapped[Contrato | None] = relationship(back_populates="multas")
     cliente: Mapped[Cliente | None] = relationship()
+
+
+class Manutencao(Base):
+    __tablename__ = "manutencoes"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    operacao_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("operacoes.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    moto_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("motos.id"), nullable=False, index=True
+    )
+    tipo: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
+    descricao: Mapped[str] = mapped_column(String(512), nullable=False)
+    causa: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
+    valor: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
+    data: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    km: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    # Despesa gerada automaticamente no financeiro. SET NULL protege a manutenção
+    # caso a linha do financeiro suma; o serviço recria o vínculo na próxima edição.
+    financeiro_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("financeiro.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+    moto: Mapped[Moto] = relationship(back_populates="manutencoes")
+    financeiro: Mapped[Financeiro | None] = relationship()
 
 
 class Anexo(Base):

@@ -5,8 +5,8 @@ from datetime import date
 from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session, joinedload
 
-from motopay.domain.enums import FinanceiroTipo, UserRole
-from motopay.domain.exceptions import ForbiddenError, NotFoundError
+from motopay.domain.enums import FinanceiroCategoria, FinanceiroTipo, UserRole
+from motopay.domain.exceptions import ConflictError, ForbiddenError, NotFoundError
 from motopay.infrastructure.db.models import Contrato, Financeiro, Moto
 from motopay.interfaces.api.deps import CurrentUser
 from motopay.interfaces.api.schemas import FinanceiroCreate, FinanceiroUpdate
@@ -123,6 +123,16 @@ def create_financeiro(
     return get_financeiro(db, user, operacao_scope, row.id)
 
 
+def _reject_if_manutencao(row: Financeiro) -> None:
+    """Despesas espelho de manutenção só mudam via módulo de manutenções —
+    editar/excluir direto criaria divergência entre os dois registros."""
+    if row.categoria == FinanceiroCategoria.MANUTENCAO.value:
+        raise ConflictError(
+            "Este lançamento foi gerado por uma manutenção. "
+            "Edite ou exclua pela tela de Manutenções."
+        )
+
+
 def update_financeiro(
     db: Session,
     user: CurrentUser,
@@ -131,6 +141,7 @@ def update_financeiro(
     body: FinanceiroUpdate,
 ) -> Financeiro:
     row = get_financeiro(db, user, operacao_scope, financeiro_id)
+    _reject_if_manutencao(row)
     moto_id = body.moto_id if body.moto_id is not None else row.moto_id
     contrato_id = body.contrato_id if body.contrato_id is not None else row.contrato_id
     _validate_relations(db, row.operacao_id, moto_id, contrato_id)
@@ -159,6 +170,7 @@ def delete_financeiro(
     from motopay.services.anexo_service import delete_anexos_for_entity
 
     row = get_financeiro(db, user, operacao_scope, financeiro_id)
+    _reject_if_manutencao(row)
     row_id = row.id
     operacao_id = row.operacao_id
     # Apaga anexos (storage + linhas) e o lançamento na MESMA transação — sem órfãos.

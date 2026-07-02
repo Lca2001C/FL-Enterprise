@@ -1,6 +1,8 @@
 import { Printer, X } from 'lucide-react';
 import type { FinanceiroOut, MotoOut } from '../apiTypes';
 import { formatBrl, formatDate, todayIso } from '../utils/format';
+import { buildFinanceStatementHtml } from '../utils/reportHtml';
+import { printHtmlDocument } from '../utils/printHtml';
 
 type Props = {
   entries: FinanceiroOut[];
@@ -11,26 +13,50 @@ type Props = {
 function computeTotals(entries: FinanceiroOut[]) {
   let receitas = 0;
   let despesas = 0;
+  let manutencao = 0;
   for (const e of entries) {
     const v = Number(e.valor);
-    if (e.tipo === 'receita') receitas += v;
-    else despesas += v;
+    if (e.tipo === 'receita') {
+      receitas += v;
+    } else {
+      despesas += v;
+      if (e.categoria === 'manutencao') manutencao += v;
+    }
   }
-  return { receitas, despesas, saldo: receitas - despesas };
+  return { receitas, despesas, saldo: receitas - despesas, manutencao };
 }
 
 const FinanceStatementModal = ({ entries, motos, onClose }: Props) => {
   const motoById = new Map(motos.map((m) => [m.id, m]));
-  const { receitas, despesas, saldo } = computeTotals(entries);
+  const totals = computeTotals(entries);
+
+  const motoLabel = (e: FinanceiroOut): string | null => {
+    if (e.moto_descricao) return e.moto_descricao;
+    const moto = e.moto_id ? motoById.get(e.moto_id) : undefined;
+    return moto ? `${moto.placa} — ${moto.modelo}` : null;
+  };
 
   const handlePrint = () => {
-    window.print();
+    // Documento auto-contido impresso em iframe isolado: pagina corretamente
+    // (sem sobreposição nas páginas 2+ nem cabeçalhos duplicados).
+    const html = buildFinanceStatementHtml(
+      entries.map((e) => ({
+        data: e.data,
+        descricao: e.descricao,
+        tipo: e.tipo,
+        valor: e.valor,
+        moto: motoLabel(e),
+      })),
+      totals,
+      todayIso()
+    );
+    printHtmlDocument(html);
   };
 
   return (
     <div className="statement-overlay">
       <div className="statement-shell glass animate-fade">
-        <div className="statement-toolbar no-print">
+        <div className="statement-toolbar">
           <h3>Extrato financeiro</h3>
           <div className="statement-toolbar-actions">
             <button type="button" className="btn-secondary" onClick={handlePrint}>
@@ -42,24 +68,30 @@ const FinanceStatementModal = ({ entries, motos, onClose }: Props) => {
           </div>
         </div>
 
-        <div className="statement-body" id="finance-statement-print">
+        <div className="statement-body">
           <div className="statement-print-header">
             <h2>MotoPay — Extrato financeiro</h2>
-            <p>Gerado em {formatDate(todayIso())}</p>
+            <p>
+              Gerado em {formatDate(todayIso())} · {entries.length} lançamento(s)
+            </p>
           </div>
 
           <div className="summary-grid">
             <div className="summary-card receita">
               <span>Receitas</span>
-              <strong>{formatBrl(receitas)}</strong>
+              <strong>{formatBrl(totals.receitas)}</strong>
             </div>
             <div className="summary-card despesa">
               <span>Despesas</span>
-              <strong>{formatBrl(despesas)}</strong>
+              <strong>{formatBrl(totals.despesas)}</strong>
             </div>
             <div className="summary-card saldo">
               <span>Saldo</span>
-              <strong>{formatBrl(saldo)}</strong>
+              <strong>{formatBrl(totals.saldo)}</strong>
+            </div>
+            <div className="summary-card despesa">
+              <span>Total manutenção</span>
+              <strong>{formatBrl(totals.manutencao)}</strong>
             </div>
           </div>
 
@@ -74,57 +106,21 @@ const FinanceStatementModal = ({ entries, motos, onClose }: Props) => {
               </tr>
             </thead>
             <tbody>
-              {entries.map((e) => {
-                const moto = e.moto_id ? motoById.get(e.moto_id) : undefined;
-                return (
-                  <tr key={e.id}>
-                    <td>{formatDate(e.data)}</td>
-                    <td>{e.descricao}</td>
-                    <td>
-                      <span className={`tipo-badge ${e.tipo}`}>{e.tipo.toUpperCase()}</span>
-                    </td>
-                    <td className="valor">{formatBrl(e.valor)}</td>
-                    <td>{moto ? `${moto.placa} — ${moto.modelo}` : '—'}</td>
-                  </tr>
-                );
-              })}
+              {entries.map((e) => (
+                <tr key={e.id}>
+                  <td>{formatDate(e.data)}</td>
+                  <td>{e.descricao}</td>
+                  <td>
+                    <span className={`tipo-badge ${e.tipo}`}>{e.tipo.toUpperCase()}</span>
+                  </td>
+                  <td className="valor">{formatBrl(e.valor)}</td>
+                  <td>{motoLabel(e) || '—'}</td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
       </div>
-
-      <style jsx global>{`
-        @media print {
-          body * {
-            visibility: hidden;
-          }
-          #finance-statement-print,
-          #finance-statement-print * {
-            visibility: visible;
-          }
-          #finance-statement-print {
-            position: absolute;
-            left: 0;
-            top: 0;
-            width: 100%;
-            background: white !important;
-            color: #0f172a !important;
-            padding: 24px;
-          }
-          .no-print {
-            display: none !important;
-          }
-          .statement-table th,
-          .statement-table td {
-            color: #0f172a !important;
-            border-color: #cbd5e1 !important;
-          }
-          .summary-card {
-            border: 1px solid #cbd5e1 !important;
-            background: #f8fafc !important;
-          }
-        }
-      `}</style>
 
       <style jsx>{`
         .statement-overlay {
